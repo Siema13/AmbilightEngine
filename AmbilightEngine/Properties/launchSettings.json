@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "AmbilightEngine (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "AmbilightEngine (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
