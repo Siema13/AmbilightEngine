@@ -1,13 +1,13 @@
 using System;
+using System.Linq;
 using System.Windows.Input;
 using AmbilightEngine.Core.SystemState;
 using AmbilightEngine.Pages;
-using Microsoft.UI;
+using AmbilightEngine.Services;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
-using Windows.Graphics;
 using WinRT;
 using WinRT.Interop;
 
@@ -15,53 +15,355 @@ namespace AmbilightEngine
 {
     public sealed partial class MainWindow : Window
     {
+        private readonly StartupRegistrationService startupRegistrationService = new();
         private MicaController? micaController;
         private SystemBackdropConfiguration? backdropConfiguration;
-        private bool isExitRequested = false;
+        private bool isExitRequested;
+        private bool isWindowVisible = true;
 
         public AmbilightSettings Settings { get; }
         public SettingsService SettingsService { get; }
         public AppEngineHost EngineHost { get; }
-
+        public ISettingsApplyService SettingsApplyService { get; }
+        public IWledDiagnosticsService WledDiagnosticsService { get; }
         public ICommand ShowCommand { get; }
+        public ICommand ToggleWindowVisibilityCommand { get; }
+        public ICommand OpenSettingsCommand { get; }
+        public ICommand StartCommand { get; }
+        public ICommand StopCommand { get; }
         public ICommand ToggleCommand { get; }
         public ICommand ExitCommand { get; }
+        public Services.DynamicThemeService ThemeService { get; } = new Services.DynamicThemeService();
 
         public MainWindow()
         {
             InitializeComponent();
 
-            ShowCommand = new RelayCommand(_ => RestoreWindow());
-            ToggleCommand = new RelayCommand(_ => ToggleAmbilight());
-            ExitCommand = new RelayCommand(_ => ExitApplication());
+            ShowCommand = new RelayCommand(() => RestoreWindow());
+            ToggleWindowVisibilityCommand = new RelayCommand(() => ToggleWindowVisibility());
+            OpenSettingsCommand = new RelayCommand(() => OpenSettingsFromTray());
+            StartCommand = new RelayCommand(async () => await StartAmbilightAsync());
+            StopCommand = new RelayCommand(() => StopAmbilight());
+            ToggleCommand = new RelayCommand(async () => await ToggleAmbilightAsync());
+            ExitCommand = new RelayCommand(() => ExitApplication());
 
             SettingsService = new SettingsService();
             Settings = SettingsService.Load();
+            bool isDarkMode = Application.Current.RequestedTheme == ApplicationTheme.Dark;
+
+            if (Settings.UseCustomTheme)
+            {
+                ThemeService.ApplyCustomTheme(Settings, isDarkMode);
+            }
+            else
+            {
+                ThemeService.ApplyTheme(Settings.AccentThemeName, isDarkMode);
+            }
+
             EngineHost = new AppEngineHost(Settings);
+            SettingsApplyService = new SettingsApplyService(SettingsService, EngineHost);
+            WledDiagnosticsService = new WledDiagnosticsService();
+
+            startupRegistrationService.Apply(Settings.StartWithWindows, Settings.StartMinimizedToTray);
+
+            EngineHost.StatusChanged += EngineHost_StatusChanged;
+            UpdateGlobalStatus(EngineHost.CurrentStatus);
 
             ExtendsContentIntoTitleBar = true;
             SetTitleBar(AppTitleBar);
 
-            TrySetMicaBackdrop();
+            // Mica jest domyślnie aktywne tylko wtedy, gdy użytkownik nie korzysta z motywu niestandardowego.
+            // Motyw niestandardowy wymaga jednolitego, w pełni kontrolowanego koloru tła okna,
+            // a Mica z definicji nadpisuje go systemowym, rozmytym efektem.
+            UpdateBackdropForCustomTheme(Settings.UseCustomTheme);
 
-            this.Closed += MainWindow_Closed;
+            Closed += MainWindow_Closed;
+            Activated += MainWindow_Activated;
 
             NavView.SelectedItem = NavView.MenuItems[0];
             ContentFrame.Navigate(typeof(DashboardPage));
+            UpdateTrayToolTip(EngineHost.CurrentStatus);
+        }
 
-            this.Activated += MainWindow_Activated;
+        public bool ShouldStartMinimizedToTray(string[] args)
+        {
+            bool hasTrayArgument = args.Any(a => string.Equals(a, "--tray", StringComparison.OrdinalIgnoreCase));
+            return Settings.StartMinimizedToTray || hasTrayArgument;
+        }
+
+        public void NavigateToSettings()
+        {
+            NavView.SelectedItem = NavView.MenuItems[2];
+            ContentFrame.Navigate(typeof(SettingsPage));
+        }
+
+        public void NavigateToProfiles()
+        {
+            NavView.SelectedItem = NavView.MenuItems[1];
+            ContentFrame.Navigate(typeof(ProfilesPage));
+        }
+
+        public void StartHiddenToTray()
+        {
+            HideWindowToTray();
+        }
+
+        // Przełącza pomiędzy systemowym efektem Mica a jednolitym, niestandardowym tłem okna.
+        // Wywoływane przy starcie aplikacji oraz za każdym razem, gdy użytkownik zmienia
+        // ustawienie "Użyj własnego motywu", kolor tła okna lub styl tła w Ustawieniach ogólnych.
+        public void UpdateBackdropForCustomTheme(bool useCustomTheme)
+        {
+            if (useCustomTheme)
+            {
+                DisableMicaBackdrop();
+                RootGrid.Background = BuildCustomBackgroundBrush();
+            }
+            else
+            {
+                RootGrid.Background = (Brush)Application.Current.Resources["M3WindowBackgroundBrush"];
+                TrySetMicaBackdrop();
+            }
+        }
+
+        private Brush BuildCustomBackgroundBrush()
+        {
+            var baseColor = Windows.UI.Color.FromArgb(
+                255,
+                Settings.CustomWindowBackgroundR,
+                Settings.CustomWindowBackgroundG,
+                Settings.CustomWindowBackgroundB);
+
+            // Kolor akcentu dla stylów wielobarwnych (WarmDusk, Aurora, VelvetGlow, Studio) -
+            // sterowany przez użytkownika z kafelka "Akcent stylu tła" w Ustawieniach ogólnych.
+            var accentColor = Windows.UI.Color.FromArgb(
+                255,
+                Settings.CustomBackgroundAccentR,
+                Settings.CustomBackgroundAccentG,
+                Settings.CustomBackgroundAccentB);
+
+            return Settings.CustomBackgroundStyle switch
+            {
+                "PureDark" => new SolidColorBrush(Darken(baseColor, 0.72)),
+
+                "SoftGradient" => new LinearGradientBrush
+                {
+                    StartPoint = new Windows.Foundation.Point(0, 0),
+                    EndPoint = new Windows.Foundation.Point(1, 1),
+                    GradientStops =
+                    {
+                        new GradientStop { Color = baseColor, Offset = 0 },
+                        new GradientStop { Color = Darken(baseColor, 0.35), Offset = 1 }
+                    }
+                },
+
+                "AmbientHalo" => new RadialGradientBrush
+                {
+                    GradientStops =
+                    {
+                        new GradientStop { Color = Lighten(baseColor, 0.15), Offset = 0 },
+                        new GradientStop { Color = baseColor, Offset = 0.6 },
+                        new GradientStop { Color = Darken(baseColor, 0.4), Offset = 1 }
+                    }
+                },
+
+                // Graphite: chłodny, przygaszony gradient o niskiej nasyceniu - efekt szczotkowanego metalu.
+                "Graphite" => new LinearGradientBrush
+                {
+                    StartPoint = new Windows.Foundation.Point(0, 0),
+                    EndPoint = new Windows.Foundation.Point(1, 0.4),
+                    GradientStops =
+                    {
+                        new GradientStop { Color = Desaturate(Lighten(baseColor, 0.08), 0.6), Offset = 0 },
+                        new GradientStop { Color = Desaturate(baseColor, 0.7), Offset = 0.5 },
+                        new GradientStop { Color = Desaturate(Darken(baseColor, 0.3), 0.5), Offset = 1 }
+                    }
+                },
+
+                "DeepSpace" => new LinearGradientBrush
+                {
+                    StartPoint = new Windows.Foundation.Point(0, 0),
+                    EndPoint = new Windows.Foundation.Point(0, 1),
+                    GradientStops =
+                    {
+                        new GradientStop { Color = Darken(baseColor, 0.5), Offset = 0 },
+                        new GradientStop { Color = Darken(baseColor, 0.15), Offset = 1 }
+                    }
+                },
+
+                // WarmDusk: przesunięcie koloru bazowego w stronę koloru akcentu przy dolnej krawędzi,
+                // symulując poświatę zachodzącego słońca za oknem.
+                "WarmDusk" => new LinearGradientBrush
+                {
+                    StartPoint = new Windows.Foundation.Point(0, 0),
+                    EndPoint = new Windows.Foundation.Point(0, 1),
+                    GradientStops =
+                    {
+                        new GradientStop { Color = Darken(baseColor, 0.25), Offset = 0 },
+                        new GradientStop { Color = Blend(baseColor, accentColor, 0.35), Offset = 0.7 },
+                        new GradientStop { Color = Blend(baseColor, accentColor, 0.5), Offset = 1 }
+                    }
+                },
+
+                // Aurora: pasmowy gradient z akcentem użytkownika, inspirowany zorzą polarną.
+                "Aurora" => new LinearGradientBrush
+                {
+                    StartPoint = new Windows.Foundation.Point(0, 0),
+                    EndPoint = new Windows.Foundation.Point(1, 1),
+                    GradientStops =
+                    {
+                        new GradientStop { Color = Darken(baseColor, 0.4), Offset = 0 },
+                        new GradientStop { Color = Blend(baseColor, accentColor, 0.4), Offset = 0.45 },
+                        new GradientStop { Color = Blend(baseColor, accentColor, 0.4), Offset = 0.75 },
+                        new GradientStop { Color = Darken(baseColor, 0.3), Offset = 1 }
+                    }
+                },
+
+                // Studio: winieta radialna, akcent oświetla środek jak reflektor studyjny.
+                "Studio" => new RadialGradientBrush
+                {
+                    Center = new Windows.Foundation.Point(0.5, 0.35),
+                    RadiusX = 0.9,
+                    RadiusY = 0.9,
+                    GradientStops =
+                    {
+                        new GradientStop { Color = Blend(baseColor, accentColor, 0.3), Offset = 0 },
+                        new GradientStop { Color = baseColor, Offset = 0.55 },
+                        new GradientStop { Color = Darken(baseColor, 0.3), Offset = 1 }
+                    }
+                },
+
+                // ContrastLayered: ostre, wąskie pasma tonalne dające efekt warstwowych płaszczyzn.
+                "ContrastLayered" => new LinearGradientBrush
+                {
+                    StartPoint = new Windows.Foundation.Point(0, 0),
+                    EndPoint = new Windows.Foundation.Point(0, 1),
+                    GradientStops =
+                    {
+                        new GradientStop { Color = Lighten(baseColor, 0.1), Offset = 0 },
+                        new GradientStop { Color = Lighten(baseColor, 0.1), Offset = 0.32 },
+                        new GradientStop { Color = Darken(baseColor, 0.2), Offset = 0.33 },
+                        new GradientStop { Color = Darken(baseColor, 0.2), Offset = 0.66 },
+                        new GradientStop { Color = Darken(baseColor, 0.5), Offset = 0.67 },
+                        new GradientStop { Color = Darken(baseColor, 0.5), Offset = 1 }
+                    }
+                },
+
+                // VelvetGlow: nasycony blask centralny w kolorze akcentu, gasnący w głęboką, aksamitną czerń.
+                "VelvetGlow" => new RadialGradientBrush
+                {
+                    Center = new Windows.Foundation.Point(0.5, 0.5),
+                    RadiusX = 0.8,
+                    RadiusY = 0.8,
+                    GradientStops =
+                    {
+                        new GradientStop { Color = Blend(baseColor, accentColor, 0.3), Offset = 0 },
+                        new GradientStop { Color = Darken(baseColor, 0.45), Offset = 0.65 },
+                        new GradientStop { Color = Darken(baseColor, 0.75), Offset = 1 }
+                    }
+                },
+
+                _ => new SolidColorBrush(baseColor)
+            };
+        }
+
+        // Miesza dwa kolory w proporcji t (0 = wyłącznie color, 1 = wyłącznie target).
+        // Używane do przesuwania koloru bazowego w kierunku konkretnego akcentu (np. Aurora, WarmDusk).
+        private static Windows.UI.Color Blend(Windows.UI.Color color, Windows.UI.Color target, double t)
+        {
+            return Windows.UI.Color.FromArgb(
+                255,
+                (byte)(color.R + (target.R - color.R) * t),
+                (byte)(color.G + (target.G - color.G) * t),
+                (byte)(color.B + (target.B - color.B) * t));
+        }
+
+        // Redukuje nasycenie koloru, miksując go z jego szarym odpowiednikiem (luminancją).
+        // amount = 1.0 daje pełną skalę szarości, 0.0 nie zmienia koloru.
+        private static Windows.UI.Color Desaturate(Windows.UI.Color color, double amount)
+        {
+            byte gray = (byte)(color.R * 0.299 + color.G * 0.587 + color.B * 0.114);
+            return Windows.UI.Color.FromArgb(
+                255,
+                (byte)(color.R + (gray - color.R) * amount),
+                (byte)(color.G + (gray - color.G) * amount),
+                (byte)(color.B + (gray - color.B) * amount));
+        }
+
+        private static Windows.UI.Color Darken(Windows.UI.Color color, double amount)
+        {
+            return Windows.UI.Color.FromArgb(
+                255,
+                (byte)(color.R * (1 - amount)),
+                (byte)(color.G * (1 - amount)),
+                (byte)(color.B * (1 - amount)));
+        }
+
+        private static Windows.UI.Color Lighten(Windows.UI.Color color, double amount)
+        {
+            return Windows.UI.Color.FromArgb(
+                255,
+                (byte)(color.R + (255 - color.R) * amount),
+                (byte)(color.G + (255 - color.G) * amount),
+                (byte)(color.B + (255 - color.B) * amount));
+        }
+
+        private void EngineHost_StatusChanged(EngineStatusInfo status)
+        {
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                UpdateGlobalStatus(status);
+                UpdateTrayToolTip(status);
+            });
+        }
+
+        private void UpdateGlobalStatus(EngineStatusInfo status)
+        {
+            GlobalStatusText.Text = status.State switch
+            {
+                EngineRunState.Starting => "Uruchamianie",
+                EngineRunState.Running => "Aktywny",
+                EngineRunState.Ambient => "Ambient",
+                EngineRunState.Error => "Błąd",
+                _ => "Gotowy"
+            };
+        }
+
+        private void UpdateTrayToolTip(EngineStatusInfo status)
+        {
+            string statusText = status.State switch
+            {
+                EngineRunState.Starting => "Uruchamianie",
+                EngineRunState.Running => "Aktywny",
+                EngineRunState.Ambient => "Ambient",
+                EngineRunState.Error => "Błąd",
+                _ => "Gotowy"
+            };
+
+            if (RootGrid.Resources.TryGetValue("TrayIcon", out object trayObject) &&
+                trayObject is H.NotifyIcon.TaskbarIcon tray)
+            {
+                tray.ToolTipText = $"Ambilight Engine - {statusText}";
+            }
         }
 
         private void MainWindow_Activated(object sender, WindowActivatedEventArgs args)
         {
-            this.Activated -= MainWindow_Activated;
-            TrayIcon.ForceCreate();
-            System.Diagnostics.Debug.WriteLine("[DIAG] TrayIcon.ForceCreate() wywołane po aktywacji okna");
+            Activated -= MainWindow_Activated;
+            UpdateTrayToolTip(EngineHost.CurrentStatus);
         }
 
         private void TrySetMicaBackdrop()
         {
-            if (!MicaController.IsSupported()) return;
+            if (!MicaController.IsSupported())
+            {
+                return;
+            }
+
+            if (micaController is not null)
+            {
+                // Backdrop już aktywny - unikamy podwójnej inicjalizacji.
+                return;
+            }
 
             backdropConfiguration = new SystemBackdropConfiguration
             {
@@ -73,93 +375,167 @@ namespace AmbilightEngine
             micaController.SetSystemBackdropConfiguration(backdropConfiguration);
         }
 
+        private void DisableMicaBackdrop()
+        {
+            if (micaController is null)
+            {
+                return;
+            }
+
+            micaController.RemoveAllSystemBackdropTargets();
+            micaController.Dispose();
+            micaController = null;
+            backdropConfiguration = null;
+        }
+
         private void NavView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
         {
-            if (args.SelectedItem is NavigationViewItem item)
+            if (args.SelectedItem is not NavigationViewItem item)
             {
-                string? tag = item.Tag?.ToString();
+                return;
+            }
 
-                if (tag == "dashboard")
-                {
-                    ContentFrame.Navigate(typeof(DashboardPage));
-                }
-                else if (tag == "settings")
-                {
-                    ContentFrame.Navigate(typeof(SettingsPage));
-                }
+            string? tag = item.Tag?.ToString();
+            if (tag == "dashboard")
+            {
+                ContentFrame.Navigate(typeof(DashboardPage));
+            }
+            else if (tag == "settings")
+            {
+                ContentFrame.Navigate(typeof(SettingsPage));
+            }
+            else if (tag == "profiles")
+            {
+                ContentFrame.Navigate(typeof(ProfilesPage));
             }
         }
 
         private void MainWindow_Closed(object sender, WindowEventArgs args)
         {
-            if (!isExitRequested)
+            if (!isExitRequested && Settings.CloseToTray)
             {
                 args.Handled = true;
-                this.AppWindow.Hide();
+                HideWindowToTray();
                 return;
             }
 
             SettingsService.Save(Settings);
+            startupRegistrationService.Apply(Settings.StartWithWindows, Settings.StartMinimizedToTray);
             EngineHost.Dispose();
             micaController?.Dispose();
-            TrayIcon.Dispose();
         }
 
         private void RestoreWindow()
         {
-            ShowAndFocusWindow();
+            ShowDashboardFromTray();
         }
 
-        // Wspólna logika przywracania okna: pokazuje je, wymusza pierwszy plan,
-        // resetuje nawigację na Dashboard (niezależnie od tego, gdzie użytkownik był wcześniej).
+        private void ToggleWindowVisibility()
+        {
+            if (isWindowVisible)
+            {
+                HideWindowToTray();
+            }
+            else
+            {
+                ShowDashboardFromTray();
+            }
+        }
+
+        private void OpenSettingsFromTray()
+        {
+            ShowAndFocusWindow();
+            isWindowVisible = true;
+            NavView.SelectedItem = NavView.MenuItems[2];
+            ContentFrame.Navigate(typeof(SettingsPage));
+        }
+
+        private void ShowDashboardFromTray()
+        {
+            ShowAndFocusWindow();
+            isWindowVisible = true;
+            NavView.SelectedItem = NavView.MenuItems[0];
+            ContentFrame.Navigate(typeof(DashboardPage));
+        }
+
+        private void HideWindowToTray()
+        {
+            AppWindow.Hide();
+            isWindowVisible = false;
+        }
+
         private void ShowAndFocusWindow()
         {
-            this.AppWindow.Show();
-            this.AppWindow.MoveInZOrderAtTop();
+            AppWindow.Show();
+            AppWindow.MoveInZOrderAtTop();
 
             IntPtr hwnd = WindowNative.GetWindowHandle(this);
             PInvokeHelpers.ForceForegroundWindow(hwnd);
 
-            NavView.SelectedItem = NavView.MenuItems[0];
-            ContentFrame.Navigate(typeof(DashboardPage));
-
-            this.Activate();
+            Activate();
         }
 
-        private async void ToggleAmbilight()
+        private async System.Threading.Tasks.Task StartAmbilightAsync()
         {
             try
             {
                 if (EngineHost.IsRunning)
                 {
-                    EngineHost.Stop();
-                    System.Diagnostics.Debug.WriteLine("[DIAG] Ambilight zatrzymany.");
+                    return;
+                }
+
+                IntPtr hwnd = WindowNative.GetWindowHandle(this);
+                bool started = await EngineHost.StartAsync(hwnd);
+                if (started)
+                {
+                    System.Diagnostics.Debug.WriteLine("DIAG: Ambilight wystartował poprawnie.");
                 }
                 else
                 {
-                    IntPtr hwnd = WindowNative.GetWindowHandle(this);
-                    bool started = await EngineHost.StartAsync(hwnd);
-
-                    if (started)
-                    {
-                        System.Diagnostics.Debug.WriteLine("[DIAG] Ambilight wystartował poprawnie.");
-                    }
-                    else
-                    {
-                        System.Diagnostics.Debug.WriteLine("[DIAG] StartAsync zwrócił false - nie wybrano monitora lub wystąpił błąd inicjalizacji.");
-                    }
+                    System.Diagnostics.Debug.WriteLine("DIAG: StartAsync zwrócił false - nie wybrano monitora lub wystąpił błąd inicjalizacji.");
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[DIAG] Wyjątek w ToggleAmbilight: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"DIAG: Wyjątek w StartAmbilightAsync: {ex.Message}");
+            }
+        }
+
+        private void StopAmbilight()
+        {
+            try
+            {
+                if (!EngineHost.IsRunning)
+                {
+                    return;
+                }
+
+                EngineHost.Stop();
+                System.Diagnostics.Debug.WriteLine("DIAG: Ambilight zatrzymany.");
+                UpdateTrayToolTip(EngineHost.CurrentStatus);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"DIAG: Wyjątek w StopAmbilight: {ex.Message}");
+            }
+        }
+
+        private async System.Threading.Tasks.Task ToggleAmbilightAsync()
+        {
+            if (EngineHost.IsRunning)
+            {
+                StopAmbilight();
+            }
+            else
+            {
+                await StartAmbilightAsync();
             }
         }
 
         private void ExitApplication()
         {
             isExitRequested = true;
-            this.Close();
+            Close();
         }
     }
 

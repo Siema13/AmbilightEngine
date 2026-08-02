@@ -1,0 +1,197 @@
+<Page
+    x:Class="AmbilightEngine.Pages.SettingsImagePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="using:Microsoft.UI.Xaml.Controls"
+    mc:Ignorable="d">
+    
+
+    <ScrollViewer HorizontalScrollMode="Disabled"
+                  HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollMode="Auto"
+                  VerticalScrollBarVisibility="Auto">
+        <Grid Padding="32"
+      MaxWidth="900"
+      HorizontalAlignment="Left"
+      Background="{ThemeResource M3SurfaceContainerBrush}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Nagłówek -->
+            <StackPanel Grid.Row="0"
+                        Spacing="4">
+                <TextBlock Text="Obraz i kalibracja"
+                           Style="{StaticResource PageTitleTextStyle}" />
+                <TextBlock Text="Parametry obrazu stosowane do domyślnego profilu."
+                           Style="{StaticResource SectionSubTextStyle}" />
+            </StackPanel>
+
+            <!-- Liczba LED / próbkowanie -->
+            <Border Style="{StaticResource CardStyle}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="Parametry przechwytywania"
+                   Style="{StaticResource SectionHeaderTextStyle}" />
+                    <TextBlock Text="Liczba diod LED i głębokość próbkowania krawędzi."
+                   Style="{StaticResource SectionSubTextStyle}" />
+
+                    <TextBlock Text="Liczba diod LED"
+                   FontWeight="SemiBold" />
+                    <controls:NumberBox x:Name="LedCountBox"
+                     Minimum="1"
+                     Maximum="1000"
+                     SpinButtonPlacementMode="Inline"
+                     ValueChanged="LedCountBox_ValueChanged" />
+
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Text="Głębokość próbkowania krawędzi (px)"
+                       FontWeight="SemiBold"
+                       VerticalAlignment="Center" />
+                        <TextBlock x:Name="SamplingDepthValueText"
+                       Grid.Column="1"
+                       VerticalAlignment="Center"
+                       Text="80" />
+                    </Grid>
+
+                    <Slider x:Name="SamplingDepthSlider"
+                Minimum="20"
+                Maximum="300"
+                StepFrequency="1"
+                ValueChanged="SamplingDepthSlider_ValueChanged" />
+                </StackPanel>
+            </Border>
+
+            <!-- Treść -->
+            <StackPanel Grid.Row="1"
+                        Margin="0,24,0,0"
+                        Spacing="16">
+
+                <Border Style="{StaticResource CardStyle}">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Kalibracja obrazu"
+                                   Style="{StaticResource SectionHeaderTextStyle}" />
+
+                        <!-- Jasność -->
+                        <StackPanel Spacing="6">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Text="Jasność (%)"
+                                           FontWeight="SemiBold" />
+                                <TextBlock x:Name="BrightnessValueText"
+                                           Grid.Column="1"
+                                           Text="100" />
+                            </Grid>
+                            <Slider x:Name="BrightnessSlider"
+                                    Minimum="0"
+                                    Maximum="100"
+                                    StepFrequency="1"
+                                    ValueChanged="BrightnessSlider_ValueChanged" />
+                        </StackPanel>
+
+                        <!-- Nasycenie -->
+                        <StackPanel Spacing="6">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Text="Nasycenie (%)"
+                                           FontWeight="SemiBold" />
+                                <TextBlock x:Name="SaturationValueText"
+                                           Grid.Column="1"
+                                           Text="100" />
+                            </Grid>
+                            <Slider x:Name="SaturationSlider"
+                                    Minimum="0"
+                                    Maximum="300"
+                                    StepFrequency="1"
+                                    ValueChanged="SaturationSlider_ValueChanged" />
+                            <TextBlock Text="100 = neutralne, mniej = bledsze kolory, więcej = bardziej intensywne."
+                                       Style="{StaticResource SectionSubTextStyle}" />
+                        </StackPanel>
+
+                        <!-- Temperatura barwowa -->
+                        <StackPanel Spacing="6">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Text="Temperatura barwowa (K)"
+                                           FontWeight="SemiBold" />
+                                <TextBlock x:Name="KelvinValueText"
+                                           Grid.Column="1"
+                                           Text="6500" />
+                            </Grid>
+                            <Slider x:Name="KelvinSlider"
+                                    Minimum="1000"
+                                    Maximum="12000"
+                                    StepFrequency="100"
+                                    ValueChanged="KelvinSlider_ValueChanged" />
+                        </StackPanel>
+
+                        <!-- Próg czerni -->
+                        <StackPanel Spacing="6">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Text="Próg czerni"
+                                           FontWeight="SemiBold" />
+                                <TextBlock x:Name="BlackCutoffValueText"
+                                           Grid.Column="1"
+                                           Text="8" />
+                            </Grid>
+                            <Slider x:Name="BlackCutoffSlider"
+                                    Minimum="0"
+                                    Maximum="50"
+                                    StepFrequency="1"
+                                    ValueChanged="BlackCutoffSlider_ValueChanged" />
+                            <TextBlock Text="Piksele ciemniejsze niż ten próg będą wygaszane do czystej czerni."
+                                       Style="{StaticResource SectionSubTextStyle}" />
+                        </StackPanel>
+
+                        <!-- Gamma -->
+                        <StackPanel Spacing="6">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Text="Korekcja gamma"
+                                           FontWeight="SemiBold" />
+                                <TextBlock x:Name="GammaValueText"
+                                           Grid.Column="1"
+                                           Text="2.2" />
+                            </Grid>
+                            <Slider x:Name="GammaSlider"
+                                    Minimum="10"
+                                    Maximum="40"
+                                    StepFrequency="1"
+                                    ValueChanged="GammaSlider_ValueChanged" />
+                            <TextBlock Text="Standardowo 2.2. Zwiększ, jeśli diody świecą za jasno; zmniejsz, jeśli za ciemno."
+                                       Style="{StaticResource SectionSubTextStyle}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Grid>
+    </ScrollViewer>
+</Page>

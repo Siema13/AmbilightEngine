@@ -1,66 +1,42 @@
 <Page
     x:Class="AmbilightEngine.Pages.SettingsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Microsoft.UI.Xaml.Controls">
 
-    <ScrollViewer>
-        <StackPanel Padding="32" Spacing="24" MaxWidth="600">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="260" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
 
-            <TextBlock Text="Ustawienia" FontSize="28" FontWeight="Bold" />
+        <!-- Lokalna nawigacja sekcji -->
+        <StackPanel Grid.Column="0"
+            Padding="24,24,12,24"
+            Spacing="12"
+            Background="{ThemeResource M3NavigationPanelBrush}">
+            <TextBlock Text="Ustawienia"
+                       Style="{StaticResource PageTitleTextStyle}" />
 
-            <StackPanel Spacing="8">
-                <TextBlock Text="Wybór monitora do przechwytywania" FontWeight="SemiBold" />
-                <CheckBox x:Name="AutoMonitorCheckBox" Content="Automatycznie użyj głównego monitora (pomiń okno wyboru)"
-                          Checked="AutoMonitorCheckBox_Checked" Unchecked="AutoMonitorCheckBox_Unchecked" />
-                <TextBlock Opacity="0.6" FontSize="12" Text="Gdy włączone, Ambilight startuje bez pytania o monitor. Wyłącz, jeśli masz więcej niż jeden ekran i chcesz wybierać ręcznie." TextWrapping="Wrap" />
-            </StackPanel>
+            <TextBlock Text="Wybierz kategorię ustawień z listy poniżej."
+                       Style="{StaticResource SectionSubTextStyle}" />
 
-            <StackPanel Spacing="8">
-                <TextBlock Text="Adres IP urządzenia WLED" FontWeight="SemiBold" />
-                <TextBox x:Name="IpAddressBox" TextChanged="IpAddressBox_TextChanged" />
-            </StackPanel>
-
-            <StackPanel Spacing="8">
-                <TextBlock Text="Liczba diod LED" FontWeight="SemiBold" />
-                <NumberBox x:Name="LedCountBox" Minimum="1" Maximum="1000" SpinButtonPlacementMode="Inline"
-                           ValueChanged="LedCountBox_ValueChanged" />
-            </StackPanel>
-
-            <StackPanel Spacing="8">
-                <TextBlock Text="Głębokość próbkowania krawędzi (px)" FontWeight="SemiBold" />
-                <Slider x:Name="SamplingDepthSlider" Minimum="20" Maximum="300"
-                        ValueChanged="SamplingDepthSlider_ValueChanged" />
-            </StackPanel>
-
-            <StackPanel Spacing="8">
-                <TextBlock Text="Płynność reakcji (Smoothing)" FontWeight="SemiBold" />
-                <TextBlock Opacity="0.6" FontSize="12" Text="Niżej = wolniej i płynniej. Wyżej = szybciej i bardziej surowo." />
-                <Slider x:Name="SmoothingSlider" Minimum="1" Maximum="100"
-                        ValueChanged="SmoothingSlider_ValueChanged" />
-            </StackPanel>
-
-            <StackPanel Spacing="8">
-                <TextBlock Text="Jakość / wydajność próbkowania pikseli" FontWeight="SemiBold" />
-                <TextBlock Opacity="0.6" FontSize="12" Text="Niżej = wyższa jakość koloru, więcej obciążenia CPU." />
-                <Slider x:Name="QualitySlider" Minimum="1" Maximum="20"
-                        ValueChanged="QualitySlider_ValueChanged" />
-            </StackPanel>
-
-            <StackPanel Spacing="8">
-                <TextBlock Text="Czas bezczynności do trybu Lounge Light (minuty)" FontWeight="SemiBold" />
-                <NumberBox x:Name="IdleTimeoutBox" Minimum="1" Maximum="120" SpinButtonPlacementMode="Inline"
-                           ValueChanged="IdleTimeoutBox_ValueChanged" />
-            </StackPanel>
-
-            <StackPanel Spacing="8">
-                <TextBlock Text="Kolor bazowy Lounge Light" FontWeight="SemiBold" />
-                <ColorPicker x:Name="LoungeColorPicker" ColorChanged="LoungeColorPicker_ColorChanged"
-                             IsAlphaEnabled="False" IsMoreButtonVisible="False" />
-            </StackPanel>
-
-            <Button Content="Zapisz ustawienia" Click="SaveButton_Click"
-                    Style="{StaticResource AccentButtonStyle}" HorizontalAlignment="Left" />
-
+            <ListView x:Name="SettingsSectionList"
+                      SelectionChanged="SettingsSectionList_SelectionChanged">
+                <ListViewItem Content="Ogólne" Tag="general" />
+                <ListViewItem Content="Obraz" Tag="image" />
+                <ListViewItem Content="Geometria LED" Tag="geometry" />
+                <ListViewItem Content="WLED" Tag="wled" />
+                <ListViewItem Content="Uruchamianie" Tag="startup" />
+                <ListViewItem Content="MQTT" Tag="mqtt" />
+            </ListView>
         </StackPanel>
-    </ScrollViewer>
+
+        <!-- Obszar treści sekcji -->
+        <Frame x:Name="SettingsContentFrame"
+               Grid.Column="1"
+               Margin="0"
+               HorizontalAlignment="Stretch"
+               VerticalAlignment="Stretch" />
+    </Grid>
 </Page>

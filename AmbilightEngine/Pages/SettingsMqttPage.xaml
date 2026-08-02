@@ -1,0 +1,111 @@
+<Page
+    x:Class="AmbilightEngine.Pages.SettingsMqttPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Microsoft.UI.Xaml.Controls">
+
+    <ScrollViewer HorizontalScrollMode="Disabled"
+                  HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollMode="Auto"
+                  VerticalScrollBarVisibility="Auto">
+        <Grid Padding="32"
+              MaxWidth="900"
+              HorizontalAlignment="Left">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0"
+                        Spacing="4">
+                <TextBlock Text="MQTT / Home Assistant"
+                           Style="{StaticResource PageTitleTextStyle}" />
+                <TextBlock Text="Konfiguracja integracji z brokerem MQTT i publikacji statusów."
+                           Style="{StaticResource SectionSubTextStyle}" />
+            </StackPanel>
+
+            <StackPanel Grid.Row="1"
+                        Margin="0,24,0,0"
+                        Spacing="16">
+
+                <controls:InfoBar x:Name="MqttInfoBar"
+                                  IsOpen="False"
+                                  IsClosable="True"
+                                  Severity="Informational"
+                                  Title="MQTT"
+                                  Message="Gotowe do konfiguracji." />
+
+                <Border Style="{StaticResource CardStyle}">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Podstawowa konfiguracja"
+                                   Style="{StaticResource SectionHeaderTextStyle}" />
+                        <TextBlock Text="Wprowadź dane brokera MQTT i sposób identyfikacji klienta."
+                                   Style="{StaticResource SectionSubTextStyle}" />
+
+                        <CheckBox x:Name="MqttEnabledCheckBox"
+                                  Content="Włącz obsługę MQTT"
+                                  Style="{StaticResource SettingsCheckBoxStyle}"
+                                  Checked="MqttEnabledCheckBox_Checked"
+                                  Unchecked="MqttEnabledCheckBox_Unchecked" />
+
+                        <TextBlock Text="Host brokera MQTT"
+                                   FontWeight="SemiBold" />
+                        <TextBox x:Name="MqttHostBox"
+                                 Style="{StaticResource SettingsTextBoxStyle}"
+                                 TextChanged="MqttHostBox_TextChanged"
+                                 PlaceholderText="np. 192.168.1.10" />
+
+                        <TextBlock Text="Port MQTT"
+                                   FontWeight="SemiBold" />
+                        <controls:NumberBox x:Name="MqttPortBox"
+                                             Minimum="1"
+                                             Maximum="65535"
+                                             SpinButtonPlacementMode="Inline"
+                                             ValueChanged="MqttPortBox_ValueChanged" />
+
+                        <TextBlock Text="Client ID"
+                                   FontWeight="SemiBold" />
+                        <TextBox x:Name="MqttClientIdBox"
+                                 Style="{StaticResource SettingsTextBoxStyle}"
+                                 TextChanged="MqttClientIdBox_TextChanged"
+                                 PlaceholderText="AmbilightEngine" />
+
+                        <TextBlock Text="Topic prefix"
+                                   FontWeight="SemiBold" />
+                        <TextBox x:Name="MqttTopicPrefixBox"
+                                 Style="{StaticResource SettingsTextBoxStyle}"
+                                 TextChanged="MqttTopicPrefixBox_TextChanged"
+                                 PlaceholderText="ambilight" />
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource CardStyle}">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Uwierzytelnianie"
+                                   Style="{StaticResource SectionHeaderTextStyle}" />
+                        <TextBlock Text="Uzupełnij dane logowania, jeśli broker ich wymaga."
+                                   Style="{StaticResource SectionSubTextStyle}" />
+
+                        <TextBlock Text="Login MQTT"
+                                   FontWeight="SemiBold" />
+                        <TextBox x:Name="MqttUsernameBox"
+                                 Style="{StaticResource SettingsTextBoxStyle}"
+                                 TextChanged="MqttUsernameBox_TextChanged" />
+
+                        <TextBlock Text="Hasło MQTT"
+                                   FontWeight="SemiBold" />
+                        <PasswordBox x:Name="MqttPasswordBox"
+                                     Style="{StaticResource SettingsPasswordBoxStyle}"
+                                     PasswordChanged="MqttPasswordBox_PasswordChanged" />
+
+                        <CheckBox x:Name="MqttRetainStatusCheckBox"
+                                  Content="Publikuj statusy z flagą retain"
+                                  Style="{StaticResource SettingsCheckBoxStyle}"
+                                  Checked="MqttRetainStatusCheckBox_Checked"
+                                  Unchecked="MqttRetainStatusCheckBox_Unchecked" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Grid>
+    </ScrollViewer>
+</Page>

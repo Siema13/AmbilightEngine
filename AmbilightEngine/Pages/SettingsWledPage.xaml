@@ -1,0 +1,124 @@
+<Page
+    x:Class="AmbilightEngine.Pages.SettingsWledPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Microsoft.UI.Xaml.Controls">
+    
+    <ScrollViewer HorizontalScrollMode="Disabled"
+                  HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollMode="Auto"
+                  VerticalScrollBarVisibility="Auto">
+        <Grid Padding="32"
+              MaxWidth="900"
+              HorizontalAlignment="Left">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Nagłówek -->
+            <StackPanel Grid.Row="0"
+                        Spacing="4">
+                <TextBlock Text="WLED"
+                           Style="{StaticResource PageTitleTextStyle}" />
+                <TextBlock Text="Połączenie z urządzeniem i parametry silnika Ambilight."
+                           Style="{StaticResource SectionSubTextStyle}" />
+            </StackPanel>
+
+            <!-- Treść -->
+            <StackPanel Grid.Row="1"
+                        Margin="0,24,0,0"
+                        Spacing="16">
+
+                <!-- Połączenie -->
+                <Border Style="{StaticResource CardStyle}">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Połączenie z urządzeniem WLED"
+                                   Style="{StaticResource SectionHeaderTextStyle}" />
+                        <TextBlock Text="Skonfiguruj adres IP i przetestuj połączenie."
+                                   Style="{StaticResource SectionSubTextStyle}" />
+
+                        <TextBlock Text="Adres IP urządzenia WLED"
+                                   FontWeight="SemiBold" />
+                        <TextBox x:Name="IpAddressBox"
+                                 Style="{StaticResource SettingsTextBoxStyle}"
+                                 PlaceholderText="np. 192.168.1.38"
+                                 TextChanged="IpAddressBox_TextChanged" />
+
+                        <Button x:Name="TestWledConnectionButton"
+                                Content="Przetestuj połączenie z WLED"
+                                Click="TestWledConnectionButton_Click"
+                                Style="{StaticResource AccentButtonStyle}" />
+                    </StackPanel>
+                </Border>
+
+                
+
+                <!-- Diagnostyka -->
+                <Border Style="{StaticResource CardStyle}">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Diagnostyka WLED"
+                                   Style="{StaticResource SectionHeaderTextStyle}" />
+                        <TextBlock Text="Odczyt podstawowych parametrów urządzenia."
+                                   Style="{StaticResource SectionSubTextStyle}" />
+
+                        <Grid ColumnSpacing="16" RowSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="220" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Text="Status połączenia" FontWeight="SemiBold" />
+                            <TextBlock Grid.Column="1"
+                                       x:Name="WledDiagnosticStatusText"
+                                       Text="Brak danych" />
+
+                            <TextBlock Grid.Row="1" Text="Urządzenie" FontWeight="SemiBold" />
+                            <TextBlock Grid.Row="1"
+                                       Grid.Column="1"
+                                       x:Name="WledDeviceNameText"
+                                       Text="-" />
+
+                            <TextBlock Grid.Row="2" Text="Wersja" FontWeight="SemiBold" />
+                            <TextBlock Grid.Row="2"
+                                       Grid.Column="1"
+                                       x:Name="WledVersionText"
+                                       Text="-" />
+
+                            <TextBlock Grid.Row="3" Text="Zasilanie" FontWeight="SemiBold" />
+                            <TextBlock Grid.Row="3"
+                                       Grid.Column="1"
+                                       x:Name="WledPowerStateText"
+                                       Text="-" />
+
+                            <TextBlock Grid.Row="4" Text="Jasność WLED" FontWeight="SemiBold" />
+                            <TextBlock Grid.Row="4"
+                                       Grid.Column="1"
+                                       x:Name="WledBrightnessText"
+                                       Text="-" />
+
+                            <TextBlock Grid.Row="5" Text="Liczba LED" FontWeight="SemiBold" />
+                            <TextBlock Grid.Row="5"
+                                       Grid.Column="1"
+                                       x:Name="WledLedMatchText"
+                                       Text="-" />
+                        </Grid>
+
+                        <Button x:Name="RefreshWledDiagnosticsButton"
+                                Content="Odśwież diagnostykę WLED"
+                                Click="RefreshWledDiagnosticsButton_Click"
+                                Style="{StaticResource AccentButtonStyle}" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Grid>
+    </ScrollViewer>
+</Page>

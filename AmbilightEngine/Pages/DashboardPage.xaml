@@ -1,28 +1,231 @@
 <Page
     x:Class="AmbilightEngine.Pages.DashboardPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Microsoft.UI.Xaml.Controls">
 
-    <ScrollViewer>
-        <StackPanel Padding="32" Spacing="20" MaxWidth="600">
+    <Grid HorizontalAlignment="Stretch" Background="{ThemeResource M3SurfaceContainerBrush}">
+        
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+            <Grid
+                HorizontalAlignment="Left"
+                MaxWidth="960"
+                Padding="32,24,32,32">
 
-            <TextBlock Text="Ambilight Engine" FontSize="28" FontWeight="Bold" />
-            <TextBlock Text="Panel kontrolny przechwytywania ekranu" Opacity="0.7" />
+                <StackPanel
+                    Spacing="24"
+                    HorizontalAlignment="Stretch">
 
-            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    CornerRadius="8" Padding="20">
-                <StackPanel Spacing="12">
-                    <TextBlock x:Name="StatusText" Text="Status: gotowy do startu" FontWeight="SemiBold" />
-                    <TextBlock x:Name="FpsText" Text="FPS: --" Opacity="0.7" />
+                    <StackPanel Spacing="4">
+                        <TextBlock
+                            Text="Panel główny"
+                            FontSize="24"
+                            FontWeight="Bold" />
 
-                    <Button x:Name="ToggleButton"
-                            Content="Wybierz monitor i uruchom Ambilight"
-                            Click="ToggleButton_Click"
-                            HorizontalAlignment="Left"
-                            Style="{StaticResource AccentButtonStyle}" />
+                        <TextBlock
+                            Style="{StaticResource SectionSubTextStyle}"
+                            Text="Sterowanie silnikiem Ambilight, status pracy i podgląd wydajności." />
+                    </StackPanel>
+
+                    <controls:InfoBar
+    x:Name="StatusInfoBar"
+    IsOpen="False"
+    IsClosable="False"
+    Severity="Informational"
+    Title="Status silnika"
+    Message=""
+    Margin="0,0,0,4" />
+
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel Spacing="12">
+                            <TextBlock
+            Text="Tryb wyświetlania"
+            Style="{StaticResource SectionHeaderTextStyle}" />
+
+                            <TextBlock
+            Text="Wybierz, jak diody LED mają się zachowywać."
+            Style="{StaticResource SectionSubTextStyle}" />
+
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <RadioButton
+                x:Name="VideoSyncModeRadio"
+                Content="Video Sync"
+                GroupName="DisplayModeGroup"
+                Checked="DisplayModeRadio_Checked"
+                Tag="VideoSync" />
+
+                                <RadioButton
+                x:Name="StaticColorModeRadio"
+                Content="Static Color"
+                GroupName="DisplayModeGroup"
+                Checked="DisplayModeRadio_Checked"
+                Tag="StaticColor" />
+
+                                <RadioButton
+                x:Name="WledEffectsModeRadio"
+                Content="WLED Effects"
+                GroupName="DisplayModeGroup"
+                Checked="DisplayModeRadio_Checked"
+                Tag="WledEffects" />
+                            </StackPanel>
+                            <StackPanel x:Name="WledEffectsPanel" Spacing="12" Visibility="Collapsed">
+                                <TextBlock Text="Wybierz efekt WLED" FontWeight="SemiBold" />
+
+                                <ComboBox x:Name="WledEffectComboBox"
+              HorizontalAlignment="Stretch"
+              PlaceholderText="Wczytywanie efektów..."
+              SelectionChanged="WledEffectComboBox_SelectionChanged" />
+
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="60" />
+                                    </Grid.ColumnDefinitions>
+                                    <Slider x:Name="EffectSpeedSlider" Grid.Column="0" Minimum="0" Maximum="255" StepFrequency="1"
+                ValueChanged="EffectSpeedSlider_ValueChanged" />
+                                    <TextBlock x:Name="EffectSpeedValueText" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Text="128" />
+                                </Grid>
+
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="60" />
+                                    </Grid.ColumnDefinitions>
+                                    <Slider x:Name="EffectIntensitySlider" Grid.Column="0" Minimum="0" Maximum="255" StepFrequency="1"
+                ValueChanged="EffectIntensitySlider_ValueChanged" />
+                                    <TextBlock x:Name="EffectIntensityValueText" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Text="128" />
+                                </Grid>
+                                <TextBlock Text="Paleta kolorów" FontWeight="SemiBold" />
+                                <ComboBox x:Name="WledPaletteComboBox"
+          HorizontalAlignment="Stretch"
+          PlaceholderText="Wybierz paletę..."
+          SelectionChanged="WledPaletteComboBox_SelectionChanged" />
+
+                                <TextBlock Text="Kolor podstawowy" FontWeight="SemiBold" />
+                                <ColorPicker x:Name="EffectPrimaryColorPicker"
+             ColorChanged="EffectPrimaryColorPicker_ColorChanged"
+             IsAlphaEnabled="False"
+             IsMoreButtonVisible="False" />
+
+                                <TextBlock Text="Kolor dodatkowy" FontWeight="SemiBold" />
+                                <ColorPicker x:Name="EffectSecondaryColorPicker"
+             ColorChanged="EffectSecondaryColorPicker_ColorChanged"
+             IsAlphaEnabled="False"
+             IsMoreButtonVisible="False" />
+
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="60" />
+                                    </Grid.ColumnDefinitions>
+                                    <Slider x:Name="EffectBrightnessSlider" Grid.Column="0"
+            Minimum="0" Maximum="255" StepFrequency="1"
+            ValueChanged="EffectBrightnessSlider_ValueChanged" />
+                                   
+                                </Grid>
+                                
+                               <Button x:Name="RefreshEffectsButton" Content="Odśwież listę efektów" Click="RefreshEffectsButton_Click" HorizontalAlignment="Left" />
+                                <TextBlock Text="Paleta kolorów" FontWeight="SemiBold" />
+                                
+
+                                <TextBlock Text="Kolor podstawowy" FontWeight="SemiBold" />
+
+                                <TextBlock Text="Kolor dodatkowy" FontWeight="SemiBold" />
+
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="60" />
+                                    </Grid.ColumnDefinitions>
+                                  
+                                    <TextBlock x:Name="EffectBrightnessValueText" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Text="255" />
+                                </Grid>
+                            </StackPanel>
+                            <StackPanel x:Name="StaticColorPanel" Spacing="8" Visibility="Collapsed">
+                                <TextBlock Text="Kolor stały" FontWeight="SemiBold" />
+                                <ColorPicker
+                x:Name="StaticColorPicker"
+                ColorChanged="StaticColorPicker_ColorChanged"
+                IsAlphaEnabled="False"
+                IsMoreButtonVisible="False" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Grid
+    ColumnSpacing="16"
+    RowSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="2*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Border
+                            Grid.Row="0"
+                            Grid.Column="0"
+                            Style="{StaticResource CardStyle}">
+                            <StackPanel Spacing="10">
+                                <TextBlock
+                                    Text="Status silnika"
+                                    Style="{StaticResource SectionHeaderTextStyle}" />
+
+                                <TextBlock
+                                    x:Name="StatusText"
+                                    Style="{StaticResource SectionSubTextStyle}"
+                                    Text="Status: Gotowy do startu." />
+
+                                <Button
+                                    x:Name="ToggleButton"
+                                    Content="Wybierz monitor i uruchom Ambilight"
+                                    Click="ToggleButtonClick"
+                                    Style="{StaticResource AccentButtonStyle}" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border
+                            Grid.Row="0"
+                            Grid.Column="1"
+                            Style="{StaticResource CardStyle}">
+                            <StackPanel Spacing="10">
+                                <TextBlock
+                                    Text="Wydajność"
+                                    Style="{StaticResource SectionHeaderTextStyle}" />
+
+                                <TextBlock
+                                    Text="Bieżący FPS przechwytywania i wysyłania."
+                                    Style="{StaticResource SectionSubTextStyle}" />
+
+                                <TextBlock
+                                    x:Name="FpsText"
+                                    FontSize="14"
+                                    FontWeight="SemiBold"
+                                    Text="FPS --" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border
+                            Grid.Row="1"
+                            Grid.Column="0"
+                            Grid.ColumnSpan="2"
+                            Style="{StaticResource CardStyle}">
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    Text="Szybkie informacje"
+                                    Style="{StaticResource SectionHeaderTextStyle}" />
+
+                                <TextBlock
+                                    Style="{StaticResource SectionSubTextStyle}"
+                                    Text="Uruchom Ambilight przyciskiem powyżej. Aktualny stan silnika i FPS są odświeżane automatycznie." />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
                 </StackPanel>
-            </Border>
-
-        </StackPanel>
-    </ScrollViewer>
+            </Grid>
+        </ScrollViewer>
+    </Grid>
 </Page>

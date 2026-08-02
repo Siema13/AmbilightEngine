@@ -5,17 +5,20 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using AmbilightEngine.Core.Processing;
+using System.Text.Json;
+using System.Threading.Tasks;
+using System.Collections.Generic;
 
 namespace AmbilightEngine.Core.Hardware
 {
     public sealed class WledDdpNetworkSender : IOutputDevice
     {
-        // Zabezpieczenie przed fragmentacją pakietu w sieci Wi-Fi (limit MTU).
-        // 480 diod * 3 bajty = 1440 bajtów danych + 10 bajtów nagłówka DDP = 1450 bajtów. Bezpieczny margines.
         private const int MaxLedsPerPacket = 480;
 
         private readonly IPEndPoint endPoint;
         private readonly string httpBaseUrl;
+        private readonly string effectsListUrl;
+        private readonly string palettesListUrl;
         private readonly HttpClient httpClient;
 
         private UdpClient? udpClient;
@@ -25,13 +28,17 @@ namespace AmbilightEngine.Core.Hardware
 
         public bool IsConnected => udpClient != null;
 
+        public int LedCount => currentLedCount;
+
         public WledDdpNetworkSender(string ipAddress, int initialLedCount)
         {
             if (string.IsNullOrWhiteSpace(ipAddress) || !IPAddress.TryParse(ipAddress, out IPAddress? ip))
                 throw new ArgumentException("Nieprawidłowy adres IP ESP32/WLED.");
 
-            endPoint = new IPEndPoint(ip, 4048); // Standardowy port DDP używany przez WLED
+            endPoint = new IPEndPoint(ip, 4048);
             httpBaseUrl = $"http://{ipAddress}/json/state";
+            effectsListUrl = $"http://{ipAddress}/json/eff";
+            palettesListUrl = $"http://{ipAddress}/json/pal";
 
             httpClient = new HttpClient
             {
@@ -48,14 +55,13 @@ namespace AmbilightEngine.Core.Hardware
 
             currentLedCount = newLedCount;
 
-            // Alokujemy bufor o maksymalnym możliwym rozmiarze raz, żeby uniknąć realokacji w locie
             int maxBufferSize = 10 + (MaxLedsPerPacket * 3);
             packetBuffer = new byte[maxBufferSize];
 
-            packetBuffer[0] = 0x41; // Flagi: wersja 1, PUSH
-            packetBuffer[1] = 0x00; // Sekwencja
-            packetBuffer[2] = 0x01; // Typ danych: RGB
-            packetBuffer[3] = 0x01; // Destination ID
+            packetBuffer[0] = 0x41;
+            packetBuffer[1] = 0x00;
+            packetBuffer[2] = 0x01;
+            packetBuffer[3] = 0x01;
         }
 
         public void Open()
@@ -65,15 +71,13 @@ namespace AmbilightEngine.Core.Hardware
             try
             {
                 udpClient = new UdpClient();
-                udpClient.DontFragment = true; // Wymuszamy, by router nie dzielił naszych pakietów
+                udpClient.DontFragment = true;
             }
             catch (Exception ex)
             {
                 throw new InvalidOperationException("Nie udało się otworzyć gniazda UDP.", ex);
             }
 
-            // Przy każdym starcie jawnie włączamy urządzenie przez API, z jedną próbą retry,
-            // na wypadek gdyby poprzednia komenda "off" z Close() nadal była w locie.
             bool success = TrySetWledPowerState(true);
             if (!success)
             {
@@ -138,7 +142,7 @@ namespace AmbilightEngine.Core.Hardware
                 }
                 catch (SocketException)
                 {
-                    // UDP: brak potwierdzenia dostawy jest normalny (Fire-and-Forget) - ignorujemy pojedynczy zgubiony pakiet.
+                    // UDP: brak potwierdzenia dostawy jest normalny - ignorujemy pojedynczy zgubiony pakiet.
                 }
 
                 ledsProcessed += ledsInThisChunk;
@@ -151,11 +155,6 @@ namespace AmbilightEngine.Core.Hardware
             SendFrame(blackFrame);
         }
 
-        // Wysyła synchroniczną (z krótkim timeoutem) komendę HTTP JSON API do WLED,
-        // aby jawnie ustawić stan zasilania. Jawnie wymuszamy "transition":1 (nie 0!) -
-        // znana usterka firmware WLED (GitHub Aircoookie/WLED #3720) powoduje, że przy
-        // transition:0 komendy "on" i "bri" są całkowicie ignorowane przez silnik renderujący,
-        // mimo że API wciąż zwraca kod sukcesu HTTP 200. Zwraca true, jeśli WLED odpowiedziało kodem sukcesu.
         private bool TrySetWledPowerState(bool turnOn)
         {
             try
@@ -179,6 +178,135 @@ namespace AmbilightEngine.Core.Hardware
             {
                 System.Diagnostics.Debug.WriteLine(
                     $"[DIAG] WLED JSON API: nie udało się ustawić zasilania na {turnOn} - {ex.Message}");
+                return false;
+            }
+        }
+
+        public async Task<List<string>> GetAvailableEffectsAsync()
+        {
+            var effects = new List<string>();
+
+            try
+            {
+                using var response = await httpClient.GetAsync(effectsListUrl);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[DIAG] WLED JSON API: nie udało się pobrać listy efektów, status HTTP: {(int)response.StatusCode}");
+                    return effects;
+                }
+
+                string json = await response.Content.ReadAsStringAsync();
+                using JsonDocument doc = JsonDocument.Parse(json);
+
+                foreach (JsonElement item in doc.RootElement.EnumerateArray())
+                {
+                    effects.Add(item.GetString() ?? string.Empty);
+                }
+
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DIAG] WLED JSON API: pobrano {effects.Count} efektów z urządzenia.");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DIAG] WLED JSON API: błąd podczas pobierania listy efektów - {ex.Message}");
+            }
+
+            return effects;
+        }
+
+        public async Task<List<string>> GetAvailablePalettesAsync()
+        {
+            var palettes = new List<string>();
+
+            try
+            {
+                using var response = await httpClient.GetAsync(palettesListUrl);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[DIAG] WLED JSON API: nie udało się pobrać listy palet, status HTTP: {(int)response.StatusCode}");
+                    return palettes;
+                }
+
+                string json = await response.Content.ReadAsStringAsync();
+                using JsonDocument doc = JsonDocument.Parse(json);
+
+                foreach (JsonElement item in doc.RootElement.EnumerateArray())
+                {
+                    palettes.Add(item.GetString() ?? string.Empty);
+                }
+
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DIAG] WLED JSON API: pobrano {palettes.Count} palet z urządzenia.");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DIAG] WLED JSON API: błąd podczas pobierania listy palet - {ex.Message}");
+            }
+
+            return palettes;
+        }
+
+        public async Task<bool> SetEffectAsync(
+            int fxId,
+            int speed = 128,
+            int intensity = 128,
+            int paletteId = 0,
+            (byte R, byte G, byte B)? primaryColor = null,
+            (byte R, byte G, byte B)? secondaryColor = null,
+            int? brightness = null)
+        {
+            try
+            {
+                var color1 = primaryColor ?? (255, 255, 255);
+                var color2 = secondaryColor ?? (0, 0, 0);
+
+                var segPayload = new Dictionary<string, object>
+                {
+                    ["fx"] = fxId,
+                    ["sx"] = speed,
+                    ["ix"] = intensity,
+                    ["pal"] = paletteId,
+                    ["col"] = new[]
+{
+    new[] { (int)color1.R, (int)color1.G, (int)color1.B },
+    new[] { (int)color2.R, (int)color2.G, (int)color2.B },
+    new[] { 0, 0, 0 }
+}
+                };
+
+                var rootPayload = new Dictionary<string, object>
+                {
+                    ["on"] = true,
+                    ["seg"] = segPayload
+                };
+
+                if (brightness.HasValue)
+                {
+                    rootPayload["bri"] = brightness.Value;
+                }
+
+                string json = JsonSerializer.Serialize(rootPayload);
+
+                using var content = new StringContent(json, Encoding.UTF8, "application/json");
+                using var response = await httpClient.PostAsync(httpBaseUrl, content);
+
+                bool isSuccess = response.IsSuccessStatusCode;
+
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DIAG] WLED JSON API: ustawiono efekt fx={fxId} pal={paletteId} bri={brightness}, status HTTP: {(int)response.StatusCode}, sukces: {isSuccess}");
+
+                return isSuccess;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DIAG] WLED JSON API: nie udało się ustawić efektu fx={fxId} - {ex.Message}");
                 return false;
             }
         }

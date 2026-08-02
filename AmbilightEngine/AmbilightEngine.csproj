@@ -14,6 +14,13 @@
 		<EnableMsixTooling>true</EnableMsixTooling>
 		<Nullable>enable</Nullable>
 	</PropertyGroup>
+	<ItemGroup>
+	  <None Remove="Pages\SettingsGeneralPage.xaml" />
+	  <None Remove="Pages\SettingsImagePage.xaml" />
+	  <None Remove="Pages\SettingsMqttPage.xaml" />
+	  <None Remove="Pages\SettingsStartupPage.xaml" />
+	  <None Remove="Pages\SettingsWledPage.xaml" />
+	</ItemGroup>
 
 	<ItemGroup>
 		<Content Include="Assets\SplashScreen.scale-200.png" />
@@ -29,21 +36,18 @@
 		<Manifest Include="$(ApplicationManifest)" />
 	</ItemGroup>
 
-	<!--
-    Defining the "Msix" ProjectCapability here allows the Single-project MSIX Packaging
-    Tools extension to be activated for this project even if the Windows App SDK Nuget
-    package has not yet been restored.
-  -->
 	<ItemGroup Condition="'$(DisableMsixProjectCapabilityAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
 		<ProjectCapability Include="Msix" />
 	</ItemGroup>
 
 	<ItemGroup>
 		<PackageReference Include="H.NotifyIcon.WinUI" Version="2.0.115" />
+		<PackageReference Include="MaterialColorUtilities" Version="0.3.0" />
 		<PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2270" />
 		<PackageReference Include="Microsoft.WindowsAppSDK" Version="2.3.1" />
 		<PackageReference Include="System.Reflection.Metadata" Version="8.0.0" />
 		<PackageReference Include="System.Collections.Immutable" Version="8.0.0" />
+		<PackageReference Include="MQTTnet" Version="5.0.1.1416" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -51,33 +55,51 @@
 	</ItemGroup>
 
 	<ItemGroup>
-	  <Content Update="Assets\TrayIcon.ico">
-	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-	  </Content>
+		<Content Update="Assets\AppIcon.ico">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
 	</ItemGroup>
 
 	<ItemGroup>
-		<Page Update="Pages\SettingsPage.xaml">
-			<Generator>MSBuild:Compile</Generator>
-		</Page>
+	  <Page Update="Pages\SettingsGeneralPage.xaml">
+	    <Generator>MSBuild:Compile</Generator>
+	  </Page>
 	</ItemGroup>
 
 	<ItemGroup>
-		<Page Update="Pages\DashboardPage.xaml">
-			<Generator>MSBuild:Compile</Generator>
-		</Page>
+	  <Page Update="Pages\SettingsMqttPage.xaml">
+	    <Generator>MSBuild:Compile</Generator>
+	  </Page>
 	</ItemGroup>
 
-	<!--
-    Defining the "HasPackageAndPublishMenuAddedByProject" property here allows the Solution
-    Explorer "Package and Publish" context menu entry to be enabled for this project even if
-    the Windows App SDK Nuget package has not yet been restored.
-  -->
+	<ItemGroup>
+	  <Page Update="Pages\SettingsStartupPage.xaml">
+	    <Generator>MSBuild:Compile</Generator>
+	  </Page>
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Page Update="Pages\SettingsImagePage.xaml">
+	    <Generator>MSBuild:Compile</Generator>
+	  </Page>
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Page Update="Pages\SettingsWledPage.xaml">
+	    <Generator>MSBuild:Compile</Generator>
+	  </Page>
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Page Update="Resources\ThemeResources.xaml">
+	    <Generator>MSBuild:Compile</Generator>
+	  </Page>
+	</ItemGroup>
+
 	<PropertyGroup Condition="'$(DisableHasPackageAndPublishMenuAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
 		<HasPackageAndPublishMenu>true</HasPackageAndPublishMenu>
 	</PropertyGroup>
 
-	<!-- Publish Properties -->
 	<PropertyGroup>
 		<PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>
 		<PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">True</PublishReadyToRun>

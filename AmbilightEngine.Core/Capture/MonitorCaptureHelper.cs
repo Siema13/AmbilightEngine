@@ -1,9 +1,24 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Windows.Graphics.Capture;
 
 namespace AmbilightEngine.Core.Capture
 {
+    // Opisuje jeden fizyczny monitor wykryty w systemie - używane do budowy listy wyboru w UI.
+    // DeviceName (np. "\\.\DISPLAY1") jest stabilnym identyfikatorem do zapisu w ustawieniach,
+    // w przeciwieństwie do samego uchwytu HMONITOR, który może się zmienić między sesjami.
+    public sealed class MonitorDescriptor
+    {
+        public IntPtr Handle { get; set; }
+        public string DeviceName { get; set; } = string.Empty;
+        public int Width { get; set; }
+        public int Height { get; set; }
+        public bool IsPrimary { get; set; }
+
+        public string DisplayLabel => $"{DeviceName} ({Width}x{Height}){(IsPrimary ? " - główny" : string.Empty)}";
+    }
+
     public static class MonitorCaptureHelper
     {
         private const int MONITOR_DEFAULTTOPRIMARY = 1;
@@ -21,12 +36,42 @@ namespace AmbilightEngine.Core.Capture
         [DllImport("user32.dll", SetLastError = true)]
         private static extern IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
 
+        private delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
+
+        [DllImport("user32.dll")]
+        private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, MonitorEnumProc lpfnEnum, IntPtr dwData);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFOEX lpmi);
+
         [StructLayout(LayoutKind.Sequential)]
         private struct POINT
         {
             public int X;
             public int Y;
         }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct RECT
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        private struct MONITORINFOEX
+        {
+            public int cbSize;
+            public RECT rcMonitor;
+            public RECT rcWork;
+            public uint dwFlags;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+            public string szDevice;
+        }
+
+        private const uint MONITORINFOF_PRIMARY = 1;
 
         [DllImport("combase.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
         private static extern int WindowsCreateString(
@@ -76,6 +121,56 @@ namespace AmbilightEngine.Core.Capture
             }
 
             return fallbackMonitor;
+        }
+
+        // Zwraca listę wszystkich fizycznie podłączonych monitorów - używane do zbudowania
+        // ComBox-a wyboru w Ustawieniach. Kolejność nie jest gwarantowana przez system,
+        // więc UI powinno sortować/prezentować wg DeviceName, jeśli potrzebna jest stabilność wizualna.
+        public static List<MonitorDescriptor> GetAllMonitors()
+        {
+            var monitors = new List<MonitorDescriptor>();
+
+            bool Callback(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData)
+            {
+                var info = new MONITORINFOEX();
+                info.cbSize = Marshal.SizeOf(typeof(MONITORINFOEX));
+
+                if (GetMonitorInfo(hMonitor, ref info))
+                {
+                    monitors.Add(new MonitorDescriptor
+                    {
+                        Handle = hMonitor,
+                        DeviceName = info.szDevice,
+                        Width = info.rcMonitor.Right - info.rcMonitor.Left,
+                        Height = info.rcMonitor.Bottom - info.rcMonitor.Top,
+                        IsPrimary = (info.dwFlags & MONITORINFOF_PRIMARY) != 0
+                    });
+                }
+
+                return true;
+            }
+
+            EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, Callback, IntPtr.Zero);
+            return monitors;
+        }
+
+        // Odnajduje aktualny uchwyt HMONITOR odpowiadający zapisanemu wcześniej DeviceName.
+        // Konieczne, bo same uchwyty HMONITOR nie są stabilne między sesjami systemu (np. po
+        // ponownym uruchomieniu komputera lub zmianie konfiguracji ekranów), dlatego w ustawieniach
+        // zapisujemy tylko nazwę urządzenia, a przy każdym starcie odnajdujemy aktualny uchwyt na nowo.
+        public static IntPtr FindMonitorHandleByDeviceName(string deviceName)
+        {
+            if (string.IsNullOrWhiteSpace(deviceName)) return IntPtr.Zero;
+
+            foreach (var monitor in GetAllMonitors())
+            {
+                if (string.Equals(monitor.DeviceName, deviceName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return monitor.Handle;
+                }
+            }
+
+            return IntPtr.Zero;
         }
 
         public static GraphicsCaptureItem CreateItemForMonitor(IntPtr hmonitor)

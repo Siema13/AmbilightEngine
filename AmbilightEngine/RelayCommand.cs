@@ -3,19 +3,32 @@ using System.Windows.Input;
 
 namespace AmbilightEngine
 {
-    public class RelayCommand : ICommand
+    public sealed class RelayCommand : ICommand
     {
-        private readonly Action<object?> execute;
+        private readonly Action execute;
+        private readonly Func<bool>? canExecute;
 
-        public RelayCommand(Action<object?> execute)
+        public RelayCommand(Action execute, Func<bool>? canExecute = null)
         {
-            this.execute = execute;
+            this.execute = execute ?? throw new ArgumentNullException(nameof(execute));
+            this.canExecute = canExecute;
         }
 
         public event EventHandler? CanExecuteChanged;
 
-        public bool CanExecute(object? parameter) => true;
+        public bool CanExecute(object? parameter)
+        {
+            return canExecute?.Invoke() ?? true;
+        }
 
-        public void Execute(object? parameter) => execute(parameter);
+        public void Execute(object? parameter)
+        {
+            execute();
+        }
+
+        public void RaiseCanExecuteChanged()
+        {
+            CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 }

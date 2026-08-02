@@ -1,0 +1,135 @@
+<Page
+    x:Class="AmbilightEngine.Pages.SettingsStartupPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Microsoft.UI.Xaml.Controls">
+
+    <ScrollViewer HorizontalScrollMode="Disabled"
+                  HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollMode="Auto"
+                  VerticalScrollBarVisibility="Auto">
+        <Grid Padding="32"
+              MaxWidth="900"
+              HorizontalAlignment="Left">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0"
+                        Spacing="4">
+                <TextBlock Text="Uruchamianie"
+                           Style="{StaticResource PageTitleTextStyle}" />
+                <TextBlock Text="Zachowanie aplikacji po starcie systemu i sposób uruchamiania silnika."
+                           Style="{StaticResource SectionSubTextStyle}" />
+            </StackPanel>
+
+            <StackPanel Grid.Row="1"
+                        Margin="0,24,0,0"
+                        Spacing="16">
+
+                <Border Style="{StaticResource CardStyle}">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Autostart i zasobnik"
+                                   Style="{StaticResource SectionHeaderTextStyle}" />
+                        <TextBlock Text="Ustaw, czy aplikacja ma startować razem z Windows i czy ma działać w tle."
+                                   Style="{StaticResource SectionSubTextStyle}" />
+
+                        <CheckBox x:Name="StartWithWindowsCheckBox"
+                                  Content="Uruchamiaj z systemem Windows"
+                                  Style="{StaticResource SettingsCheckBoxStyle}"
+                                  Checked="StartWithWindowsCheckBox_Checked"
+                                  Unchecked="StartWithWindowsCheckBox_Unchecked" />
+
+                        <CheckBox x:Name="StartMinimizedToTrayCheckBox"
+                                  Content="Uruchamiaj zminimalizowane do zasobnika"
+                                  Style="{StaticResource SettingsCheckBoxStyle}"
+                                  Checked="StartMinimizedToTrayCheckBox_Checked"
+                                  Unchecked="StartMinimizedToTrayCheckBox_Unchecked" />
+
+                        <CheckBox x:Name="CloseToTrayCheckBox"
+                                  Content="Przy zamknięciu chowaj aplikację do zasobnika"
+                                  Style="{StaticResource SettingsCheckBoxStyle}"
+                                  Checked="CloseToTrayCheckBox_Checked"
+                                  Unchecked="CloseToTrayCheckBox_Unchecked" />
+
+                        <TextBlock Text="To ustawienie ma sens, jeśli Ambilight ma pracować stale w tle po zalogowaniu do Windows."
+                                   Style="{StaticResource SectionSubTextStyle}" />
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource CardStyle}">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Domyślne uruchamianie Ambilight"
+                                   Style="{StaticResource SectionHeaderTextStyle}" />
+                        <TextBlock Text="Określ, jak silnik ma zachować się po starcie aplikacji."
+                                   Style="{StaticResource SectionSubTextStyle}" />
+
+                        <CheckBox x:Name="AutoStartAmbilightCheckBox"
+                                  Content="Automatycznie uruchamiaj Ambilight po starcie aplikacji"
+                                  Style="{StaticResource SettingsCheckBoxStyle}"
+                                  Checked="AutoStartAmbilightCheckBox_Checked"
+                                  Unchecked="AutoStartAmbilightCheckBox_Unchecked" />
+
+                        <CheckBox x:Name="AutoMonitorCheckBox"
+                                  Content="Automatycznie użyj głównego monitora"
+                                  Style="{StaticResource SettingsCheckBoxStyle}"
+                                  Checked="AutoMonitorCheckBox_Checked"
+                                  Unchecked="AutoMonitorCheckBox_Unchecked" />
+
+                        <TextBlock Text="Preferowany monitor"
+                                   FontWeight="SemiBold" />
+
+                        <ComboBox x:Name="MonitorComboBox"
+                                  HorizontalAlignment="Stretch"
+                                  Style="{StaticResource SettingsComboBoxStyle}"
+                                  SelectionChanged="MonitorComboBox_SelectionChanged" />
+
+                        <Button Content="Odśwież listę monitorów"
+                                Click="RefreshMonitorsButton_Click"
+                                Style="{StaticResource AccentButtonStyle}" />
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource CardStyle}">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Lounge Light"
+                                   Style="{StaticResource SectionHeaderTextStyle}" />
+                        <TextBlock Text="Tryb nastrojowego podświetlenia przy bezczynności."
+                                   Style="{StaticResource SectionSubTextStyle}" />
+
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Text="Czas bezczynności (min)"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center" />
+
+                            <TextBlock x:Name="IdleTimeoutValueText"
+                                       Grid.Column="1"
+                                       VerticalAlignment="Center"
+                                       Text="5" />
+                        </Grid>
+
+                        <Slider x:Name="IdleTimeoutSlider"
+                                Minimum="1"
+                                Maximum="120"
+                                StepFrequency="1"
+                                ValueChanged="IdleTimeoutSlider_ValueChanged" />
+
+                        <TextBlock Text="Kolor bazowy Lounge Light"
+                                   FontWeight="SemiBold" />
+
+                        <controls:ColorPicker x:Name="LoungeColorPicker"
+                                              ColorChanged="LoungeColorPicker_ColorChanged"
+                                              IsAlphaEnabled="False"
+                                              IsMoreButtonVisible="False" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Grid>
+    </ScrollViewer>
+</Page>

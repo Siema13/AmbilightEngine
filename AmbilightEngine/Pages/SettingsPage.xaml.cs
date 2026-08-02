@@ -1,103 +1,71 @@
-using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Windows.UI;
 
 namespace AmbilightEngine.Pages
 {
     public sealed partial class SettingsPage : Page
     {
-        private MainWindow? mainWindow;
-        private bool isLoadingUi;
-
         public SettingsPage()
         {
-            InitializeComponent();
+            this.InitializeComponent();
             this.Loaded += SettingsPage_Loaded;
         }
 
         private void SettingsPage_Loaded(object sender, RoutedEventArgs e)
         {
-            mainWindow = (Application.Current as App)?.MainAppWindow;
-            if (mainWindow == null) return;
-
-            isLoadingUi = true;
-            var settings = mainWindow.Settings;
-
-            AutoMonitorCheckBox.IsChecked = settings.AutoStartWithDefaultMonitor;
-            IpAddressBox.Text = settings.EspIpAddress;
-            LedCountBox.Value = settings.LedCount;
-            SamplingDepthSlider.Value = settings.SamplingDepth;
-            SmoothingSlider.Value = settings.SmoothingFactor * 100;
-            QualitySlider.Value = settings.PixelSkipStep;
-            IdleTimeoutBox.Value = settings.IdleTimeoutMinutes;
-            LoungeColorPicker.Color = Color.FromArgb(255, settings.LoungeColorR, settings.LoungeColorG, settings.LoungeColorB);
-
-            isLoadingUi = false;
+            if (SettingsSectionList.SelectedItem is null && SettingsSectionList.Items.Count > 0)
+            {
+                SettingsSectionList.SelectedIndex = 0;
+            }
         }
 
-        private void AutoMonitorCheckBox_Checked(object sender, RoutedEventArgs e)
+        private void SettingsSectionList_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (isLoadingUi || mainWindow == null) return;
-            mainWindow.Settings.AutoStartWithDefaultMonitor = true;
+            if (SettingsSectionList.SelectedItem is not ListViewItem selectedItem)
+            {
+                return;
+            }
+
+            var tag = selectedItem.Tag?.ToString();
+
+            switch (tag)
+            {
+                case "general":
+                    NavigateTo(typeof(SettingsGeneralPage));
+                    break;
+
+                case "wled":
+                    NavigateTo(typeof(SettingsWledPage));
+                    break;
+
+                case "image":
+                    NavigateTo(typeof(SettingsImagePage));
+                    break;
+
+                case "startup":
+                    NavigateTo(typeof(SettingsStartupPage));
+                    break;
+
+                case "mqtt":
+                    NavigateTo(typeof(SettingsMqttPage));
+                    break;
+
+                case "geometry":
+                    NavigateTo(typeof(GeometryPage));
+                    break;
+
+                default:
+                    NavigateTo(typeof(SettingsGeneralPage));
+                    break;
+            }
         }
 
-        private void AutoMonitorCheckBox_Unchecked(object sender, RoutedEventArgs e)
+        private void NavigateTo(System.Type pageType)
         {
-            if (isLoadingUi || mainWindow == null) return;
-            mainWindow.Settings.AutoStartWithDefaultMonitor = false;
-        }
-
-        private void IpAddressBox_TextChanged(object sender, TextChangedEventArgs e)
-        {
-            if (isLoadingUi || mainWindow == null) return;
-            mainWindow.Settings.EspIpAddress = IpAddressBox.Text;
-        }
-
-        private void LedCountBox_ValueChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
-        {
-            if (isLoadingUi || mainWindow == null || double.IsNaN(args.NewValue)) return;
-            mainWindow.Settings.LedCount = (int)args.NewValue;
-        }
-
-        private void SamplingDepthSlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
-        {
-            if (isLoadingUi || mainWindow == null) return;
-            mainWindow.Settings.SamplingDepth = (int)e.NewValue;
-        }
-
-        private void SmoothingSlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
-        {
-            if (isLoadingUi || mainWindow == null) return;
-            mainWindow.Settings.SmoothingFactor = (float)(e.NewValue / 100.0);
-            mainWindow.EngineHost.ApplyLiveSettings();
-        }
-
-        private void QualitySlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
-        {
-            if (isLoadingUi || mainWindow == null) return;
-            mainWindow.Settings.PixelSkipStep = (int)e.NewValue;
-            mainWindow.EngineHost.ApplyLiveSettings();
-        }
-
-        private void IdleTimeoutBox_ValueChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
-        {
-            if (isLoadingUi || mainWindow == null || double.IsNaN(args.NewValue)) return;
-            mainWindow.Settings.IdleTimeoutMinutes = (int)args.NewValue;
-        }
-
-        private void LoungeColorPicker_ColorChanged(ColorPicker sender, ColorChangedEventArgs args)
-        {
-            if (isLoadingUi || mainWindow == null) return;
-            mainWindow.Settings.LoungeColorR = args.NewColor.R;
-            mainWindow.Settings.LoungeColorG = args.NewColor.G;
-            mainWindow.Settings.LoungeColorB = args.NewColor.B;
-        }
-
-        private void SaveButton_Click(object sender, RoutedEventArgs e)
-        {
-            if (mainWindow == null) return;
-            mainWindow.SettingsService.Save(mainWindow.Settings);
+            if (SettingsContentFrame.CurrentSourcePageType != pageType)
+            {
+                SettingsContentFrame.Navigate(pageType);
+            }
         }
     }
 }

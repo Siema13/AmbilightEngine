@@ -1,4 +1,5 @@
 ﻿using Microsoft.UI.Xaml;
+using System;
 
 namespace AmbilightEngine
 {
@@ -15,9 +16,19 @@ namespace AmbilightEngine
 
         protected override void OnLaunched(LaunchActivatedEventArgs args)
         {
-            m_window = new MainWindow();
-            MainAppWindow = m_window as MainWindow;
+            var mainWindow = new MainWindow();
+            MainAppWindow = mainWindow;
+            m_window = mainWindow;
+
+            string[] launchArgs = Environment.GetCommandLineArgs();
+            bool startHidden = mainWindow.ShouldStartMinimizedToTray(launchArgs);
+
             m_window.Activate();
+
+            if (startHidden)
+            {
+                mainWindow.StartHiddenToTray();
+            }
         }
     }
 }

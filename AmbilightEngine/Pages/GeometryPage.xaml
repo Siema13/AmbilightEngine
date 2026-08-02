@@ -1,0 +1,208 @@
+<Page
+    x:Class="AmbilightEngine.Pages.GeometryPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Microsoft.UI.Xaml.Controls">
+
+    <ScrollViewer HorizontalScrollMode="Disabled"
+                  HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollMode="Auto"
+                  VerticalScrollBarVisibility="Auto">
+        <Grid Padding="32"
+              MaxWidth="820"
+              HorizontalAlignment="Left">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0"
+                        Spacing="4">
+                <TextBlock Text="Geometria LED"
+                           Style="{StaticResource PageTitleTextStyle}" />
+                <TextBlock Text="Konfiguracja układu stref LED, kolejności mapowania oraz podglądu rozmieszczenia diod."
+                           Style="{StaticResource SectionSubTextStyle}" />
+            </StackPanel>
+
+            <StackPanel Grid.Row="1"
+                        Margin="0,24,0,0"
+                        Spacing="16">
+
+                <Border Style="{StaticResource CardStyle}"
+                        MaxWidth="760">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Podgląd rozkładu diod"
+                                   Style="{StaticResource SectionHeaderTextStyle}" />
+                        <TextBlock Text="Kolory pokazują kolejność diod w łańcuchu. Szare pola oznaczają wykluczone diody."
+                                   Style="{StaticResource SectionSubTextStyle}" />
+
+                        <Border BorderBrush="{StaticResource M3OutlineBrush}"
+                                BorderThickness="1"
+                                CornerRadius="12"
+                                Background="{StaticResource M3SurfaceContainerHighBrush}"
+                                HorizontalAlignment="Left">
+                            <Canvas x:Name="PreviewCanvas"
+                                    Width="480"
+                                    Height="270" />
+                        </Border>
+
+                        <TextBlock Text="Zmiany geometrii są zapisywane lokalnie. Po zapisaniu zostaną zastosowane do działającego silnika."
+                                   Style="{StaticResource SectionSubTextStyle}" />
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource CardStyle}">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Tryb mapowania"
+                                   Style="{StaticResource SectionHeaderTextStyle}" />
+                        <TextBlock Text="Wybierz, czy układ diod ma być liczony automatycznie, czy definiowany ręcznie per bok."
+                                   Style="{StaticResource SectionSubTextStyle}" />
+
+                        <CheckBox x:Name="UseCustomLayoutCheckBox"
+                                  Content="Użyj niestandardowego podziału diod per bok"
+                                  Checked="UseCustomLayoutCheckBox_Checked"
+                                  Unchecked="UseCustomLayoutCheckBox_Unchecked" />
+
+                        <TextBlock Text="Gdy opcja jest wyłączona, aplikacja rozkłada diody automatycznie na podstawie całkowitej liczby LED."
+                                   Style="{StaticResource SectionSubTextStyle}" />
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource CardStyle}">
+                    <StackPanel x:Name="CustomLayoutPanel"
+                                Spacing="16">
+                        <TextBlock Text="Układ niestandardowy"
+                                   Style="{StaticResource SectionHeaderTextStyle}" />
+                        <TextBlock Text="Ręczne ustawienie liczby diod na każdej krawędzi oraz orientacji paska LED."
+                                   Style="{StaticResource SectionSubTextStyle}" />
+
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Liczba diod na krawędziach"
+                                       FontWeight="SemiBold" />
+
+                            <Grid ColumnSpacing="12"
+                                  RowSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <StackPanel Grid.Row="0"
+                                            Grid.Column="0"
+                                            Spacing="4">
+                                    <TextBlock Text="Góra"
+                                               FontSize="12"
+                                               Opacity="0.7" />
+                                    <controls:NumberBox x:Name="TopCountBox"
+                                                        Minimum="0"
+                                                        Maximum="500"
+                                                        SpinButtonPlacementMode="Inline"
+                                                        ValueChanged="TopCountBox_ValueChanged" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="0"
+                                            Grid.Column="1"
+                                            Spacing="4">
+                                    <TextBlock Text="Dół"
+                                               FontSize="12"
+                                               Opacity="0.7" />
+                                    <controls:NumberBox x:Name="BottomCountBox"
+                                                        Minimum="0"
+                                                        Maximum="500"
+                                                        SpinButtonPlacementMode="Inline"
+                                                        ValueChanged="BottomCountBox_ValueChanged" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="1"
+                                            Grid.Column="0"
+                                            Spacing="4">
+                                    <TextBlock Text="Lewo"
+                                               FontSize="12"
+                                               Opacity="0.7" />
+                                    <controls:NumberBox x:Name="LeftCountBox"
+                                                        Minimum="0"
+                                                        Maximum="500"
+                                                        SpinButtonPlacementMode="Inline"
+                                                        ValueChanged="LeftCountBox_ValueChanged" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="1"
+                                            Grid.Column="1"
+                                            Spacing="4">
+                                    <TextBlock Text="Prawo"
+                                               FontSize="12"
+                                               Opacity="0.7" />
+                                    <controls:NumberBox x:Name="RightCountBox"
+                                                        Minimum="0"
+                                                        Maximum="500"
+                                                        SpinButtonPlacementMode="Inline"
+                                                        ValueChanged="RightCountBox_ValueChanged" />
+                                </StackPanel>
+                            </Grid>
+
+                            <TextBlock x:Name="TotalCountLabel"
+                                       Style="{StaticResource SectionSubTextStyle}" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Narożnik startowy paska LED"
+                                       FontWeight="SemiBold" />
+                            <ComboBox x:Name="StartCornerComboBox"
+                                      HorizontalAlignment="Left"
+                                      MinWidth="220"
+                                      SelectionChanged="StartCornerComboBox_SelectionChanged">
+                                <ComboBoxItem Content="Lewy-dolny" Tag="BottomLeft" />
+                                <ComboBoxItem Content="Lewy-górny" Tag="TopLeft" />
+                                <ComboBoxItem Content="Prawy-górny" Tag="TopRight" />
+                                <ComboBoxItem Content="Prawy-dolny" Tag="BottomRight" />
+                            </ComboBox>
+                        </StackPanel>
+
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Kierunek ułożenia paska"
+                                       FontWeight="SemiBold" />
+                            <ComboBox x:Name="DirectionComboBox"
+                                      HorizontalAlignment="Left"
+                                      MinWidth="220"
+                                      SelectionChanged="DirectionComboBox_SelectionChanged">
+                                <ComboBoxItem Content="Zgodnie z ruchem zegara" Tag="Clockwise" />
+                                <ComboBoxItem Content="Przeciwnie do ruchu zegara" Tag="CounterClockwise" />
+                            </ComboBox>
+                        </StackPanel>
+
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Przesunięcie mapowania (Shift Offset)"
+                                       FontWeight="SemiBold" />
+                            <TextBlock Text="Jeśli fizyczny początek paska LED nie zgadza się z wygenerowaną geometrią, przesuń mapowanie o odpowiednią liczbę diod."
+                                       Style="{StaticResource SectionSubTextStyle}" />
+                            <controls:NumberBox x:Name="ShiftOffsetBox"
+                                                Minimum="-500"
+                                                Maximum="500"
+                                                SpinButtonPlacementMode="Inline"
+                                                ValueChanged="ShiftOffsetBox_ValueChanged" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Wykluczone diody"
+                                       FontWeight="SemiBold" />
+                            <TextBlock Text="Wpisz numery diod do wygaszenia, oddzielone przecinkami, np. 0,5,12."
+                                       Style="{StaticResource SectionSubTextStyle}" />
+                            <TextBox x:Name="ExcludedIndicesBox"
+                                     PlaceholderText="np. 0,5,12"
+                                     TextChanged="ExcludedIndicesBox_TextChanged" />
+                        </StackPanel>
+
+                        <Button Content="Zapisz geometrię"
+                                Click="SaveButton_Click"
+                                Style="{StaticResource AccentButtonStyle}"
+                                HorizontalAlignment="Left" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Grid>
+    </ScrollViewer>
+</Page>
