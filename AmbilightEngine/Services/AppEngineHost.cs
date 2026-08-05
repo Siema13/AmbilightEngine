@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
 using AmbilightEngine.Core.Automation;
 using AmbilightEngine.Core.Capture;
@@ -131,12 +132,20 @@ namespace AmbilightEngine
                 captureEngine.Start(item);
 
                 stateWatcher?.Dispose();
-                stateWatcher = new SystemStateWatcher(settings);
+                stateWatcher = new SystemStateWatcher(settings, windowHandle);
                 stateWatcher.AmbientModeRequested += trigger =>
                 {
-                    var mode = trigger == SystemAmbientTrigger.LockOrSleep ? settings.LockScreenMode : settings.IdleMode;
-                    pipelineManager?.EnterAmbientMode(mode);
-                    SetStatus(EngineStatusInfo.Ambient($"Tryb ambientowy: {trigger} ({mode})"));
+                    var config = trigger == SystemAmbientTrigger.LockOrSleep
+                        ? settings.LockScreenAmbient
+                        : settings.IdleAmbient;
+
+                    pipelineManager?.EnterAmbientMode(config);
+                    SetStatus(EngineStatusInfo.Ambient($"Tryb ambientowy: {trigger} (efekt WLED #{config.EffectId}, włączony: {config.IsEnabled})"));
+                };
+                stateWatcher.NormalModeRequested += () =>
+                {
+                    pipelineManager?.ExitAmbientMode();
+                    SetStatus(EngineStatusInfo.Running("Przechwytywanie aktywne."));
                 };
                 stateWatcher.NormalModeRequested += () =>
                 {
@@ -179,6 +188,9 @@ namespace AmbilightEngine
                 profile.BlackCutoffThreshold,
                 profile.ColorTemperatureKelvin,
                 profile.GammaValue);
+
+            // Wall Color Compensation - stosowana zawsze, niezależnie od aktywnego profilu.
+            newImageProcessor.SetWallColorFromHex(settings.WallColorHex, settings.WallColorStrength);
 
             pipelineManager.ReplaceImageProcessor(newImageProcessor);
             imageProcessor = newImageProcessor;
@@ -289,6 +301,9 @@ namespace AmbilightEngine
                         activeProfile.BlackCutoffThreshold,
                         activeProfile.ColorTemperatureKelvin,
                         activeProfile.GammaValue);
+
+                    // WCC dotyczy fizycznej ściany - stosuj niezależnie od profilu aplikacji.
+                    newProcessor.SetWallColorFromHex(settings.WallColorHex, settings.WallColorStrength);
                     return;
                 }
             }
@@ -413,6 +428,9 @@ namespace AmbilightEngine
                 profile.BlackCutoffThreshold,
                 profile.ColorTemperatureKelvin,
                 profile.GammaValue);
+
+            // Wall Color Compensation - globalna dla środowiska, niezależna od profilu aplikacji.
+            processor.SetWallColorFromHex(settings.WallColorHex, settings.WallColorStrength);
         }
 
         public void ApplyLiveColorCalibration()
@@ -431,38 +449,78 @@ namespace AmbilightEngine
         }
 
         public async Task<bool> ActivateWledEffectAsync(
-            int fxId,
-            int speed,
-            int intensity,
-            int paletteId = 0,
-            (byte R, byte G, byte B)? primaryColor = null,
-            (byte R, byte G, byte B)? secondaryColor = null,
-            int? brightness = null)
+    int fxId,
+    int speed,
+    int intensity,
+    int paletteId = 0,
+    (byte R, byte G, byte B)? primaryColor = null,
+    (byte R, byte G, byte B)? secondaryColor = null,
+    int? brightness = null,
+    CancellationToken cancellationToken = default)
         {
             if (ledSender == null) return false;
 
             settings.ActiveDisplayMode = DisplayMode.WledEffects;
-            return await ledSender.SetEffectAsync(fxId, speed, intensity, paletteId, primaryColor, secondaryColor, brightness);
+
+            // Zapamiętujemy parametry, żeby PipelineManager mógł je przywrócić po wyjściu
+            // z trybu ambientowego (ExitAmbientMode odtwarza dokładnie ten stan).
+            settings.LastWledEffectId = fxId;
+            settings.LastWledPaletteId = paletteId;
+            settings.LastWledSpeed = speed;
+            settings.LastWledIntensity = intensity;
+            settings.LastWledBrightness = brightness ?? settings.LastWledBrightness;
+
+            if (primaryColor.HasValue)
+            {
+                settings.LastWledPrimaryColorR = primaryColor.Value.R;
+                settings.LastWledPrimaryColorG = primaryColor.Value.G;
+                settings.LastWledPrimaryColorB = primaryColor.Value.B;
+            }
+
+            if (secondaryColor.HasValue)
+            {
+                settings.LastWledSecondaryColorR = secondaryColor.Value.R;
+                settings.LastWledSecondaryColorG = secondaryColor.Value.G;
+                settings.LastWledSecondaryColorB = secondaryColor.Value.B;
+            }
+
+            return await ledSender.SetEffectAsync(fxId, speed, intensity, paletteId, primaryColor, secondaryColor, brightness, cancellationToken);
         }
 
         public async Task<List<string>> GetAvailableWledEffectsAsync()
         {
-            if (ledSender is WledDdpNetworkSender wledSender)
+            if (ledSender is WledDdpNetworkSender activeWledSender)
             {
-                return await wledSender.GetAvailableEffectsAsync();
+                return await activeWledSender.GetAvailableEffectsAsync();
             }
 
-            return new List<string>();
+            try
+            {
+                using var probeSender = new WledDdpNetworkSender(settings.EspIpAddress, settings.LedCount);
+                return await probeSender.GetAvailableEffectsAsync();
+            }
+            catch (Exception)
+            {
+                return new List<string>();
+            }
         }
 
         public async Task<List<string>> GetAvailableWledPalettesAsync()
         {
-            if (ledSender is WledDdpNetworkSender wledSender)
+            if (ledSender is WledDdpNetworkSender activeWledSender)
             {
-                return await wledSender.GetAvailablePalettesAsync();
+                return await activeWledSender.GetAvailablePalettesAsync();
             }
 
-            return new List<string>();
+            try
+            {
+                using var probeSender = new WledDdpNetworkSender(settings.EspIpAddress, settings.LedCount);
+                return await probeSender.GetAvailablePalettesAsync();
+            }
+            catch (Exception)
+            {
+                return new List<string>();
+            }
         }
 
         public double CaptureFps => pipelineManager?.CurrentCaptureFps ?? 0;

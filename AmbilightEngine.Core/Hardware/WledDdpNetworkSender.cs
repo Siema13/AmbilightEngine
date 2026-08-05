@@ -21,6 +21,13 @@ namespace AmbilightEngine.Core.Hardware
         private readonly string palettesListUrl;
         private readonly HttpClient httpClient;
 
+        // Single-flight gate dla żądań efektów: gwarantuje, że w danym momencie do WLED
+        // leci co najwyżej JEDNO żądanie SetEffectAsync. Poprzednie, nieukończone żądanie
+        // jest anulowane zanim nowe zajmie gate - eliminuje to kolejkowanie się wielu
+        // żądań na jednowątkowym serwerze WLED podczas szybkiej zmiany sliderów/efektów.
+        private readonly SemaphoreSlim effectRequestGate = new(1, 1);
+        private CancellationTokenSource? latestEffectCts;
+
         private UdpClient? udpClient;
         private byte[] packetBuffer = Array.Empty<byte>();
         private int currentLedCount;
@@ -40,10 +47,19 @@ namespace AmbilightEngine.Core.Hardware
             effectsListUrl = $"http://{ipAddress}/json/eff";
             palettesListUrl = $"http://{ipAddress}/json/pal";
 
-            httpClient = new HttpClient
+            // FIX #1: MaxConnectionsPerServer zwiększony z 1 do 4 - oryginalne "1"
+            // powodowało, że wszystkie żądania czekały na zwolnienie jednego, wspólnego
+            // slotu połączenia, co przy zablokowanym żądaniu tworzyło kaskadę timeoutów.
+            var handler = new HttpClientHandler
+            {
+                MaxConnectionsPerServer = 4
+            };
+
+            httpClient = new HttpClient(handler)
             {
                 Timeout = TimeSpan.FromMilliseconds(800)
             };
+            httpClient.DefaultRequestHeaders.ConnectionClose = true;
 
             Reconfigure(initialLedCount);
         }
@@ -163,9 +179,13 @@ namespace AmbilightEngine.Core.Hardware
                     ? "{\"on\":true,\"transition\":1}"
                     : "{\"on\":false,\"transition\":1}";
 
-                using var content = new StringContent(json, Encoding.UTF8, "application/json");
+                using var requestMessage = new HttpRequestMessage(HttpMethod.Post, httpBaseUrl)
+                {
+                    Content = new StringContent(json, Encoding.UTF8, "application/json")
+                };
+                requestMessage.Headers.ConnectionClose = true;
 
-                using var response = httpClient.PostAsync(httpBaseUrl, content).GetAwaiter().GetResult();
+                using var response = httpClient.SendAsync(requestMessage).GetAwaiter().GetResult();
 
                 bool isSuccess = response.IsSuccessStatusCode;
 
@@ -188,7 +208,10 @@ namespace AmbilightEngine.Core.Hardware
 
             try
             {
-                using var response = await httpClient.GetAsync(effectsListUrl);
+                using var requestMessage = new HttpRequestMessage(HttpMethod.Get, effectsListUrl);
+                requestMessage.Headers.ConnectionClose = true;
+
+                using var response = await httpClient.SendAsync(requestMessage);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -223,7 +246,10 @@ namespace AmbilightEngine.Core.Hardware
 
             try
             {
-                using var response = await httpClient.GetAsync(palettesListUrl);
+                using var requestMessage = new HttpRequestMessage(HttpMethod.Get, palettesListUrl);
+                requestMessage.Headers.ConnectionClose = true;
+
+                using var response = await httpClient.SendAsync(requestMessage);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -259,31 +285,68 @@ namespace AmbilightEngine.Core.Hardware
             int paletteId = 0,
             (byte R, byte G, byte B)? primaryColor = null,
             (byte R, byte G, byte B)? secondaryColor = null,
-            int? brightness = null)
+            int? brightness = null,
+            CancellationToken cancellationToken = default)
         {
+            // FIX #4: NIE dysponujemy tutaj tokenu, który właśnie przypisujemy do pola
+            // latestEffectCts (poprzednia wersja robiła "using var linkedCts", co
+            // dysponowało go na końcu TEJ metody, mimo że pole klasy wciąż na niego
+            // wskazywało - kolejne wywołanie robiło Cancel() na martwym obiekcie i
+            // rzucało ObjectDisposedException poza wszelkim try/catch, bezgłośnie
+            // blokując każdą zmianę efektu po pierwszej udanej).
+            // Teraz dysponujemy wyłącznie POPRZEDNI, właśnie zastąpiony token.
+            var previousCts = latestEffectCts;
+            var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            latestEffectCts = linkedCts;
+
+            try { previousCts?.Cancel(); } catch (ObjectDisposedException) { }
+            try { previousCts?.Dispose(); } catch (ObjectDisposedException) { }
+
             try
             {
+                await effectRequestGate.WaitAsync(linkedCts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                System.Diagnostics.Debug.WriteLine("[DIAG] WLED JSON API: żądanie efektu anulowane (nowsze żądanie w drodze).");
+                return false;
+            }
+
+            try
+            {
+                if (linkedCts.IsCancellationRequested)
+                {
+                    System.Diagnostics.Debug.WriteLine("[DIAG] WLED JSON API: żądanie efektu anulowane (nowsze żądanie w drodze).");
+                    return false;
+                }
+
                 var color1 = primaryColor ?? (255, 255, 255);
                 var color2 = secondaryColor ?? (0, 0, 0);
 
                 var segPayload = new Dictionary<string, object>
                 {
+                    ["id"] = 0,
                     ["fx"] = fxId,
                     ["sx"] = speed,
                     ["ix"] = intensity,
                     ["pal"] = paletteId,
                     ["col"] = new[]
-{
-    new[] { (int)color1.R, (int)color1.G, (int)color1.B },
-    new[] { (int)color2.R, (int)color2.G, (int)color2.B },
-    new[] { 0, 0, 0 }
-}
+                    {
+                        new[] { (int)color1.R, (int)color1.G, (int)color1.B },
+                        new[] { (int)color2.R, (int)color2.G, (int)color2.B },
+                        new[] { 0, 0, 0 }
+                    }
                 };
 
                 var rootPayload = new Dictionary<string, object>
                 {
                     ["on"] = true,
-                    ["seg"] = segPayload
+                    // Wyłącza Live Override (DDP realtime) natychmiast - bez tego WLED
+                    // czeka aż realtime mode wygaśnie samo, zanim zastosuje efekt lokalny.
+                    ["lor"] = 0,
+                    ["transition"] = 0,
+                    // seg MUSI być tablicą [ {...} ], a nie pojedynczym obiektem.
+                    ["seg"] = new[] { segPayload }
                 };
 
                 if (brightness.HasValue)
@@ -293,20 +356,69 @@ namespace AmbilightEngine.Core.Hardware
 
                 string json = JsonSerializer.Serialize(rootPayload);
 
-                using var content = new StringContent(json, Encoding.UTF8, "application/json");
-                using var response = await httpClient.PostAsync(httpBaseUrl, content);
+                using var requestMessage = new HttpRequestMessage(HttpMethod.Post, httpBaseUrl)
+                {
+                    Content = new StringContent(json, Encoding.UTF8, "application/json")
+                };
+                requestMessage.Headers.ConnectionClose = true;
+
+                using var response = await httpClient.SendAsync(requestMessage, linkedCts.Token);
 
                 bool isSuccess = response.IsSuccessStatusCode;
 
                 System.Diagnostics.Debug.WriteLine(
-                    $"[DIAG] WLED JSON API: ustawiono efekt fx={fxId} pal={paletteId} bri={brightness}, status HTTP: {(int)response.StatusCode}, sukces: {isSuccess}");
+                    $"[DIAG] WLED JSON API: ustawiono efekt fx={fxId} pal={paletteId} bri={brightness}, payload={json}, status HTTP: {(int)response.StatusCode}, sukces: {isSuccess}");
+
+                return isSuccess;
+            }
+            catch (OperationCanceledException)
+            {
+                System.Diagnostics.Debug.WriteLine("[DIAG] WLED JSON API: żądanie efektu anulowane (nowsze żądanie w drodze).");
+                return false;
+            }
+            catch (ObjectDisposedException)
+            {
+                // Token mógł zostać zdysponowany przez kolejne, nowsze wywołanie w trakcie
+                // oczekiwania na odpowiedź HTTP - traktujemy jak anulowanie, nie jak błąd.
+                System.Diagnostics.Debug.WriteLine("[DIAG] WLED JSON API: żądanie efektu anulowane (token zdysponowany przez nowsze żądanie).");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DIAG] WLED JSON API: nie udało się ustawić efektu fx={fxId} - {ex.Message}");
+                return false;
+            }
+            finally
+            {
+                effectRequestGate.Release();
+            }
+        }
+
+        public async Task<bool> DisableRealtimeOverrideAsync(CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                const string json = "{\"lor\":0}";
+
+                using var requestMessage = new HttpRequestMessage(HttpMethod.Post, httpBaseUrl)
+                {
+                    Content = new StringContent(json, Encoding.UTF8, "application/json")
+                };
+                requestMessage.Headers.ConnectionClose = true;
+
+                using var response = await httpClient.SendAsync(requestMessage, cancellationToken);
+
+                bool isSuccess = response.IsSuccessStatusCode;
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DIAG] WLED JSON API: wyłączono realtime override, status HTTP: {(int)response.StatusCode}, sukces: {isSuccess}");
 
                 return isSuccess;
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine(
-                    $"[DIAG] WLED JSON API: nie udało się ustawić efektu fx={fxId} - {ex.Message}");
+                    $"[DIAG] WLED JSON API: nie udało się wyłączyć realtime override - {ex.Message}");
                 return false;
             }
         }
@@ -316,6 +428,8 @@ namespace AmbilightEngine.Core.Hardware
             if (isDisposed) return;
             Close();
             httpClient.Dispose();
+            effectRequestGate.Dispose();
+            latestEffectCts?.Dispose();
             isDisposed = true;
         }
     }

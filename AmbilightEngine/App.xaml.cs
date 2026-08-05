@@ -1,5 +1,6 @@
 ﻿using Microsoft.UI.Xaml;
 using System;
+using AmbilightEngine.Core.SystemState;
 
 namespace AmbilightEngine
 {
@@ -11,6 +12,13 @@ namespace AmbilightEngine
 
         public App()
         {
+            // KLUCZOWE: musi być wywołane jak najwcześniej, zanim Windows zdąży
+            // zastosować Efficiency Mode / EcoQoS throttling do tego procesu.
+            // Bez tego System.Threading.Timer w SystemStateWatcher (i inne timery)
+            // są drastycznie spowalniane lub zamrażane po zablokowaniu ekranu,
+            // co uniemożliwia wykrycie blokady i aktywację trybu ambientowego.
+            ProcessPowerThrottling.DisableThrottling();
+
             InitializeComponent();
         }
 

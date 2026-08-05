@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using AmbilightEngine.Core.SystemState;
 using Microsoft.UI.Dispatching;
@@ -18,6 +19,15 @@ public sealed partial class DashboardPage : Page
     private DispatcherQueueTimer? fpsTimer;
     private readonly DispatcherQueue uiDispatcherQueue;
     private bool isLoadingUi = false;
+
+    // ── Debounce dla efektów WLED ────────────────────────────────────────────
+    // Bez tego każdy tick slidera wysyłał osobne żądanie HTTP do ESP32, co przy
+    // przeciąganiu slidera generowało dziesiątki żądań kolejkujących się na
+    // jednowątkowym serwerze WLED - stąd opóźnienia rzędu 30s-1min.
+    private DispatcherQueueTimer? effectDebounceTimer;
+    private CancellationTokenSource? effectApplyCts;
+    private static readonly TimeSpan EffectDebounceDelay = TimeSpan.FromMilliseconds(120);
+    // ──────────────────────────────────────────────────────────────────────────
 
     public DashboardPage()
     {
@@ -47,6 +57,9 @@ public sealed partial class DashboardPage : Page
 
         ApplyStatus(mainWindow.EngineHost.CurrentStatus);
 
+        // NOWOŚĆ: podgląd na żywo diod LED (WLED Peek) - niezależny od stanu silnika.
+        WledPreviewControl.Configure(mainWindow.Settings);
+
         fpsTimer ??= uiDispatcherQueue.CreateTimer();
         fpsTimer.Interval = TimeSpan.FromMilliseconds(500);
         fpsTimer.Tick -= FpsTimerTick;
@@ -68,6 +81,11 @@ public sealed partial class DashboardPage : Page
             fpsTimer.Tick -= FpsTimerTick;
             fpsTimer.Stop();
         }
+
+        effectDebounceTimer?.Stop();
+        effectApplyCts?.Cancel();
+        effectApplyCts?.Dispose();
+        effectApplyCts = null;
     }
 
     private void FpsTimerTick(object? sender, object e)
@@ -227,50 +245,64 @@ public sealed partial class DashboardPage : Page
         StatusInfoBar.Title = "WLED Effects";
         StatusInfoBar.Message = "Wczytywanie listy efektów z urządzenia...";
 
-        WledEffectComboBox.PlaceholderText = "Wczytywanie efektów...";
-        WledEffectComboBox.Items.Clear();
-        WledPaletteComboBox.Items.Clear();
-
+        // FIX: populacja ComboBoxów musi być osłonięta flagą isLoadingUi. Items.Clear()
+        // i kolejne Items.Add() mogą wywołać SelectionChanged (np. przy automatycznym
+        // zaznaczeniu pierwszego elementu przez WinUI) - bez tej osłony każde takie
+        // zdarzenie odpalało prawdziwe żądanie HTTP do WLED, mimo że to nie była
+        // akcja użytkownika, tylko odświeżenie listy.
+        isLoadingUi = true;
         try
         {
-            loadedWledEffects = await mainWindow.EngineHost.GetAvailableWledEffectsAsync();
-            loadedWledPalettes = await mainWindow.EngineHost.GetAvailableWledPalettesAsync();
+            WledEffectComboBox.PlaceholderText = "Wczytywanie efektów...";
+            WledEffectComboBox.Items.Clear();
+            WledPaletteComboBox.Items.Clear();
 
-            if (loadedWledEffects.Count == 0)
+            try
             {
-                WledEffectComboBox.PlaceholderText = "Nie udało się wczytać efektów";
+                loadedWledEffects = await mainWindow.EngineHost.GetAvailableWledEffectsAsync();
+                loadedWledPalettes = await mainWindow.EngineHost.GetAvailableWledPalettesAsync();
+
+                if (loadedWledEffects.Count == 0)
+                {
+                    WledEffectComboBox.PlaceholderText = "Nie udało się wczytać efektów";
+                    StatusInfoBar.Severity = InfoBarSeverity.Error;
+                    StatusInfoBar.Message = "Nie udało się połączyć z urządzeniem WLED. Sprawdź adres IP i połączenie sieciowe.";
+                    return;
+                }
+
+                foreach (string effectName in loadedWledEffects)
+                {
+                    WledEffectComboBox.Items.Add(effectName);
+                }
+
+                foreach (string paletteName in loadedWledPalettes)
+                {
+                    WledPaletteComboBox.Items.Add(paletteName);
+                }
+
+                WledEffectComboBox.PlaceholderText = "Wybierz efekt";
+                StatusInfoBar.Severity = InfoBarSeverity.Success;
+                StatusInfoBar.Message = $"Wczytano {loadedWledEffects.Count} efektów i {loadedWledPalettes.Count} palet z urządzenia WLED.";
+            }
+            catch (Exception ex)
+            {
+                WledEffectComboBox.PlaceholderText = "Błąd wczytywania efektów";
                 StatusInfoBar.Severity = InfoBarSeverity.Error;
-                StatusInfoBar.Message = "Nie udało się połączyć z urządzeniem WLED. Sprawdź adres IP i połączenie sieciowe.";
-                return;
+                StatusInfoBar.Message = $"Błąd podczas komunikacji z WLED: {ex.Message}";
             }
-
-            foreach (string effectName in loadedWledEffects)
-            {
-                WledEffectComboBox.Items.Add(effectName);
-            }
-
-            foreach (string paletteName in loadedWledPalettes)
-            {
-                WledPaletteComboBox.Items.Add(paletteName);
-            }
-
-            WledEffectComboBox.PlaceholderText = "Wybierz efekt";
-            StatusInfoBar.Severity = InfoBarSeverity.Success;
-            StatusInfoBar.Message = $"Wczytano {loadedWledEffects.Count} efektów i {loadedWledPalettes.Count} palet z urządzenia WLED.";
-        }
-        catch (Exception ex)
-        {
-            WledEffectComboBox.PlaceholderText = "Błąd wczytywania efektów";
-            StatusInfoBar.Severity = InfoBarSeverity.Error;
-            StatusInfoBar.Message = $"Błąd podczas komunikacji z WLED: {ex.Message}";
         }
         finally
         {
+            isLoadingUi = false;
             SetUiBusy(false);
         }
     }
 
-    private async Task ApplyCurrentEffectAsync()
+    /// <summary>
+    /// Wysyła aktualny stan efektu do WLED. Wywoływana z tokenem anulowania,
+    /// żeby debounce mógł odrzucić nieaktualne żądania w toku.
+    /// </summary>
+    private async Task ApplyCurrentEffectAsync(CancellationToken cancellationToken)
     {
         if (WledEffectComboBox.SelectedIndex < 0 || mainWindow == null) return;
 
@@ -283,13 +315,16 @@ public sealed partial class DashboardPage : Page
         var primaryColor = (EffectPrimaryColorPicker.Color.R, EffectPrimaryColorPicker.Color.G, EffectPrimaryColorPicker.Color.B);
         var secondaryColor = (EffectSecondaryColorPicker.Color.R, EffectSecondaryColorPicker.Color.G, EffectSecondaryColorPicker.Color.B);
 
-        SetUiBusy(true);
-
         try
         {
             mainWindow.Settings.SelectedWledEffectId = fxId.ToString();
             bool success = await mainWindow.EngineHost.ActivateWledEffectAsync(
-                fxId, speed, intensity, paletteId, primaryColor, secondaryColor, brightness);
+                fxId, speed, intensity, paletteId, primaryColor, secondaryColor, brightness, cancellationToken);
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
 
             if (!success)
             {
@@ -299,55 +334,91 @@ public sealed partial class DashboardPage : Page
                 StatusInfoBar.Message = "Nie udało się zastosować efektu. Urządzenie może być offline.";
             }
         }
-        finally
+        catch (OperationCanceledException)
         {
-            SetUiBusy(false);
+            // Ignorowane - normalny efekt debounce, nowsze żądanie zastąpiło to.
         }
     }
 
-    private async void WledEffectComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    /// <summary>
+    /// Centralny punkt wywołania efektu z UI. Odczekuje EffectDebounceDelay ciszy
+    /// zanim wyśle żądanie HTTP, anulując wcześniejsze żądanie w toku. Zapobiega
+    /// to zalewowi requestów podczas przeciągania sliderów lub szybkiej zmiany kolorów.
+    /// </summary>
+    private void RequestApplyEffectDebounced()
     {
-        if (isLoadingUi || mainWindow == null) return;
-        await ApplyCurrentEffectAsync();
+        if (mainWindow == null) return;
+
+        effectDebounceTimer ??= uiDispatcherQueue.CreateTimer();
+        effectDebounceTimer.Stop();
+
+        effectApplyCts?.Cancel();
+        effectApplyCts?.Dispose();
+        effectApplyCts = new CancellationTokenSource();
+
+        effectDebounceTimer.Interval = EffectDebounceDelay;
+        effectDebounceTimer.IsRepeating = false;
+        // FIX #5: OnEffectDebounceTick MUSI być metodą instancyjną klasy, nie funkcją
+        // lokalną. Funkcja lokalna tworzy nowe zamknięcie (closure) przy każdym wywołaniu
+        // tej metody, więc "-=" poniżej nigdy nie trafiało w faktycznie zarejestrowany
+        // poprzedni handler - subskrypcje się kumulowały bez końca, a każdy tick timera
+        // odpalał WSZYSTKIE nagromadzone handlery naraz (stąd dziesiątki identycznych
+        // linii "żądanie anulowane" w tej samej milisekundzie przy każdej zmianie UI).
+        effectDebounceTimer.Tick -= OnEffectDebounceTick;
+        effectDebounceTimer.Tick += OnEffectDebounceTick;
+        effectDebounceTimer.Start();
     }
 
-    private async void WledPaletteComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void OnEffectDebounceTick(object? sender, object e)
     {
-        if (isLoadingUi || mainWindow == null) return;
-        await ApplyCurrentEffectAsync();
+        effectDebounceTimer!.Stop();
+        var token = effectApplyCts?.Token ?? CancellationToken.None;
+        _ = ApplyCurrentEffectAsync(token);
     }
 
-    private async void EffectPrimaryColorPicker_ColorChanged(ColorPicker sender, ColorChangedEventArgs args)
+    private void WledEffectComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (isLoadingUi || mainWindow == null) return;
-        await ApplyCurrentEffectAsync();
+        RequestApplyEffectDebounced();
     }
 
-    private async void EffectSecondaryColorPicker_ColorChanged(ColorPicker sender, ColorChangedEventArgs args)
+    private void WledPaletteComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (isLoadingUi || mainWindow == null) return;
-        await ApplyCurrentEffectAsync();
+        RequestApplyEffectDebounced();
     }
 
-    private async void EffectSpeedSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    private void EffectPrimaryColorPicker_ColorChanged(ColorPicker sender, ColorChangedEventArgs args)
+    {
+        if (isLoadingUi || mainWindow == null) return;
+        RequestApplyEffectDebounced();
+    }
+
+    private void EffectSecondaryColorPicker_ColorChanged(ColorPicker sender, ColorChangedEventArgs args)
+    {
+        if (isLoadingUi || mainWindow == null) return;
+        RequestApplyEffectDebounced();
+    }
+
+    private void EffectSpeedSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         if (isLoadingUi || mainWindow == null) return;
         EffectSpeedValueText.Text = $"{(int)e.NewValue}";
-        await ApplyCurrentEffectAsync();
+        RequestApplyEffectDebounced();
     }
 
-    private async void EffectIntensitySlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    private void EffectIntensitySlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         if (isLoadingUi || mainWindow == null) return;
         EffectIntensityValueText.Text = $"{(int)e.NewValue}";
-        await ApplyCurrentEffectAsync();
+        RequestApplyEffectDebounced();
     }
 
-    private async void EffectBrightnessSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    private void EffectBrightnessSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         if (isLoadingUi || mainWindow == null) return;
         EffectBrightnessValueText.Text = $"{(int)e.NewValue}";
-        await ApplyCurrentEffectAsync();
+        RequestApplyEffectDebounced();
     }
 
     private async void ToggleButtonClick(object sender, RoutedEventArgs e)

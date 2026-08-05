@@ -10,8 +10,32 @@ namespace AmbilightEngine.Core.SystemState
         LoungeLight
     }
 
+    // Konfiguracja efektu WLED wywoływanego jednorazowo przy wejściu w tryb ambientowy
+    // (blokada ekranu lub bezczynność). Zamiast ciągłego wysyłania DDP, wywołujemy natywny
+    // efekt firmware WLED przez JSON API - eliminuje to problemy z timeoutem realtime.
+    public sealed class AmbientEffectConfig
+    {
+        public bool IsEnabled { get; set; } = false;
+        public int EffectId { get; set; } = 0;
+        public int PaletteId { get; set; } = 0;
+        public int Speed { get; set; } = 128;
+        public int Intensity { get; set; } = 128;
+        public int Brightness { get; set; } = 128;
+        public byte PrimaryColorR { get; set; } = 255;
+        public byte PrimaryColorG { get; set; } = 255;
+        public byte PrimaryColorB { get; set; } = 255;
+        public byte SecondaryColorR { get; set; } = 0;
+        public byte SecondaryColorG { get; set; } = 0;
+        public byte SecondaryColorB { get; set; } = 0;
+    }
+
     public sealed class AmbilightSettings
     {
+        /// <summary>Barwa ściany jako HEX (#RRGGBB). Null = kompensacja wyłączona.</summary>
+        public string? WallColorHex { get; set; } = null;
+
+        /// <summary>Siła kompensacji barwy ściany [0.0 – 1.0]. 0 = wyłączona, 1 = pełna.</summary>
+        public float WallColorStrength { get; set; } = 0.5f;
         public int WledEffectSpeed { get; set; } = 128;
         public int WledEffectIntensity { get; set; } = 128;
         // --- Polaczenie i sprzet ---
@@ -24,10 +48,17 @@ namespace AmbilightEngine.Core.SystemState
         public int SamplingDepth { get; set; } = 80;
 
         // --- Tryb ambientowy (bezczynnosc / ekran blokady) ---
-        public AmbientLightMode LockScreenMode { get; set; } = AmbientLightMode.LoungeLight;
-        public AmbientLightMode IdleMode { get; set; } = AmbientLightMode.LoungeLight;
+        // NOWOŚĆ: osobna konfiguracja efektu WLED per tryb, wywoływana jednorazowo przez
+        // JSON API (zamiast ciągłego DDP). IsEnabled=false odpowiada dawnemu "Off".
+        public AmbientEffectConfig LockScreenAmbient { get; set; } = new AmbientEffectConfig();
+        public AmbientEffectConfig IdleAmbient { get; set; } = new AmbientEffectConfig();
         public int IdleTimeoutMinutes { get; set; } = 5;
 
+        // --- LEGACY: pozostawione dla kompatybilności ze starym UI Ustawień.
+        // Nowa logika (PipelineManager.EnterAmbientMode) już z nich nie korzysta -
+        // zostaną usunięte po migracji strony ustawień na AmbientEffectConfig.
+        public AmbientLightMode LockScreenMode { get; set; } = AmbientLightMode.LoungeLight;
+        public AmbientLightMode IdleMode { get; set; } = AmbientLightMode.LoungeLight;
         public byte LoungeColorR { get; set; } = 255;
         public byte LoungeColorG { get; set; } = 147;
         public byte LoungeColorB { get; set; } = 41;
@@ -74,13 +105,27 @@ namespace AmbilightEngine.Core.SystemState
         public byte CustomBackgroundAccentB { get; set; } = 52;
 
         public double UiGlassOpacity { get; set; } = 0.28;
-        public string CustomBackgroundStyle { get; set; } = "SoftGradient";       
+        public string CustomBackgroundStyle { get; set; } = "SoftGradient";
         // --- Tryb wyswietlania ---
         public DisplayMode ActiveDisplayMode { get; set; } = DisplayMode.VideoSync;
         public byte StaticColorR { get; set; } = 255;
         public byte StaticColorG { get; set; } = 255;
         public byte StaticColorB { get; set; } = 255;
         public string SelectedWledEffectId { get; set; } = string.Empty;
+
+        // --- Zapamiętane parametry ostatniego wywołanego efektu WLED (Dashboard) -
+        // potrzebne do prawidłowego przywrócenia trybu WledEffects po wyjściu z ambientu.
+        public int LastWledEffectId { get; set; } = 0;
+        public int LastWledPaletteId { get; set; } = 0;
+        public int LastWledSpeed { get; set; } = 128;
+        public int LastWledIntensity { get; set; } = 128;
+        public int LastWledBrightness { get; set; } = 128;
+        public byte LastWledPrimaryColorR { get; set; } = 255;
+        public byte LastWledPrimaryColorG { get; set; } = 255;
+        public byte LastWledPrimaryColorB { get; set; } = 255;
+        public byte LastWledSecondaryColorR { get; set; } = 0;
+        public byte LastWledSecondaryColorG { get; set; } = 0;
+        public byte LastWledSecondaryColorB { get; set; } = 0;
 
         // --- Dynamika swiatla (attack/decay/sensitivity/floor) ---
         public double MotionAttackSpeed { get; set; } = 0.6;
@@ -107,8 +152,6 @@ namespace AmbilightEngine.Core.SystemState
 
         // --- Profile per-aplikacja ---
         public List<AppProfile> Profiles { get; set; } = new();
-
-   
 
         public AppProfile DefaultProfile { get; set; } = new AppProfile
         {

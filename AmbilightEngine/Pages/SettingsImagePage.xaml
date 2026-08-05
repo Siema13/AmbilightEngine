@@ -188,6 +188,85 @@
                                     ValueChanged="GammaSlider_ValueChanged" />
                             <TextBlock Text="Standardowo 2.2. Zwiększ, jeśli diody świecą za jasno; zmniejsz, jeśli za ciemno."
                                        Style="{StaticResource SectionSubTextStyle}" />
+                            <!-- AmbilightEngine/Pages/SettingsImagePage.xaml -->
+                            <!-- DOPISAĆ po bloku Gamma, wewnątrz <StackPanel Grid.Row="1"> -->
+
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel Spacing="12">
+                                    <TextBlock Text="Kalibracja barwy ściany"
+                   Style="{StaticResource SectionHeaderTextStyle}" />
+                                    <TextBlock Text="Kompensuje wpływ koloru ściany na odcień diod. Wskaż dominującą barwę ściany za telewizorem."
+                   Style="{StaticResource SectionSubTextStyle}" />
+
+                                    <!-- Włącz / wyłącz -->
+                                    <ToggleSwitch x:Name="WallColorToggle"
+                      Header="Włącz kompensację barwy ściany"
+                      IsOn="False"
+                      Toggled="WallColorToggle_Toggled" />
+
+                                    <!-- Panel z kontrolkami – aktywny tylko gdy ToggleSwitch ON -->
+                                    <StackPanel x:Name="WallColorPanel" Spacing="12">
+
+                                        <!-- Podgląd wybranego koloru + przycisk picker -->
+                                        <Grid ColumnSpacing="12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBlock Text="Kolor ściany"
+                           FontWeight="SemiBold"
+                           VerticalAlignment="Center" />
+
+                                            <!-- Podgląd – prostokąt w wybranym kolorze -->
+                                            <Border x:Name="WallColorPreview"
+                        Grid.Column="1"
+                        Width="40"
+                        Height="28"
+                        CornerRadius="6"
+                        BorderThickness="1"
+                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                        Background="#808080" />
+
+                                            <Button x:Name="WallColorPickerButton"
+                        Grid.Column="2"
+                        Content="Wybierz..."
+                        Click="WallColorPickerButton_Click" />
+                                        </Grid>
+
+                                        <!-- Wyświetlany HEX -->
+                                        <TextBlock x:Name="WallColorHexText"
+                       Text="#808080"
+                       Style="{StaticResource SectionSubTextStyle}" />
+
+                                        <!-- Siła kompensacji -->
+                                        <StackPanel Spacing="6">
+                                            <Grid ColumnSpacing="12">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+
+                                                <TextBlock Text="Siła kompensacji (%)"
+                               FontWeight="SemiBold" />
+                                                <TextBlock x:Name="WallStrengthValueText"
+                               Grid.Column="1"
+                               Text="50" />
+                                            </Grid>
+                                            <Slider x:Name="WallStrengthSlider"
+                        Minimum="0"
+                        Maximum="100"
+                        StepFrequency="1"
+                        Value="50"
+                        ValueChanged="WallStrengthSlider_ValueChanged" />
+                                            <TextBlock Text="0 = wyłączona, 100 = pełna kompensacja. Zacznij od 30–50%."
+                           Style="{StaticResource SectionSubTextStyle}" />
+                                        </StackPanel>
+
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                     </StackPanel>
                 </Border>

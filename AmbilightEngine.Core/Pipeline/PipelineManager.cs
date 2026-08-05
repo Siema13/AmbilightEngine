@@ -31,12 +31,43 @@ namespace AmbilightEngine.Core.Pipeline
         }
     }
 
+    // Snapshot stanu wyświetlania sprzed wejścia w tryb ambientowy - potrzebny do
+    // dokładnego przywrócenia (VideoSync / StaticColor / WledEffects z parametrami).
+    internal readonly struct DisplayStateSnapshot
+    {
+        public readonly DisplayMode Mode;
+        public readonly int WledEffectId;
+        public readonly int WledPaletteId;
+        public readonly int WledSpeed;
+        public readonly int WledIntensity;
+        public readonly int WledBrightness;
+        public readonly (byte R, byte G, byte B) WledPrimaryColor;
+        public readonly (byte R, byte G, byte B) WledSecondaryColor;
+
+        public DisplayStateSnapshot(
+            DisplayMode mode,
+            int wledEffectId, int wledPaletteId, int wledSpeed, int wledIntensity, int wledBrightness,
+            (byte R, byte G, byte B) wledPrimaryColor, (byte R, byte G, byte B) wledSecondaryColor)
+        {
+            Mode = mode;
+            WledEffectId = wledEffectId;
+            WledPaletteId = wledPaletteId;
+            WledSpeed = wledSpeed;
+            WledIntensity = wledIntensity;
+            WledBrightness = wledBrightness;
+            WledPrimaryColor = wledPrimaryColor;
+            WledSecondaryColor = wledSecondaryColor;
+        }
+    }
+
     // Centralny orkiestrator potoku danych: Capture (Producer) -> Processing + Output (Consumer).
     // Wykorzystuje bezblokowy, bounded Channel (Single-Producer-Single-Consumer) zamiast lock/Monitor.
     // Jeśli konsument nie nadąża, najstarsze klatki są celowo odrzucane (DropOldest) - priorytetem jest
     // aktualność światła (low latency) nad kompletnością historii klatek.
-    // Dodatkowo zarządza trybem ambientowym (Lounge Light) - niezależna, wolna pętla nadpisująca
-    // normalny potok obrazu, aktywowana przez SystemStateWatcher przy blokadzie ekranu/bezczynności.
+    //
+    // Tryb ambientowy (blokada ekranu / bezczynność) NIE wysyła już cyklicznie DDP - zamiast tego
+    // jednorazowo wywołuje natywny efekt WLED przez JSON API (SetEffectAsync). Firmware WLED sam
+    // podtrzymuje animację lokalnie, co eliminuje problem z timeoutem realtime i migotaniem.
     public sealed class PipelineManager : IDisposable
     {
         private readonly ICaptureSource captureSource;
@@ -57,10 +88,10 @@ namespace AmbilightEngine.Core.Pipeline
 
         private ImageProcessor imageProcessor;
         private Task? consumerTask;
-        private Task? ambientTask;
         private volatile bool isRunning;
         private volatile bool isAmbientModeActive;
-        private AmbientLightMode currentAmbientMode = AmbientLightMode.Off;
+        private DisplayStateSnapshot? preAmbientSnapshot;
+        private CancellationTokenSource? ambientEffectCts;
         private bool isDisposed;
 
         private long framesCaptured;
@@ -110,7 +141,9 @@ namespace AmbilightEngine.Core.Pipeline
             if (!isRunning) return;
             isRunning = false;
 
-            StopAmbientLoopIfActive();
+            ambientEffectCts?.Cancel();
+            isAmbientModeActive = false;
+
             captureSource.OnFrameCaptured -= OnFrameCapturedFromCaptureThread;
             channel.Writer.TryComplete();
 
@@ -132,81 +165,105 @@ namespace AmbilightEngine.Core.Pipeline
             Interlocked.Exchange(ref imageProcessor, newProcessor);
         }
 
-        // Wstrzymuje normalny potok obrazu i przełącza wyjście na stały kolor Lounge Light,
-        // wysyłany cyklicznie w tle - używane przy blokadzie ekranu / bezczynności systemu.
-        public void EnterAmbientMode(AmbientLightMode mode)
+        // Wchodzi w tryb ambientowy: zapisuje snapshot aktualnego stanu wyświetlania,
+        // a następnie jednorazowo wywołuje skonfigurowany efekt WLED (JSON API) - bez
+        // ciągłego wysyłania DDP. Jeśli config.IsEnabled == false, diody są gaszone.
+        public void EnterAmbientMode(AmbientEffectConfig config)
         {
-            currentAmbientMode = mode;
+            if (isAmbientModeActive) return;
+            isAmbientModeActive = true;
 
-            if (mode == AmbientLightMode.Off)
+            preAmbientSnapshot = new DisplayStateSnapshot(
+                settings.ActiveDisplayMode,
+                settings.LastWledEffectId, settings.LastWledPaletteId,
+                settings.LastWledSpeed, settings.LastWledIntensity, settings.LastWledBrightness,
+                (settings.LastWledPrimaryColorR, settings.LastWledPrimaryColorG, settings.LastWledPrimaryColorB),
+                (settings.LastWledSecondaryColorR, settings.LastWledSecondaryColorG, settings.LastWledSecondaryColorB));
+
+            ambientEffectCts?.Cancel();
+            ambientEffectCts?.Dispose();
+            ambientEffectCts = new CancellationTokenSource();
+            var token = ambientEffectCts.Token;
+
+            if (config == null || !config.IsEnabled)
             {
-                StopAmbientLoopIfActive();
-                SendBlackFrame();
+                // FIX: nie wysyłamy czarnej ramki DDP, jeśli aktualnie aktywny jest tryb WledEffects -
+                // DDP w tym trybie nie jest w ogóle używane do renderowania, a jednorazowy pakiet
+                // przełącza WLED w tryb realtime na czas "realtime timeout" firmware, przerywając
+                // lokalnie renderowany efekt (obserwowane jako okresowe mrugnięcie/długa przerwa,
+                // proporcjonalna do skonfigurowanego timeoutu realtime w WLED).
+                if (settings.ActiveDisplayMode != DisplayMode.WledEffects)
+                {
+                    SendBlackFrame();
+                }
+
+                isAmbientModeActive = false;
+                preAmbientSnapshot = null;
                 return;
             }
 
-            if (isAmbientModeActive) return;
+            if (outputDevice is WledDdpNetworkSender wledSender)
+            {
+                var primary = (config.PrimaryColorR, config.PrimaryColorG, config.PrimaryColorB);
+                var secondary = (config.SecondaryColorR, config.SecondaryColorG, config.SecondaryColorB);
 
-            isAmbientModeActive = true;
-            ambientTask = Task.Run(() => AmbientLoopAsync(cts.Token));
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await wledSender.SetEffectAsync(
+                            config.EffectId, config.Speed, config.Intensity, config.PaletteId,
+                            primary, secondary, config.Brightness, token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Nowsze wejście/wyjście z ambientu anulowało to żądanie - oczekiwane.
+                    }
+                    catch (Exception)
+                    {
+                        // Błąd komunikacji z WLED przy wejściu w ambient nie może zabić silnika.
+                    }
+                }, token);
+            }
         }
 
-        // Wraca do normalnego przetwarzania klatek z ekranu.
+        // Wychodzi z trybu ambientowego i przywraca dokładnie ten tryb wyświetlania,
+        // który był aktywny przed wejściem (VideoSync / StaticColor / WledEffects z parametrami).
         public void ExitAmbientMode()
-        {
-            StopAmbientLoopIfActive();
-        }
-
-        private void StopAmbientLoopIfActive()
         {
             if (!isAmbientModeActive) return;
             isAmbientModeActive = false;
 
-            try
+            ambientEffectCts?.Cancel();
+
+            if (preAmbientSnapshot is not DisplayStateSnapshot snapshot)
             {
-                ambientTask?.Wait(millisecondsTimeout: 500);
-            }
-            catch (Exception)
-            {
-                // Best-effort - nie blokujemy wyjścia z trybu ambientowego przy timeoucie.
+                return;
             }
 
-            ambientTask = null;
-        }
+            settings.ActiveDisplayMode = snapshot.Mode;
 
-        private async Task AmbientLoopAsync(CancellationToken token)
-        {
-            Debug.WriteLine("[DIAG] AmbientLoopAsync wystartował.");
-
-            try
+            if (snapshot.Mode == DisplayMode.WledEffects && outputDevice is WledDdpNetworkSender wledSender)
             {
-                using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(1000));
+                var restoreCts = new CancellationTokenSource();
 
-                while (!token.IsCancellationRequested && isAmbientModeActive)
+                _ = Task.Run(async () =>
                 {
-                    if (currentAmbientMode == AmbientLightMode.LoungeLight)
+                    try
                     {
-                        var color = new RgbColor(settings.LoungeColorR, settings.LoungeColorG, settings.LoungeColorB);
-                        var frame = new RgbColor[ledCount];
-                        Array.Fill(frame, color);
-
-                        try
-                        {
-                            outputDevice.SendFrame(frame);
-                        }
-                        catch (Exception)
-                        {
-                            // Błąd wysyłki jednej klatki ambientowej nie może zabić pętli.
-                        }
+                        await wledSender.SetEffectAsync(
+                            snapshot.WledEffectId, snapshot.WledSpeed, snapshot.WledIntensity, snapshot.WledPaletteId,
+                            snapshot.WledPrimaryColor, snapshot.WledSecondaryColor, snapshot.WledBrightness,
+                            restoreCts.Token);
                     }
+                    catch (Exception)
+                    {
+                        // Błąd przywracania efektu po wyjściu z ambientu nie może zabić silnika.
+                    }
+                });
+            }
 
-                    await timer.WaitForNextTickAsync(token);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                // Prawidłowe zamknięcie przy Stop() lub przełączeniu z powrotem na tryb normalny.
-            }
+            preAmbientSnapshot = null;
         }
 
         private void SendBlackFrame()
@@ -221,7 +278,7 @@ namespace AmbilightEngine.Core.Pipeline
                 // Best-effort clear frame, nie blokujemy przełączenia trybu przez błąd sprzętowy.
             }
         }
-        
+
         // Wywoływane synchronicznie z wątku WGC (Capture Thread) przy każdej nowej klatce.
         // Musi być ultra-szybkie: kopiujemy dane do wynajętego bufora i natychmiast wracamy.
         private void OnFrameCapturedFromCaptureThread(ReadOnlySpan<byte> rawPixels, int width, int height, int stride)
@@ -257,6 +314,15 @@ namespace AmbilightEngine.Core.Pipeline
                 {
                     try
                     {
+                        if (isAmbientModeActive)
+                        {
+                            // Tryb ambientowy jest obsługiwany przez jednorazowe SetEffectAsync -
+                            // odrzucamy klatki przechwycone w tym czasie (nie powinno ich być, bo
+                            // OnFrameCapturedFromCaptureThread też sprawdza isAmbientModeActive,
+                            // ale to dodatkowe zabezpieczenie na wypadek wyścigu).
+                            continue;
+                        }
+
                         if (settings.ActiveDisplayMode == DisplayMode.StaticColor)
                         {
                             SendStaticColorFrame();
@@ -324,17 +390,7 @@ namespace AmbilightEngine.Core.Pipeline
                 // Blad wysylki stalego koloru nie moze zabic konsumenta.
             }
         }
-        // Wysyła jednorazową komendę wyboru efektu do WLED. Wywoływane z UI przy zmianie
-        // efektu, a nie z pętli ConsumerLoopAsync, bo firmware WLED sam podtrzymuje animację.
-        public async Task<bool> ActivateWledEffectAsync(int fxId, int speed, int intensity)
-        {
-            if (outputDevice is WledDdpNetworkSender wledSender)
-            {
-                return await wledSender.SetEffectAsync(fxId, speed, intensity);
-            }
 
-            return false;
-        }
         private async Task FpsCounterLoopAsync()
         {
             try
@@ -363,6 +419,7 @@ namespace AmbilightEngine.Core.Pipeline
             isDisposed = true;
 
             Stop();
+            ambientEffectCts?.Dispose();
             cts.Cancel();
             cts.Dispose();
 
