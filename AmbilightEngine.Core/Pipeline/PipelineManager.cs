@@ -212,8 +212,8 @@ namespace AmbilightEngine.Core.Pipeline
                     try
                     {
                         await wledSender.SetEffectAsync(
-                            config.EffectId, config.Speed, config.Intensity, config.PaletteId,
-                            primary, secondary, config.Brightness, token);
+    config.EffectId, config.Speed, config.Intensity, config.PaletteId,
+    primary, secondary, config.Brightness, cancellationToken: token);
                     }
                     catch (OperationCanceledException)
                     {
@@ -252,9 +252,9 @@ namespace AmbilightEngine.Core.Pipeline
                     try
                     {
                         await wledSender.SetEffectAsync(
-                            snapshot.WledEffectId, snapshot.WledSpeed, snapshot.WledIntensity, snapshot.WledPaletteId,
-                            snapshot.WledPrimaryColor, snapshot.WledSecondaryColor, snapshot.WledBrightness,
-                            restoreCts.Token);
+    snapshot.WledEffectId, snapshot.WledSpeed, snapshot.WledIntensity, snapshot.WledPaletteId,
+    snapshot.WledPrimaryColor, snapshot.WledSecondaryColor, snapshot.WledBrightness,
+    cancellationToken: restoreCts.Token);
                     }
                     catch (Exception)
                     {

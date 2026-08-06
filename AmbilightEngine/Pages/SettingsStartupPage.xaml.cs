@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using AmbilightEngine.Core.Capture;
 using AmbilightEngine.Core.SystemState;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
@@ -16,12 +18,19 @@ namespace AmbilightEngine.Pages
         private bool isLoadingUi = true;
 
         // Debounce dla żądań efektu ambientowego, żeby przeciąganie sliderów nie zalewało
-        // WLED requestami HTTP - identyczny mechanizm jak w DashboardPage.
+        // WLED requestami HTTP - identyczny mechanizm jak w DashboardPage. Wysyłają PODGLĄD
+        // (PreviewWledEffectAsync) - nie zmieniają aktywnego trybu wyświetlania aplikacji.
         private DispatcherQueueTimer? lockScreenDebounceTimer;
         private DispatcherQueueTimer? idleDebounceTimer;
         private CancellationTokenSource? lockScreenApplyCts;
         private CancellationTokenSource? idleApplyCts;
         private static readonly TimeSpan EffectDebounceDelay = TimeSpan.FromMilliseconds(150);
+
+        // Ustawiane na true, gdy w trakcie wizyty na tej stronie faktycznie wysłano jakikolwiek
+        // podgląd do WLED - używane przy wyjściu, żeby wiedzieć, czy trzeba przywrócić stan Dashboard.
+        private bool hasSentAnyPreview;
+
+        private List<MonitorInfoItem> loadedMonitors = new();
 
         public SettingsStartupPage()
         {
@@ -46,6 +55,8 @@ namespace AmbilightEngine.Pages
             StartMinimizedToTrayCheckBox.IsChecked = settings.StartMinimizedToTray;
             CloseToTrayCheckBox.IsChecked = settings.CloseToTray;
             AutoMonitorCheckBox.IsChecked = settings.AutoStartWithDefaultMonitor;
+
+            RefreshMonitorsList();
 
             IdleTimeoutSlider.Value = settings.IdleTimeoutMinutes;
             IdleTimeoutValueText.Text = settings.IdleTimeoutMinutes.ToString();
@@ -77,6 +88,23 @@ namespace AmbilightEngine.Pages
             idleDebounceTimer?.Stop();
             lockScreenApplyCts?.Cancel();
             idleApplyCts?.Cancel();
+
+            // Jeśli w trakcie wizyty na tej stronie wysłaliśmy jakikolwiek podgląd do WLED,
+            // a aktywny tryb aplikacji to WledEffects (czyli nic innego nie nadpisuje diod
+            // ciągłym strumieniem DDP), musimy jawnie przywrócić efekt, który faktycznie
+            // powinien grać - inaczej diody zostają "zawieszone" na ostatnio podglądanym efekcie.
+            if (hasSentAnyPreview && mainWindow != null &&
+                mainWindow.Settings.ActiveDisplayMode == DisplayMode.WledEffects)
+            {
+                var settings = mainWindow.Settings;
+                var primary = (settings.LastWledPrimaryColorR, settings.LastWledPrimaryColorG, settings.LastWledPrimaryColorB);
+                var secondary = (settings.LastWledSecondaryColorR, settings.LastWledSecondaryColorG, settings.LastWledSecondaryColorB);
+
+                _ = mainWindow.EngineHost.PreviewWledEffectAsync(
+    settings.LastWledEffectId, settings.LastWledSpeed, settings.LastWledIntensity,
+    settings.LastWledPaletteId, primary, secondary, settings.LastWledBrightness,
+    cancellationToken: CancellationToken.None);
+            }
         }
 
         private async Task LoadEffectsAndPalettesAsync()
@@ -142,6 +170,104 @@ namespace AmbilightEngine.Pages
 
             primaryPicker.Color = Color.FromArgb(255, config.PrimaryColorR, config.PrimaryColorG, config.PrimaryColorB);
             secondaryPicker.Color = Color.FromArgb(255, config.SecondaryColorR, config.SecondaryColorG, config.SecondaryColorB);
+        }
+
+        // ── Podgląd na żywo dla Ekranu blokady ──────────────────────────────────
+
+        private void RequestLockScreenPreviewDebounced()
+        {
+            if (mainWindow == null) return;
+
+            lockScreenDebounceTimer ??= DispatcherQueue.GetForCurrentThread().CreateTimer();
+            lockScreenDebounceTimer.Stop();
+
+            lockScreenApplyCts?.Cancel();
+            lockScreenApplyCts?.Dispose();
+            lockScreenApplyCts = new CancellationTokenSource();
+
+            lockScreenDebounceTimer.Interval = EffectDebounceDelay;
+            lockScreenDebounceTimer.IsRepeating = false;
+            lockScreenDebounceTimer.Tick -= OnLockScreenDebounceTick;
+            lockScreenDebounceTimer.Tick += OnLockScreenDebounceTick;
+            lockScreenDebounceTimer.Start();
+        }
+
+        private void OnLockScreenDebounceTick(object? sender, object e)
+        {
+            lockScreenDebounceTimer!.Stop();
+            var token = lockScreenApplyCts?.Token ?? CancellationToken.None;
+            _ = ApplyLockScreenPreviewAsync(token);
+        }
+
+        private async Task ApplyLockScreenPreviewAsync(CancellationToken token)
+        {
+            if (mainWindow == null || LockScreenEffectComboBox.SelectedIndex < 0) return;
+
+            var config = mainWindow.Settings.LockScreenAmbient;
+
+            try
+            {
+                bool success = await mainWindow.EngineHost.PreviewWledEffectAsync(
+    config.EffectId, config.Speed, config.Intensity, config.PaletteId,
+    (config.PrimaryColorR, config.PrimaryColorG, config.PrimaryColorB),
+    (config.SecondaryColorR, config.SecondaryColorG, config.SecondaryColorB),
+    config.Brightness, cancellationToken: token);
+
+                if (success) hasSentAnyPreview = true;
+            }
+            catch (OperationCanceledException)
+            {
+                // Nowsza zmiana w panelu zastąpiła ten podgląd - oczekiwane.
+            }
+        }
+
+        // ── Podgląd na żywo dla Bezczynności ─────────────────────────────────────
+
+        private void RequestIdlePreviewDebounced()
+        {
+            if (mainWindow == null) return;
+
+            idleDebounceTimer ??= DispatcherQueue.GetForCurrentThread().CreateTimer();
+            idleDebounceTimer.Stop();
+
+            idleApplyCts?.Cancel();
+            idleApplyCts?.Dispose();
+            idleApplyCts = new CancellationTokenSource();
+
+            idleDebounceTimer.Interval = EffectDebounceDelay;
+            idleDebounceTimer.IsRepeating = false;
+            idleDebounceTimer.Tick -= OnIdleDebounceTick;
+            idleDebounceTimer.Tick += OnIdleDebounceTick;
+            idleDebounceTimer.Start();
+        }
+
+        private void OnIdleDebounceTick(object? sender, object e)
+        {
+            idleDebounceTimer!.Stop();
+            var token = idleApplyCts?.Token ?? CancellationToken.None;
+            _ = ApplyIdlePreviewAsync(token);
+        }
+
+        private async Task ApplyIdlePreviewAsync(CancellationToken token)
+        {
+            if (mainWindow == null || IdleEffectComboBox.SelectedIndex < 0) return;
+
+            var config = mainWindow.Settings.IdleAmbient;
+
+            try
+            {
+                bool success = await mainWindow.EngineHost.PreviewWledEffectAsync(
+    config.EffectId, config.Speed, config.Intensity, config.PaletteId,
+    (config.PrimaryColorR, config.PrimaryColorG, config.PrimaryColorB),
+    (config.SecondaryColorR, config.SecondaryColorG, config.SecondaryColorB),
+    config.Brightness, cancellationToken: token);
+
+                if (success) hasSentAnyPreview = true;
+            }
+            catch (OperationCanceledException)
+            {
+                // Nowsza zmiana w panelu zastąpiła ten podgląd - oczekiwane.
+            }
         }
 
         // ── Karta "Autostart i zasobnik" (bez zmian funkcjonalnych - poza zakresem tej zmiany) ──
@@ -210,12 +336,50 @@ namespace AmbilightEngine.Pages
             mainWindow.SettingsService.Save(mainWindow.Settings);
         }
 
+        // ── Lista monitorów ──────────────────────────────────────────────────────
+        // Wcześniej RefreshMonitorsButton_Click i MonitorComboBox_SelectionChanged miały
+        // puste ciała - ComboBox nigdy nie był wypełniany, mimo działającego UI.
+        // MonitorEnumerationHelper enumeruje monitory przez natywne Win32 EnumDisplayMonitors.
+
+        private void RefreshMonitorsList()
+        {
+            loadedMonitors = MonitorEnumerationHelper.EnumerateMonitors();
+
+            bool wasLoadingUi = isLoadingUi;
+            isLoadingUi = true;
+
+            MonitorComboBox.Items.Clear();
+            foreach (MonitorInfoItem monitor in loadedMonitors)
+            {
+                MonitorComboBox.Items.Add(monitor.DisplayName);
+            }
+
+            if (mainWindow != null)
+            {
+                int savedIndex = loadedMonitors.FindIndex(m =>
+                    string.Equals(m.DeviceId, mainWindow.Settings.SelectedMonitorDeviceId, StringComparison.OrdinalIgnoreCase));
+
+                if (savedIndex >= 0)
+                {
+                    MonitorComboBox.SelectedIndex = savedIndex;
+                }
+            }
+
+            isLoadingUi = wasLoadingUi;
+        }
+
         private void MonitorComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
+            if (isLoadingUi || mainWindow == null) return;
+            if (MonitorComboBox.SelectedIndex < 0 || MonitorComboBox.SelectedIndex >= loadedMonitors.Count) return;
+
+            mainWindow.Settings.SelectedMonitorDeviceId = loadedMonitors[MonitorComboBox.SelectedIndex].DeviceId;
+            mainWindow.SettingsService.Save(mainWindow.Settings);
         }
 
         private void RefreshMonitorsButton_Click(object sender, RoutedEventArgs e)
         {
+            RefreshMonitorsList();
         }
 
         // ── Karta "Tryb ambientowy" - timeout bezczynności ──
@@ -247,6 +411,7 @@ namespace AmbilightEngine.Pages
             if (isLoadingUi || mainWindow == null || LockScreenEffectComboBox.SelectedIndex < 0) return;
             mainWindow.Settings.LockScreenAmbient.EffectId = LockScreenEffectComboBox.SelectedIndex;
             mainWindow.SettingsService.Save(mainWindow.Settings);
+            RequestLockScreenPreviewDebounced();
         }
 
         private void LockScreenPaletteComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -254,6 +419,7 @@ namespace AmbilightEngine.Pages
             if (isLoadingUi || mainWindow == null || LockScreenPaletteComboBox.SelectedIndex < 0) return;
             mainWindow.Settings.LockScreenAmbient.PaletteId = LockScreenPaletteComboBox.SelectedIndex;
             mainWindow.SettingsService.Save(mainWindow.Settings);
+            RequestLockScreenPreviewDebounced();
         }
 
         private void LockScreenSpeedSlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
@@ -262,6 +428,7 @@ namespace AmbilightEngine.Pages
             if (isLoadingUi || mainWindow == null) return;
             mainWindow.Settings.LockScreenAmbient.Speed = (int)e.NewValue;
             mainWindow.SettingsService.Save(mainWindow.Settings);
+            RequestLockScreenPreviewDebounced();
         }
 
         private void LockScreenIntensitySlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
@@ -270,6 +437,7 @@ namespace AmbilightEngine.Pages
             if (isLoadingUi || mainWindow == null) return;
             mainWindow.Settings.LockScreenAmbient.Intensity = (int)e.NewValue;
             mainWindow.SettingsService.Save(mainWindow.Settings);
+            RequestLockScreenPreviewDebounced();
         }
 
         private void LockScreenBrightnessSlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
@@ -278,6 +446,7 @@ namespace AmbilightEngine.Pages
             if (isLoadingUi || mainWindow == null) return;
             mainWindow.Settings.LockScreenAmbient.Brightness = (int)e.NewValue;
             mainWindow.SettingsService.Save(mainWindow.Settings);
+            RequestLockScreenPreviewDebounced();
         }
 
         private void LockScreenPrimaryColorPicker_ColorChanged(ColorPicker sender, ColorChangedEventArgs args)
@@ -287,6 +456,7 @@ namespace AmbilightEngine.Pages
             mainWindow.Settings.LockScreenAmbient.PrimaryColorG = args.NewColor.G;
             mainWindow.Settings.LockScreenAmbient.PrimaryColorB = args.NewColor.B;
             mainWindow.SettingsService.Save(mainWindow.Settings);
+            RequestLockScreenPreviewDebounced();
         }
 
         private void LockScreenSecondaryColorPicker_ColorChanged(ColorPicker sender, ColorChangedEventArgs args)
@@ -296,6 +466,7 @@ namespace AmbilightEngine.Pages
             mainWindow.Settings.LockScreenAmbient.SecondaryColorG = args.NewColor.G;
             mainWindow.Settings.LockScreenAmbient.SecondaryColorB = args.NewColor.B;
             mainWindow.SettingsService.Save(mainWindow.Settings);
+            RequestLockScreenPreviewDebounced();
         }
 
         // ── Karta "Bezczynność" ──
@@ -316,6 +487,7 @@ namespace AmbilightEngine.Pages
             if (isLoadingUi || mainWindow == null || IdleEffectComboBox.SelectedIndex < 0) return;
             mainWindow.Settings.IdleAmbient.EffectId = IdleEffectComboBox.SelectedIndex;
             mainWindow.SettingsService.Save(mainWindow.Settings);
+            RequestIdlePreviewDebounced();
         }
 
         private void IdlePaletteComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -323,6 +495,7 @@ namespace AmbilightEngine.Pages
             if (isLoadingUi || mainWindow == null || IdlePaletteComboBox.SelectedIndex < 0) return;
             mainWindow.Settings.IdleAmbient.PaletteId = IdlePaletteComboBox.SelectedIndex;
             mainWindow.SettingsService.Save(mainWindow.Settings);
+            RequestIdlePreviewDebounced();
         }
 
         private void IdleSpeedSlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
@@ -331,6 +504,7 @@ namespace AmbilightEngine.Pages
             if (isLoadingUi || mainWindow == null) return;
             mainWindow.Settings.IdleAmbient.Speed = (int)e.NewValue;
             mainWindow.SettingsService.Save(mainWindow.Settings);
+            RequestIdlePreviewDebounced();
         }
 
         private void IdleIntensitySlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
@@ -339,6 +513,7 @@ namespace AmbilightEngine.Pages
             if (isLoadingUi || mainWindow == null) return;
             mainWindow.Settings.IdleAmbient.Intensity = (int)e.NewValue;
             mainWindow.SettingsService.Save(mainWindow.Settings);
+            RequestIdlePreviewDebounced();
         }
 
         private void IdleBrightnessSlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
@@ -347,6 +522,7 @@ namespace AmbilightEngine.Pages
             if (isLoadingUi || mainWindow == null) return;
             mainWindow.Settings.IdleAmbient.Brightness = (int)e.NewValue;
             mainWindow.SettingsService.Save(mainWindow.Settings);
+            RequestIdlePreviewDebounced();
         }
 
         private void IdlePrimaryColorPicker_ColorChanged(ColorPicker sender, ColorChangedEventArgs args)
@@ -356,6 +532,7 @@ namespace AmbilightEngine.Pages
             mainWindow.Settings.IdleAmbient.PrimaryColorG = args.NewColor.G;
             mainWindow.Settings.IdleAmbient.PrimaryColorB = args.NewColor.B;
             mainWindow.SettingsService.Save(mainWindow.Settings);
+            RequestIdlePreviewDebounced();
         }
 
         private void IdleSecondaryColorPicker_ColorChanged(ColorPicker sender, ColorChangedEventArgs args)
@@ -365,6 +542,7 @@ namespace AmbilightEngine.Pages
             mainWindow.Settings.IdleAmbient.SecondaryColorG = args.NewColor.G;
             mainWindow.Settings.IdleAmbient.SecondaryColorB = args.NewColor.B;
             mainWindow.SettingsService.Save(mainWindow.Settings);
+            RequestIdlePreviewDebounced();
         }
     }
 }

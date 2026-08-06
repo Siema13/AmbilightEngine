@@ -9,7 +9,9 @@
                   VerticalScrollMode="Auto"
                   VerticalScrollBarVisibility="Auto">
 
-        <Grid Padding="32" HorizontalAlignment="Stretch" Background="{ThemeResource M3SurfaceContainerBrush}">
+        <Grid Padding="32"
+              HorizontalAlignment="Stretch"
+              Background="{ThemeResource M3SurfaceContainerBrush}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -75,6 +77,8 @@
             <!-- Pusty stan + lista -->
             <Grid Grid.Row="3"
                   Margin="0,24,0,0">
+
+                <!-- Pusty stan -->
                 <StackPanel x:Name="ProfilesEmptyStatePanel"
                             Spacing="10"
                             MaxWidth="860"
@@ -96,6 +100,7 @@
                     </Border>
                 </StackPanel>
 
+                <!-- Lista profili -->
                 <ItemsControl x:Name="ProfilesList">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
@@ -162,6 +167,7 @@
                                                        FontWeight="SemiBold"
                                                        FontSize="14" />
 
+                                            <!-- Jasność -->
                                             <StackPanel Spacing="6">
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>
@@ -181,6 +187,7 @@
                                                         Value="{Binding BrightnessPercent, Mode=TwoWay}" />
                                             </StackPanel>
 
+                                            <!-- Wygładzanie (ms) -->
                                             <StackPanel Spacing="6">
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>
@@ -200,6 +207,7 @@
                                                         Value="{Binding SmoothingSpeedMs, Mode=TwoWay}" />
                                             </StackPanel>
 
+                                            <!-- Próg czerni -->
                                             <StackPanel Spacing="6">
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>
@@ -219,6 +227,7 @@
                                                         Value="{Binding BlackCutoffThreshold, Mode=TwoWay}" />
                                             </StackPanel>
 
+                                            <!-- Temperatura barwowa -->
                                             <StackPanel Spacing="6">
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>
@@ -238,6 +247,7 @@
                                                         Value="{Binding ColorTemperatureKelvin, Mode=TwoWay}" />
                                             </StackPanel>
 
+                                            <!-- Gamma -->
                                             <StackPanel Spacing="6">
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>
@@ -257,6 +267,7 @@
                                                         Value="{Binding GammaValue, Mode=TwoWay}" />
                                             </StackPanel>
 
+                                            <!-- Nasycenie -->
                                             <StackPanel Spacing="6">
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>
@@ -275,6 +286,12 @@
                                                         StepFrequency="0.1"
                                                         Value="{Binding SaturationBoost, Mode=TwoWay}" />
                                             </StackPanel>
+
+                                            <!-- Reset do domyślnych -->
+                                            <Button Content="Przywróć domyślne parametry obrazu"
+                                                    HorizontalAlignment="Left"
+                                                    Tag="{Binding}"
+                                                    Click="ResetProfileImageDefaultsButton_Click" />
                                         </StackPanel>
                                     </Border>
                                 </StackPanel>
@@ -285,4 +302,5 @@
             </Grid>
         </Grid>
     </ScrollViewer>
+
 </Page>

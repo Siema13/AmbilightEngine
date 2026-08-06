@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using AmbilightEngine.Core.Hardware;
 using AmbilightEngine.Core.SystemState;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -15,19 +17,21 @@ public sealed partial class DashboardPage : Page
 {
     private List<string> loadedWledEffects = new();
     private List<string> loadedWledPalettes = new();
+    private List<WledEffectMetadata> loadedEffectMetadata = new();
+
+    // Mapowanie: pozycja w (posortowanym) ComboBoksie -> rzeczywiste ID efektu/palety w WLED.
+    // Niezbędne, bo SelectedIndex po sortowaniu alfabetycznym nie jest już równy fxId.
+    private List<int> effectIndexMap = new();
+    private List<int> paletteIndexMap = new();
+
     private MainWindow? mainWindow;
     private DispatcherQueueTimer? fpsTimer;
     private readonly DispatcherQueue uiDispatcherQueue;
     private bool isLoadingUi = false;
 
-    // ── Debounce dla efektów WLED ────────────────────────────────────────────
-    // Bez tego każdy tick slidera wysyłał osobne żądanie HTTP do ESP32, co przy
-    // przeciąganiu slidera generowało dziesiątki żądań kolejkujących się na
-    // jednowątkowym serwerze WLED - stąd opóźnienia rzędu 30s-1min.
     private DispatcherQueueTimer? effectDebounceTimer;
     private CancellationTokenSource? effectApplyCts;
     private static readonly TimeSpan EffectDebounceDelay = TimeSpan.FromMilliseconds(120);
-    // ──────────────────────────────────────────────────────────────────────────
 
     public DashboardPage()
     {
@@ -57,7 +61,6 @@ public sealed partial class DashboardPage : Page
 
         ApplyStatus(mainWindow.EngineHost.CurrentStatus);
 
-        // NOWOŚĆ: podgląd na żywo diod LED (WLED Peek) - niezależny od stanu silnika.
         WledPreviewControl.Configure(mainWindow.Settings);
 
         fpsTimer ??= uiDispatcherQueue.CreateTimer();
@@ -101,7 +104,7 @@ public sealed partial class DashboardPage : Page
             return;
         }
 
-        if (!mainWindow.EngineHost.IsRunning)
+        if (!mainWindow.EngineHost.IsCapturing)
         {
             FpsText.Text = "FPS --";
             return;
@@ -134,7 +137,6 @@ public sealed partial class DashboardPage : Page
                 StatusInfoBar.Title = "Uruchamianie";
                 StatusInfoBar.IsOpen = true;
                 ToggleButton.IsEnabled = false;
-                ToggleButton.Content = "Uruchamianie...";
                 break;
 
             case EngineRunState.Running:
@@ -142,7 +144,6 @@ public sealed partial class DashboardPage : Page
                 StatusInfoBar.Title = "Ambilight aktywny";
                 StatusInfoBar.IsOpen = true;
                 ToggleButton.IsEnabled = true;
-                ToggleButton.Content = "Zatrzymaj Ambilight";
                 break;
 
             case EngineRunState.Ambient:
@@ -150,7 +151,6 @@ public sealed partial class DashboardPage : Page
                 StatusInfoBar.Title = "Tryb ambientowy";
                 StatusInfoBar.IsOpen = true;
                 ToggleButton.IsEnabled = true;
-                ToggleButton.Content = "Zatrzymaj Ambilight";
                 break;
 
             case EngineRunState.Error:
@@ -158,7 +158,6 @@ public sealed partial class DashboardPage : Page
                 StatusInfoBar.Title = "Błąd silnika";
                 StatusInfoBar.IsOpen = true;
                 ToggleButton.IsEnabled = true;
-                ToggleButton.Content = "Spróbuj uruchomić ponownie";
                 break;
 
             case EngineRunState.Stopped:
@@ -167,9 +166,29 @@ public sealed partial class DashboardPage : Page
                 StatusInfoBar.Title = "Silnik zatrzymany";
                 StatusInfoBar.IsOpen = true;
                 ToggleButton.IsEnabled = true;
-                ToggleButton.Content = "Wybierz monitor i uruchom Ambilight";
                 break;
         }
+
+        UpdateToggleButtonContent();
+    }
+
+    private void UpdateToggleButtonContent()
+    {
+        if (mainWindow == null)
+        {
+            ToggleButton.Content = "Wybierz monitor i uruchom Ambilight";
+            return;
+        }
+
+        if (mainWindow.EngineHost.CurrentStatus.State == EngineRunState.Starting)
+        {
+            ToggleButton.Content = "Uruchamianie...";
+            return;
+        }
+
+        ToggleButton.Content = mainWindow.EngineHost.IsCapturing
+            ? "Zatrzymaj Ambilight"
+            : "Wybierz monitor i uruchom Ambilight";
     }
 
     private async void DisplayModeRadio_Checked(object sender, RoutedEventArgs e)
@@ -245,11 +264,6 @@ public sealed partial class DashboardPage : Page
         StatusInfoBar.Title = "WLED Effects";
         StatusInfoBar.Message = "Wczytywanie listy efektów z urządzenia...";
 
-        // FIX: populacja ComboBoxów musi być osłonięta flagą isLoadingUi. Items.Clear()
-        // i kolejne Items.Add() mogą wywołać SelectionChanged (np. przy automatycznym
-        // zaznaczeniu pierwszego elementu przez WinUI) - bez tej osłony każde takie
-        // zdarzenie odpalało prawdziwe żądanie HTTP do WLED, mimo że to nie była
-        // akcja użytkownika, tylko odświeżenie listy.
         isLoadingUi = true;
         try
         {
@@ -261,6 +275,7 @@ public sealed partial class DashboardPage : Page
             {
                 loadedWledEffects = await mainWindow.EngineHost.GetAvailableWledEffectsAsync();
                 loadedWledPalettes = await mainWindow.EngineHost.GetAvailableWledPalettesAsync();
+                loadedEffectMetadata = await mainWindow.EngineHost.GetWledEffectMetadataAsync();
 
                 if (loadedWledEffects.Count == 0)
                 {
@@ -270,15 +285,8 @@ public sealed partial class DashboardPage : Page
                     return;
                 }
 
-                foreach (string effectName in loadedWledEffects)
-                {
-                    WledEffectComboBox.Items.Add(effectName);
-                }
-
-                foreach (string paletteName in loadedWledPalettes)
-                {
-                    WledPaletteComboBox.Items.Add(paletteName);
-                }
+                PopulateEffectComboBox();
+                PopulatePaletteComboBox();
 
                 WledEffectComboBox.PlaceholderText = "Wybierz efekt";
                 StatusInfoBar.Severity = InfoBarSeverity.Success;
@@ -298,19 +306,81 @@ public sealed partial class DashboardPage : Page
         }
     }
 
-    /// <summary>
-    /// Wysyła aktualny stan efektu do WLED. Wywoływana z tokenem anulowania,
-    /// żeby debounce mógł odrzucić nieaktualne żądania w toku.
-    /// </summary>
+    // Wypełnia ComboBox efektów alfabetycznie, oznacza efekty wymagające matrycy 2D,
+    // i ukrywa zarezerwowane wpisy "RSVD"/"-" (WLED wypełniacze numeracji, które przy
+    // wybraniu bezgłośnie przełączają się na Solid - dokumentacja WLED wprost radzi je
+    // usuwać z UI). effectIndexMap zachowuje mapowanie pozycja-widoku -> rzeczywiste fxId.
+    private void PopulateEffectComboBox()
+    {
+        var entries = new List<(string DisplayName, string SortKey, int OriginalIndex)>();
+
+        for (int i = 0; i < loadedWledEffects.Count; i++)
+        {
+            string rawName = loadedWledEffects[i];
+
+            if (string.Equals(rawName, "RSVD", StringComparison.OrdinalIgnoreCase) ||
+                rawName.Trim() == "-")
+            {
+                continue;
+            }
+
+            bool requiresMatrix = i < loadedEffectMetadata.Count && loadedEffectMetadata[i].RequiresMatrix2D;
+            string displayName = requiresMatrix ? $"{rawName} ⬛ (matryca 2D)" : rawName;
+
+            entries.Add((displayName, rawName, i));
+        }
+
+        entries.Sort((a, b) => string.Compare(a.SortKey, b.SortKey, StringComparison.OrdinalIgnoreCase));
+
+        effectIndexMap = entries.Select(entry => entry.OriginalIndex).ToList();
+
+        foreach (var entry in entries)
+        {
+            WledEffectComboBox.Items.Add(entry.DisplayName);
+        }
+    }
+
+    private void PopulatePaletteComboBox()
+    {
+        var entries = new List<(string Name, int OriginalIndex)>();
+
+        for (int i = 0; i < loadedWledPalettes.Count; i++)
+        {
+            entries.Add((loadedWledPalettes[i], i));
+        }
+
+        entries.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
+
+        paletteIndexMap = entries.Select(entry => entry.OriginalIndex).ToList();
+
+        foreach (var entry in entries)
+        {
+            WledPaletteComboBox.Items.Add(entry.Name);
+        }
+    }
+
     private async Task ApplyCurrentEffectAsync(CancellationToken cancellationToken)
     {
-        if (WledEffectComboBox.SelectedIndex < 0 || mainWindow == null) return;
+        int selectedEffectPosition = WledEffectComboBox.SelectedIndex;
+        if (selectedEffectPosition < 0 || selectedEffectPosition >= effectIndexMap.Count || mainWindow == null) return;
 
-        int fxId = WledEffectComboBox.SelectedIndex;
+        int fxId = effectIndexMap[selectedEffectPosition];
+
         int speed = (int)EffectSpeedSlider.Value;
         int intensity = (int)EffectIntensitySlider.Value;
-        int paletteId = WledPaletteComboBox.SelectedIndex >= 0 ? WledPaletteComboBox.SelectedIndex : 0;
+
+        int selectedPalettePosition = WledPaletteComboBox.SelectedIndex;
+        int paletteId = (selectedPalettePosition >= 0 && selectedPalettePosition < paletteIndexMap.Count)
+            ? paletteIndexMap[selectedPalettePosition]
+            : 0;
+
         int brightness = (int)EffectBrightnessSlider.Value;
+        int custom1 = (int)Custom1Slider.Value;
+        int custom2 = (int)Custom2Slider.Value;
+        int custom3 = (int)Custom3Slider.Value;
+        bool check1 = Check1CheckBox.IsChecked ?? false;
+        bool check2 = Check2CheckBox.IsChecked ?? false;
+        bool check3 = Check3CheckBox.IsChecked ?? false;
 
         var primaryColor = (EffectPrimaryColorPicker.Color.R, EffectPrimaryColorPicker.Color.G, EffectPrimaryColorPicker.Color.B);
         var secondaryColor = (EffectSecondaryColorPicker.Color.R, EffectSecondaryColorPicker.Color.G, EffectSecondaryColorPicker.Color.B);
@@ -319,7 +389,8 @@ public sealed partial class DashboardPage : Page
         {
             mainWindow.Settings.SelectedWledEffectId = fxId.ToString();
             bool success = await mainWindow.EngineHost.ActivateWledEffectAsync(
-                fxId, speed, intensity, paletteId, primaryColor, secondaryColor, brightness, cancellationToken);
+                fxId, speed, intensity, paletteId, primaryColor, secondaryColor, brightness,
+                custom1, custom2, custom3, check1, check2, check3, cancellationToken);
 
             if (cancellationToken.IsCancellationRequested)
             {
@@ -336,15 +407,9 @@ public sealed partial class DashboardPage : Page
         }
         catch (OperationCanceledException)
         {
-            // Ignorowane - normalny efekt debounce, nowsze żądanie zastąpiło to.
         }
     }
 
-    /// <summary>
-    /// Centralny punkt wywołania efektu z UI. Odczekuje EffectDebounceDelay ciszy
-    /// zanim wyśle żądanie HTTP, anulując wcześniejsze żądanie w toku. Zapobiega
-    /// to zalewowi requestów podczas przeciągania sliderów lub szybkiej zmiany kolorów.
-    /// </summary>
     private void RequestApplyEffectDebounced()
     {
         if (mainWindow == null) return;
@@ -358,12 +423,6 @@ public sealed partial class DashboardPage : Page
 
         effectDebounceTimer.Interval = EffectDebounceDelay;
         effectDebounceTimer.IsRepeating = false;
-        // FIX #5: OnEffectDebounceTick MUSI być metodą instancyjną klasy, nie funkcją
-        // lokalną. Funkcja lokalna tworzy nowe zamknięcie (closure) przy każdym wywołaniu
-        // tej metody, więc "-=" poniżej nigdy nie trafiało w faktycznie zarejestrowany
-        // poprzedni handler - subskrypcje się kumulowały bez końca, a każdy tick timera
-        // odpalał WSZYSTKIE nagromadzone handlery naraz (stąd dziesiątki identycznych
-        // linii "żądanie anulowane" w tej samej milisekundzie przy każdej zmianie UI).
         effectDebounceTimer.Tick -= OnEffectDebounceTick;
         effectDebounceTimer.Tick += OnEffectDebounceTick;
         effectDebounceTimer.Start();
@@ -377,6 +436,136 @@ public sealed partial class DashboardPage : Page
     }
 
     private void WledEffectComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (mainWindow == null) return;
+
+        ApplyEffectMetadataToUi();
+
+        if (isLoadingUi) return;
+        RequestApplyEffectDebounced();
+    }
+
+    // Wymuszamy, żeby przy otwarciu listy widok przewinął się do WYBRANEGO elementu na
+    // górze, a nie centrował go na środku widocznego obszaru (domyślne zachowanie WinUI
+    // dla dużych list, które przy 220 efektach wygląda jak "otwarcie od połowy listy").
+    private void EffectComboBox_DropDownOpened(object sender, object e)
+    {
+        if (WledEffectComboBox.SelectedIndex < 0) return;
+
+        uiDispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+        {
+            var container = WledEffectComboBox.ContainerFromIndex(WledEffectComboBox.SelectedIndex) as FrameworkElement;
+            container?.StartBringIntoView(new BringIntoViewOptions { VerticalAlignmentRatio = 0.0 });
+        });
+    }
+
+    private void PaletteComboBox_DropDownOpened(object sender, object e)
+    {
+        if (WledPaletteComboBox.SelectedIndex < 0) return;
+
+        uiDispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+        {
+            var container = WledPaletteComboBox.ContainerFromIndex(WledPaletteComboBox.SelectedIndex) as FrameworkElement;
+            container?.StartBringIntoView(new BringIntoViewOptions { VerticalAlignmentRatio = 0.0 });
+        });
+    }
+
+    private void ApplyEffectMetadataToUi()
+    {
+        int selectedPosition = WledEffectComboBox.SelectedIndex;
+        if (selectedPosition < 0 || selectedPosition >= effectIndexMap.Count)
+        {
+            Matrix2DWarningBar.IsOpen = false;
+            return;
+        }
+
+        int index = effectIndexMap[selectedPosition];
+        if (index >= loadedEffectMetadata.Count)
+        {
+            Matrix2DWarningBar.IsOpen = false;
+            return;
+        }
+
+        var meta = loadedEffectMetadata[index];
+
+        Matrix2DWarningBar.IsOpen = meta.RequiresMatrix2D;
+
+        bool wasLoadingUi = isLoadingUi;
+        isLoadingUi = true;
+
+        Custom1Panel.Visibility = meta.HasCustom1 ? Visibility.Visible : Visibility.Collapsed;
+        Custom1Label.Text = meta.Custom1Label;
+        Custom2Panel.Visibility = meta.HasCustom2 ? Visibility.Visible : Visibility.Collapsed;
+        Custom2Label.Text = meta.Custom2Label;
+        Custom3Panel.Visibility = meta.HasCustom3 ? Visibility.Visible : Visibility.Collapsed;
+        Custom3Label.Text = meta.Custom3Label;
+
+        Check1CheckBox.Visibility = meta.HasCheck1 ? Visibility.Visible : Visibility.Collapsed;
+        Check1CheckBox.Content = meta.Check1Label;
+        Check2CheckBox.Visibility = meta.HasCheck2 ? Visibility.Visible : Visibility.Collapsed;
+        Check2CheckBox.Content = meta.Check2Label;
+        Check3CheckBox.Visibility = meta.HasCheck3 ? Visibility.Visible : Visibility.Collapsed;
+        Check3CheckBox.Content = meta.Check3Label;
+
+        WledPaletteComboBox.Visibility = meta.HasPalette ? Visibility.Visible : Visibility.Collapsed;
+
+        if (mainWindow != null)
+        {
+            int c1 = ParseDefaultOrFallback(meta, "c1", mainWindow.Settings.LastWledCustom1);
+            int c2 = ParseDefaultOrFallback(meta, "c2", mainWindow.Settings.LastWledCustom2);
+            int c3 = ParseDefaultOrFallback(meta, "c3", mainWindow.Settings.LastWledCustom3);
+
+            Custom1Slider.Value = c1;
+            Custom1ValueText.Text = c1.ToString();
+            Custom2Slider.Value = c2;
+            Custom2ValueText.Text = c2.ToString();
+            Custom3Slider.Value = c3;
+            Custom3ValueText.Text = c3.ToString();
+
+            Check1CheckBox.IsChecked = ParseDefaultBoolOrFallback(meta, "o1", mainWindow.Settings.LastWledCheck1);
+            Check2CheckBox.IsChecked = ParseDefaultBoolOrFallback(meta, "o2", mainWindow.Settings.LastWledCheck2);
+            Check3CheckBox.IsChecked = ParseDefaultBoolOrFallback(meta, "o3", mainWindow.Settings.LastWledCheck3);
+        }
+
+        isLoadingUi = wasLoadingUi;
+    }
+
+    private static int ParseDefaultOrFallback(WledEffectMetadata meta, string key, int fallback)
+    {
+        return meta.Defaults.TryGetValue(key, out string? value) && int.TryParse(value, out int parsed)
+            ? parsed
+            : fallback;
+    }
+
+    private static bool ParseDefaultBoolOrFallback(WledEffectMetadata meta, string key, bool fallback)
+    {
+        return meta.Defaults.TryGetValue(key, out string? value) && value == "1"
+            ? true
+            : fallback;
+    }
+
+    private void Custom1Slider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        Custom1ValueText.Text = ((int)e.NewValue).ToString();
+        if (isLoadingUi || mainWindow == null) return;
+        RequestApplyEffectDebounced();
+    }
+
+    private void Custom2Slider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        Custom2ValueText.Text = ((int)e.NewValue).ToString();
+        if (isLoadingUi || mainWindow == null) return;
+        RequestApplyEffectDebounced();
+    }
+
+    private void Custom3Slider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        Custom3ValueText.Text = ((int)e.NewValue).ToString();
+        if (isLoadingUi || mainWindow == null) return;
+        RequestApplyEffectDebounced();
+    }
+
+    private void CheckBox_Changed(object sender, RoutedEventArgs e)
     {
         if (isLoadingUi || mainWindow == null) return;
         RequestApplyEffectDebounced();
@@ -431,16 +620,16 @@ public sealed partial class DashboardPage : Page
 
         try
         {
-            if (mainWindow.EngineHost.IsRunning)
+            if (mainWindow.EngineHost.IsCapturing)
             {
-                mainWindow.EngineHost.Stop();
+                mainWindow.EngineHost.StopCapture();
                 ApplyStatus(mainWindow.EngineHost.CurrentStatus);
                 UpdateFps();
             }
             else
             {
                 IntPtr hwnd = WindowNative.GetWindowHandle(mainWindow);
-                await mainWindow.EngineHost.StartAsync(hwnd);
+                await mainWindow.EngineHost.StartCaptureAsync(hwnd);
                 ApplyStatus(mainWindow.EngineHost.CurrentStatus);
                 UpdateFps();
             }

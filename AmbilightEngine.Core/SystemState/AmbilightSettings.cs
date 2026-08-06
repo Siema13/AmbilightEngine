@@ -126,6 +126,12 @@ namespace AmbilightEngine.Core.SystemState
         public byte LastWledSecondaryColorR { get; set; } = 0;
         public byte LastWledSecondaryColorG { get; set; } = 0;
         public byte LastWledSecondaryColorB { get; set; } = 0;
+        public int LastWledCustom1 { get; set; } = 128;
+        public int LastWledCustom2 { get; set; } = 128;
+        public int LastWledCustom3 { get; set; } = 0;
+        public bool LastWledCheck1 { get; set; }
+        public bool LastWledCheck2 { get; set; }
+        public bool LastWledCheck3 { get; set; }
 
         // --- Dynamika swiatla (attack/decay/sensitivity/floor) ---
         public double MotionAttackSpeed { get; set; } = 0.6;

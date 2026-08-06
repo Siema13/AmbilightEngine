@@ -19,12 +19,9 @@ namespace AmbilightEngine.Core.Hardware
         private readonly string httpBaseUrl;
         private readonly string effectsListUrl;
         private readonly string palettesListUrl;
+        private readonly string fxDataUrl;
         private readonly HttpClient httpClient;
 
-        // Single-flight gate dla żądań efektów: gwarantuje, że w danym momencie do WLED
-        // leci co najwyżej JEDNO żądanie SetEffectAsync. Poprzednie, nieukończone żądanie
-        // jest anulowane zanim nowe zajmie gate - eliminuje to kolejkowanie się wielu
-        // żądań na jednowątkowym serwerze WLED podczas szybkiej zmiany sliderów/efektów.
         private readonly SemaphoreSlim effectRequestGate = new(1, 1);
         private CancellationTokenSource? latestEffectCts;
 
@@ -46,10 +43,8 @@ namespace AmbilightEngine.Core.Hardware
             httpBaseUrl = $"http://{ipAddress}/json/state";
             effectsListUrl = $"http://{ipAddress}/json/eff";
             palettesListUrl = $"http://{ipAddress}/json/pal";
+            fxDataUrl = $"http://{ipAddress}/json/fxdata";
 
-            // FIX #1: MaxConnectionsPerServer zwiększony z 1 do 4 - oryginalne "1"
-            // powodowało, że wszystkie żądania czekały na zwolnienie jednego, wspólnego
-            // slotu połączenia, co przy zablokowanym żądaniu tworzyło kaskadę timeoutów.
             var handler = new HttpClientHandler
             {
                 MaxConnectionsPerServer = 4
@@ -158,7 +153,6 @@ namespace AmbilightEngine.Core.Hardware
                 }
                 catch (SocketException)
                 {
-                    // UDP: brak potwierdzenia dostawy jest normalny - ignorujemy pojedynczy zgubiony pakiet.
                 }
 
                 ledsProcessed += ledsInThisChunk;
@@ -278,6 +272,45 @@ namespace AmbilightEngine.Core.Hardware
             return palettes;
         }
 
+        public async Task<List<WledEffectMetadata>> GetEffectMetadataAsync()
+        {
+            var metadata = new List<WledEffectMetadata>();
+
+            try
+            {
+                using var requestMessage = new HttpRequestMessage(HttpMethod.Get, fxDataUrl);
+                requestMessage.Headers.ConnectionClose = true;
+
+                using var response = await httpClient.SendAsync(requestMessage);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[DIAG] WLED JSON API: nie udało się pobrać metadanych efektów, status HTTP: {(int)response.StatusCode}");
+                    return metadata;
+                }
+
+                string json = await response.Content.ReadAsStringAsync();
+                using JsonDocument doc = JsonDocument.Parse(json);
+
+                foreach (JsonElement item in doc.RootElement.EnumerateArray())
+                {
+                    string raw = item.GetString() ?? string.Empty;
+                    metadata.Add(WledEffectMetadataParser.Parse(raw));
+                }
+
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DIAG] WLED JSON API: pobrano metadane dla {metadata.Count} efektów.");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DIAG] WLED JSON API: błąd podczas pobierania metadanych efektów - {ex.Message}");
+            }
+
+            return metadata;
+        }
+
         public async Task<bool> SetEffectAsync(
             int fxId,
             int speed = 128,
@@ -286,15 +319,14 @@ namespace AmbilightEngine.Core.Hardware
             (byte R, byte G, byte B)? primaryColor = null,
             (byte R, byte G, byte B)? secondaryColor = null,
             int? brightness = null,
+            int? custom1 = null,
+            int? custom2 = null,
+            int? custom3 = null,
+            bool? check1 = null,
+            bool? check2 = null,
+            bool? check3 = null,
             CancellationToken cancellationToken = default)
         {
-            // FIX #4: NIE dysponujemy tutaj tokenu, który właśnie przypisujemy do pola
-            // latestEffectCts (poprzednia wersja robiła "using var linkedCts", co
-            // dysponowało go na końcu TEJ metody, mimo że pole klasy wciąż na niego
-            // wskazywało - kolejne wywołanie robiło Cancel() na martwym obiekcie i
-            // rzucało ObjectDisposedException poza wszelkim try/catch, bezgłośnie
-            // blokując każdą zmianę efektu po pierwszej udanej).
-            // Teraz dysponujemy wyłącznie POPRZEDNI, właśnie zastąpiony token.
             var previousCts = latestEffectCts;
             var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             latestEffectCts = linkedCts;
@@ -338,14 +370,18 @@ namespace AmbilightEngine.Core.Hardware
                     }
                 };
 
+                if (custom1.HasValue) segPayload["c1"] = custom1.Value;
+                if (custom2.HasValue) segPayload["c2"] = custom2.Value;
+                if (custom3.HasValue) segPayload["c3"] = custom3.Value;
+                if (check1.HasValue) segPayload["o1"] = check1.Value;
+                if (check2.HasValue) segPayload["o2"] = check2.Value;
+                if (check3.HasValue) segPayload["o3"] = check3.Value;
+
                 var rootPayload = new Dictionary<string, object>
                 {
                     ["on"] = true,
-                    // Wyłącza Live Override (DDP realtime) natychmiast - bez tego WLED
-                    // czeka aż realtime mode wygaśnie samo, zanim zastosuje efekt lokalny.
                     ["lor"] = 0,
                     ["transition"] = 0,
-                    // seg MUSI być tablicą [ {...} ], a nie pojedynczym obiektem.
                     ["seg"] = new[] { segPayload }
                 };
 
@@ -378,8 +414,6 @@ namespace AmbilightEngine.Core.Hardware
             }
             catch (ObjectDisposedException)
             {
-                // Token mógł zostać zdysponowany przez kolejne, nowsze wywołanie w trakcie
-                // oczekiwania na odpowiedź HTTP - traktujemy jak anulowanie, nie jak błąd.
                 System.Diagnostics.Debug.WriteLine("[DIAG] WLED JSON API: żądanie efektu anulowane (token zdysponowany przez nowsze żądanie).");
                 return false;
             }

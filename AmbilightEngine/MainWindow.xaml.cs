@@ -83,6 +83,29 @@ namespace AmbilightEngine
             NavView.SelectedItem = NavView.MenuItems[0];
             ContentFrame.Navigate(typeof(DashboardPage));
             UpdateTrayToolTip(EngineHost.CurrentStatus);
+
+            // NOWOŚĆ: połączenie z WLED (JSON API + DDP) startuje automatycznie razem
+            // z aplikacją, niezależnie od tego, czy przechwytywanie ekranu jest aktywne.
+            // Dzięki temu podgląd na żywo (WLED Peek) w Dashboard i Ustawieniach działa
+            // od razu po otwarciu aplikacji, bez konieczności klikania "Start" na Dashboard.
+            IntPtr hwnd = WindowNative.GetWindowHandle(this);
+            _ = InitializeWledConnectionOnStartupAsync(hwnd);
+        }
+
+        private async System.Threading.Tasks.Task InitializeWledConnectionOnStartupAsync(IntPtr hwnd)
+        {
+            try
+            {
+                bool connected = await EngineHost.EnsureWledConnectionAsync(hwnd);
+                System.Diagnostics.Debug.WriteLine(
+                    connected
+                        ? "DIAG: Połączenie z WLED nawiązane automatycznie przy starcie aplikacji."
+                        : "DIAG: Nie udało się automatycznie połączyć z WLED przy starcie.");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"DIAG: Wyjątek podczas automatycznego łączenia z WLED: {ex.Message}");
+            }
         }
 
         public bool ShouldStartMinimizedToTray(string[] args)
@@ -133,8 +156,6 @@ namespace AmbilightEngine
                 Settings.CustomWindowBackgroundG,
                 Settings.CustomWindowBackgroundB);
 
-            // Kolor akcentu dla stylów wielobarwnych (WarmDusk, Aurora, VelvetGlow, Studio) -
-            // sterowany przez użytkownika z kafelka "Akcent stylu tła" w Ustawieniach ogólnych.
             var accentColor = Windows.UI.Color.FromArgb(
                 255,
                 Settings.CustomBackgroundAccentR,
@@ -166,7 +187,6 @@ namespace AmbilightEngine
                     }
                 },
 
-                // Graphite: chłodny, przygaszony gradient o niskiej nasyceniu - efekt szczotkowanego metalu.
                 "Graphite" => new LinearGradientBrush
                 {
                     StartPoint = new Windows.Foundation.Point(0, 0),
@@ -190,8 +210,6 @@ namespace AmbilightEngine
                     }
                 },
 
-                // WarmDusk: przesunięcie koloru bazowego w stronę koloru akcentu przy dolnej krawędzi,
-                // symulując poświatę zachodzącego słońca za oknem.
                 "WarmDusk" => new LinearGradientBrush
                 {
                     StartPoint = new Windows.Foundation.Point(0, 0),
@@ -204,7 +222,6 @@ namespace AmbilightEngine
                     }
                 },
 
-                // Aurora: pasmowy gradient z akcentem użytkownika, inspirowany zorzą polarną.
                 "Aurora" => new LinearGradientBrush
                 {
                     StartPoint = new Windows.Foundation.Point(0, 0),
@@ -218,7 +235,6 @@ namespace AmbilightEngine
                     }
                 },
 
-                // Studio: winieta radialna, akcent oświetla środek jak reflektor studyjny.
                 "Studio" => new RadialGradientBrush
                 {
                     Center = new Windows.Foundation.Point(0.5, 0.35),
@@ -232,7 +248,6 @@ namespace AmbilightEngine
                     }
                 },
 
-                // ContrastLayered: ostre, wąskie pasma tonalne dające efekt warstwowych płaszczyzn.
                 "ContrastLayered" => new LinearGradientBrush
                 {
                     StartPoint = new Windows.Foundation.Point(0, 0),
@@ -248,7 +263,6 @@ namespace AmbilightEngine
                     }
                 },
 
-                // VelvetGlow: nasycony blask centralny w kolorze akcentu, gasnący w głęboką, aksamitną czerń.
                 "VelvetGlow" => new RadialGradientBrush
                 {
                     Center = new Windows.Foundation.Point(0.5, 0.5),
@@ -266,8 +280,6 @@ namespace AmbilightEngine
             };
         }
 
-        // Miesza dwa kolory w proporcji t (0 = wyłącznie color, 1 = wyłącznie target).
-        // Używane do przesuwania koloru bazowego w kierunku konkretnego akcentu (np. Aurora, WarmDusk).
         private static Windows.UI.Color Blend(Windows.UI.Color color, Windows.UI.Color target, double t)
         {
             return Windows.UI.Color.FromArgb(
@@ -277,8 +289,6 @@ namespace AmbilightEngine
                 (byte)(color.B + (target.B - color.B) * t));
         }
 
-        // Redukuje nasycenie koloru, miksując go z jego szarym odpowiednikiem (luminancją).
-        // amount = 1.0 daje pełną skalę szarości, 0.0 nie zmienia koloru.
         private static Windows.UI.Color Desaturate(Windows.UI.Color color, double amount)
         {
             byte gray = (byte)(color.R * 0.299 + color.G * 0.587 + color.B * 0.114);
@@ -361,7 +371,6 @@ namespace AmbilightEngine
 
             if (micaController is not null)
             {
-                // Backdrop już aktywny - unikamy podwójnej inicjalizacji.
                 return;
             }
 
@@ -475,24 +484,27 @@ namespace AmbilightEngine
             Activate();
         }
 
+        // NOWOŚĆ: te trzy metody sterują TYLKO przechwytywaniem ekranu (StartCaptureAsync/
+        // StopCapture) - połączenie z WLED (EngineHost.IsRunning) jest już nawiązane od
+        // startu aplikacji i nie jest tu w żaden sposób dotykane.
         private async System.Threading.Tasks.Task StartAmbilightAsync()
         {
             try
             {
-                if (EngineHost.IsRunning)
+                if (EngineHost.IsCapturing)
                 {
                     return;
                 }
 
                 IntPtr hwnd = WindowNative.GetWindowHandle(this);
-                bool started = await EngineHost.StartAsync(hwnd);
+                bool started = await EngineHost.StartCaptureAsync(hwnd);
                 if (started)
                 {
-                    System.Diagnostics.Debug.WriteLine("DIAG: Ambilight wystartował poprawnie.");
+                    System.Diagnostics.Debug.WriteLine("DIAG: Przechwytywanie wystartowało poprawnie.");
                 }
                 else
                 {
-                    System.Diagnostics.Debug.WriteLine("DIAG: StartAsync zwrócił false - nie wybrano monitora lub wystąpił błąd inicjalizacji.");
+                    System.Diagnostics.Debug.WriteLine("DIAG: StartCaptureAsync zwrócił false - nie wybrano monitora lub wystąpił błąd inicjalizacji.");
                 }
             }
             catch (Exception ex)
@@ -505,13 +517,13 @@ namespace AmbilightEngine
         {
             try
             {
-                if (!EngineHost.IsRunning)
+                if (!EngineHost.IsCapturing)
                 {
                     return;
                 }
 
-                EngineHost.Stop();
-                System.Diagnostics.Debug.WriteLine("DIAG: Ambilight zatrzymany.");
+                EngineHost.StopCapture();
+                System.Diagnostics.Debug.WriteLine("DIAG: Przechwytywanie zatrzymane, połączenie z WLED pozostaje aktywne.");
                 UpdateTrayToolTip(EngineHost.CurrentStatus);
             }
             catch (Exception ex)
@@ -522,7 +534,7 @@ namespace AmbilightEngine
 
         private async System.Threading.Tasks.Task ToggleAmbilightAsync()
         {
-            if (EngineHost.IsRunning)
+            if (EngineHost.IsCapturing)
             {
                 StopAmbilight();
             }

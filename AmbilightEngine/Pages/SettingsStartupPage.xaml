@@ -162,6 +162,10 @@
                             <TextBlock Text="Animacja lub kolor wyświetlany przez cały czas trwania blokady ekranu."
                                        Style="{StaticResource SectionSubTextStyle}" />
 
+                            <!-- Podgląd na żywo (WLED Peek) - przeniesiony pod listę efektów, żeby był
+                                 widoczny od razu podczas przeglądania i konfigurowania efektu. -->
+                            <preview:LedStripPreviewControl x:Name="LockScreenPreviewControl" Margin="0,4,0,4" />
+
                             <TextBlock Text="Paleta kolorów"
                                        FontWeight="SemiBold" />
                             <ComboBox x:Name="LockScreenPaletteComboBox"
@@ -249,7 +253,6 @@
                                                   ColorChanged="LockScreenSecondaryColorPicker_ColorChanged"
                                                   IsAlphaEnabled="False"
                                                   IsMoreButtonVisible="False" />
-                            <preview:LedStripPreviewControl x:Name="LockScreenPreviewControl" Margin="0,8,0,0" />
                         </StackPanel>
                     </StackPanel>
                 </Border>
@@ -289,6 +292,10 @@
                                       SelectionChanged="IdleEffectComboBox_SelectionChanged" />
                             <TextBlock Text="Animacja lub kolor wyświetlany podczas bezczynności."
                                        Style="{StaticResource SectionSubTextStyle}" />
+
+                            <!-- Podgląd na żywo (WLED Peek) - przeniesiony pod listę efektów, żeby był
+                                 widoczny od razu podczas przeglądania i konfigurowania efektu. -->
+                            <preview:LedStripPreviewControl x:Name="IdlePreviewControl" Margin="0,4,0,4" />
 
                             <TextBlock Text="Paleta kolorów"
                                        FontWeight="SemiBold" />
@@ -377,7 +384,6 @@
                                                   ColorChanged="IdleSecondaryColorPicker_ColorChanged"
                                                   IsAlphaEnabled="False"
                                                   IsMoreButtonVisible="False" />
-                            <preview:LedStripPreviewControl x:Name="IdlePreviewControl" Margin="0,8,0,0" />
                         </StackPanel>
                     </StackPanel>
                 </Border>

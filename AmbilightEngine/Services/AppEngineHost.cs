@@ -32,7 +32,10 @@ namespace AmbilightEngine
 
         private readonly BlackBarDetectionService blackBarDetector = new BlackBarDetectionService();
         private BlackBarInsets currentInsets = BlackBarInsets.None;
+
         public bool IsRunning { get; private set; }
+        public bool IsCapturing { get; private set; }
+
         public string CurrentProfileName { get; private set; } = "Domyślny";
         public EngineStatusInfo CurrentStatus { get; private set; } = EngineStatusInfo.Stopped("Gotowy do startu.");
 
@@ -45,11 +48,77 @@ namespace AmbilightEngine
             blackBarDetector.IsEnabled = settings.EnableBlackBarDetection;
         }
 
-        public async Task<bool> StartAsync(IntPtr windowHandle)
+        public async Task<bool> EnsureWledConnectionAsync(IntPtr windowHandle)
         {
-            if (IsRunning)
+            if (ledSender != null)
             {
-                SetStatus(EngineStatusInfo.Running("Ambilight już działa."));
+                return true;
+            }
+
+            SetStatus(EngineStatusInfo.Starting("Łączenie z urządzeniem WLED..."));
+
+            try
+            {
+                var zones = BuildZones(1920, 1080);
+                currentZones = zones;
+
+                imageProcessor = new ImageProcessor(zones);
+                imageProcessor.SetDynamics(
+                    (float)settings.MotionAttackSpeed,
+                    (float)settings.MotionDecaySpeed,
+                    (float)settings.ColorSensitivity,
+                    settings.MinimumBrightnessFloor);
+                imageProcessor.SetQuality(settings.PixelSkipStep);
+                ApplyColorCalibrationToProcessor(imageProcessor);
+
+                ledSender = new WledDdpNetworkSender(settings.EspIpAddress, zones.Length);
+                ledSender.Open();
+
+                stateWatcher?.Dispose();
+                stateWatcher = new SystemStateWatcher(settings, windowHandle);
+                stateWatcher.AmbientModeRequested += trigger =>
+                {
+                    var config = trigger == SystemAmbientTrigger.LockOrSleep
+                        ? settings.LockScreenAmbient
+                        : settings.IdleAmbient;
+
+                    pipelineManager?.EnterAmbientMode(config);
+                    SetStatus(EngineStatusInfo.Ambient($"Tryb ambientowy: {trigger} (efekt WLED #{config.EffectId}, włączony: {config.IsEnabled})"));
+                };
+                stateWatcher.NormalModeRequested += () =>
+                {
+                    pipelineManager?.ExitAmbientMode();
+                    SetStatus(IsCapturing
+                        ? EngineStatusInfo.Running("Przechwytywanie aktywne.")
+                        : EngineStatusInfo.Running("Połączono z WLED, przechwytywanie wyłączone."));
+                };
+
+                InitializeProfileWatcher();
+                ActivateDefaultProfile("połączenie z WLED");
+
+                IsRunning = true;
+                SetStatus(EngineStatusInfo.Running($"Połączono z WLED: {settings.EspIpAddress}. Przechwytywanie wyłączone."));
+                return true;
+            }
+            catch (Exception ex)
+            {
+                IsRunning = false;
+                SetStatus(EngineStatusInfo.Error($"Nie udało się połączyć z WLED: {ex.Message}"));
+                return false;
+            }
+        }
+
+        public async Task<bool> StartCaptureAsync(IntPtr windowHandle)
+        {
+            if (ledSender == null)
+            {
+                SetStatus(EngineStatusInfo.Error("Brak połączenia z WLED - nie można uruchomić przechwytywania."));
+                return false;
+            }
+
+            if (IsCapturing)
+            {
+                SetStatus(EngineStatusInfo.Running("Przechwytywanie już aktywne."));
                 return true;
             }
 
@@ -98,7 +167,7 @@ namespace AmbilightEngine
 
                 if (item == null)
                 {
-                    SetStatus(EngineStatusInfo.Stopped("Nie wybrano źródła przechwytywania."));
+                    SetStatus(EngineStatusInfo.Running("Nie wybrano źródła - połączenie z WLED pozostaje aktywne."));
                     return false;
                 }
 
@@ -108,17 +177,20 @@ namespace AmbilightEngine
                 var zones = BuildZones(lastCapturedWidth, lastCapturedHeight);
                 currentZones = zones;
 
-                imageProcessor = new ImageProcessor(zones);
-                imageProcessor.SetDynamics(
+                var newProcessor = new ImageProcessor(zones);
+                newProcessor.SetDynamics(
                     (float)settings.MotionAttackSpeed,
                     (float)settings.MotionDecaySpeed,
                     (float)settings.ColorSensitivity,
                     settings.MinimumBrightnessFloor);
-                imageProcessor.SetQuality(settings.PixelSkipStep);
-                ApplyColorCalibrationToProcessor(imageProcessor);
+                newProcessor.SetQuality(settings.PixelSkipStep);
+                ApplyProfileOrCalibration(newProcessor);
+                imageProcessor = newProcessor;
 
-                ledSender?.Dispose();
-                ledSender = new WledDdpNetworkSender(settings.EspIpAddress, zones.Length);
+                if (zones.Length != ledSender!.LedCount)
+                {
+                    ledSender.Reconfigure(zones.Length);
+                }
 
                 captureEngine?.Dispose();
                 captureEngine = new WgcCaptureEngine();
@@ -131,40 +203,37 @@ namespace AmbilightEngine
 
                 captureEngine.Start(item);
 
-                stateWatcher?.Dispose();
-                stateWatcher = new SystemStateWatcher(settings, windowHandle);
-                stateWatcher.AmbientModeRequested += trigger =>
-                {
-                    var config = trigger == SystemAmbientTrigger.LockOrSleep
-                        ? settings.LockScreenAmbient
-                        : settings.IdleAmbient;
-
-                    pipelineManager?.EnterAmbientMode(config);
-                    SetStatus(EngineStatusInfo.Ambient($"Tryb ambientowy: {trigger} (efekt WLED #{config.EffectId}, włączony: {config.IsEnabled})"));
-                };
-                stateWatcher.NormalModeRequested += () =>
-                {
-                    pipelineManager?.ExitAmbientMode();
-                    SetStatus(EngineStatusInfo.Running("Przechwytywanie aktywne."));
-                };
-                stateWatcher.NormalModeRequested += () =>
-                {
-                    pipelineManager?.ExitAmbientMode();
-                    SetStatus(EngineStatusInfo.Running("Przechwytywanie aktywne."));
-                };
-
-                InitializeProfileWatcher();
-                ActivateDefaultProfile("start silnika");
-
-                IsRunning = true;
+                IsCapturing = true;
                 SetStatus(EngineStatusInfo.Running($"Aktywne: {item.DisplayName} -> {settings.EspIpAddress}"));
                 return true;
             }
             catch (Exception ex)
             {
-                IsRunning = false;
-                SetStatus(EngineStatusInfo.Error($"Nie udało się uruchomić Ambilight: {ex.Message}"));
+                IsCapturing = false;
+                SetStatus(EngineStatusInfo.Error($"Nie udało się uruchomić przechwytywania: {ex.Message}"));
                 return false;
+            }
+        }
+
+        public void StopCapture()
+        {
+            if (!IsCapturing) return;
+
+            try
+            {
+                pipelineManager?.Dispose();
+                pipelineManager = null;
+
+                captureEngine?.Dispose();
+                captureEngine = null;
+
+                IsCapturing = false;
+                SetStatus(EngineStatusInfo.Running("Przechwytywanie wstrzymane. Połączenie z WLED pozostaje aktywne."));
+            }
+            catch (Exception ex)
+            {
+                IsCapturing = false;
+                SetStatus(EngineStatusInfo.Error($"Błąd podczas zatrzymywania przechwytywania: {ex.Message}"));
             }
         }
 
@@ -189,7 +258,6 @@ namespace AmbilightEngine
                 profile.ColorTemperatureKelvin,
                 profile.GammaValue);
 
-            // Wall Color Compensation - stosowana zawsze, niezależnie od aktywnego profilu.
             newImageProcessor.SetWallColorFromHex(settings.WallColorHex, settings.WallColorStrength);
 
             pipelineManager.ReplaceImageProcessor(newImageProcessor);
@@ -217,14 +285,24 @@ namespace AmbilightEngine
                 GammaValue = 2.2
             };
 
-            ActivateProfile(defaultProfile, triggerSource);
+            if (pipelineManager != null)
+            {
+                ActivateProfile(defaultProfile, triggerSource);
+            }
+            else
+            {
+                CurrentProfileName = string.IsNullOrWhiteSpace(defaultProfile.DisplayName)
+                    ? "Domyślny"
+                    : defaultProfile.DisplayName;
+                ProfileChanged?.Invoke(CurrentProfileName);
+            }
         }
 
         public void ApplyGeometrySettings()
         {
-            if (!IsRunning || lastCapturedWidth == 0 || lastCapturedHeight == 0)
+            if (!IsCapturing || lastCapturedWidth == 0 || lastCapturedHeight == 0)
             {
-                SetStatus(EngineStatusInfo.Stopped("Geometria zapisana. Zostanie zastosowana przy następnym starcie."));
+                SetStatus(EngineStatusInfo.Stopped("Geometria zapisana. Zostanie zastosowana przy następnym starcie przechwytywania."));
                 return;
             }
 
@@ -235,47 +313,32 @@ namespace AmbilightEngine
 
                 int previousLedCount = ledSender?.LedCount ?? -1;
 
-                if (zones.Length == previousLedCount)
+                var newProcessor = new ImageProcessor(zones);
+                newProcessor.SetDynamics(
+                    (float)settings.MotionAttackSpeed,
+                    (float)settings.MotionDecaySpeed,
+                    (float)settings.ColorSensitivity,
+                    settings.MinimumBrightnessFloor);
+                newProcessor.SetQuality(settings.PixelSkipStep);
+                ApplyProfileOrCalibration(newProcessor);
+                imageProcessor = newProcessor;
+
+                if (zones.Length != previousLedCount)
                 {
-                    var newProcessor = new ImageProcessor(zones);
-                    newProcessor.SetDynamics(
-                        (float)settings.MotionAttackSpeed,
-                        (float)settings.MotionDecaySpeed,
-                        (float)settings.ColorSensitivity,
-                        settings.MinimumBrightnessFloor);
-                    newProcessor.SetQuality(settings.PixelSkipStep);
-
-                    ApplyProfileOrCalibration(newProcessor);
-
-                    pipelineManager?.ReplaceImageProcessor(newProcessor);
-                    imageProcessor = newProcessor;
-
-                    SetStatus(EngineStatusInfo.Running("Geometria została zastosowana na żywo."));
-                }
-                else
-                {
-                    var newProcessor = new ImageProcessor(zones);
-                    newProcessor.SetDynamics(
-                        (float)settings.MotionAttackSpeed,
-                        (float)settings.MotionDecaySpeed,
-                        (float)settings.ColorSensitivity,
-                        settings.MinimumBrightnessFloor);
-                    newProcessor.SetQuality(settings.PixelSkipStep);
-
-                    ApplyProfileOrCalibration(newProcessor);
-
-                    imageProcessor = newProcessor;
-
-                    ledSender?.Dispose();
-                    ledSender = new WledDdpNetworkSender(settings.EspIpAddress, zones.Length);
+                    ledSender?.Reconfigure(zones.Length);
 
                     pipelineManager?.Dispose();
-                    pipelineManager = new PipelineManager(captureEngine!, imageProcessor, ledSender, settings, zones.Length);
+                    pipelineManager = new PipelineManager(captureEngine!, imageProcessor, ledSender!, settings, zones.Length);
                     pipelineManager.SetBlackBarDetectionEnabled(settings.EnableBlackBarDetection);
                     pipelineManager.BlackBarInsetsChanged += OnBlackBarInsetsChanged;
                     pipelineManager.Start();
 
                     SetStatus(EngineStatusInfo.Running($"Geometria została zastosowana na żywo. Nowa liczba diod: {zones.Length}."));
+                }
+                else
+                {
+                    pipelineManager?.ReplaceImageProcessor(newProcessor);
+                    SetStatus(EngineStatusInfo.Running("Geometria została zastosowana na żywo."));
                 }
             }
             catch (Exception ex)
@@ -302,7 +365,6 @@ namespace AmbilightEngine
                         activeProfile.ColorTemperatureKelvin,
                         activeProfile.GammaValue);
 
-                    // WCC dotyczy fizycznej ściany - stosuj niezależnie od profilu aplikacji.
                     newProcessor.SetWallColorFromHex(settings.WallColorHex, settings.WallColorStrength);
                     return;
                 }
@@ -337,7 +399,7 @@ namespace AmbilightEngine
         {
             currentInsets = insets;
 
-            if (!IsRunning || lastCapturedWidth == 0 || lastCapturedHeight == 0)
+            if (!IsCapturing || lastCapturedWidth == 0 || lastCapturedHeight == 0)
             {
                 return;
             }
@@ -361,7 +423,6 @@ namespace AmbilightEngine
             }
             catch (Exception)
             {
-                // Błąd przy przeliczaniu geometrii po wykryciu czarnych pasów nie może zabić silnika.
             }
         }
 
@@ -396,7 +457,7 @@ namespace AmbilightEngine
         {
             profileWatcher?.SetProfiles(settings.Profiles);
 
-            if (IsRunning)
+            if (IsCapturing)
             {
                 ActivateDefaultProfile("odświeżenie listy profili");
             }
@@ -406,7 +467,7 @@ namespace AmbilightEngine
         {
             if (currentZones == null || pipelineManager == null)
             {
-                Debug.WriteLine("[DIAG] AppEngineHost: profil zignorowany - potok nie jest jeszcze aktywny.");
+                Debug.WriteLine("[DIAG] AppEngineHost: profil zignorowany - potok przechwytywania nie jest aktywny.");
                 return;
             }
 
@@ -429,7 +490,6 @@ namespace AmbilightEngine
                 profile.ColorTemperatureKelvin,
                 profile.GammaValue);
 
-            // Wall Color Compensation - globalna dla środowiska, niezależna od profilu aplikacji.
             processor.SetWallColorFromHex(settings.WallColorHex, settings.WallColorStrength);
         }
 
@@ -449,26 +509,36 @@ namespace AmbilightEngine
         }
 
         public async Task<bool> ActivateWledEffectAsync(
-    int fxId,
-    int speed,
-    int intensity,
-    int paletteId = 0,
-    (byte R, byte G, byte B)? primaryColor = null,
-    (byte R, byte G, byte B)? secondaryColor = null,
-    int? brightness = null,
-    CancellationToken cancellationToken = default)
+            int fxId,
+            int speed,
+            int intensity,
+            int paletteId = 0,
+            (byte R, byte G, byte B)? primaryColor = null,
+            (byte R, byte G, byte B)? secondaryColor = null,
+            int? brightness = null,
+            int? custom1 = null,
+            int? custom2 = null,
+            int? custom3 = null,
+            bool? check1 = null,
+            bool? check2 = null,
+            bool? check3 = null,
+            CancellationToken cancellationToken = default)
         {
             if (ledSender == null) return false;
 
             settings.ActiveDisplayMode = DisplayMode.WledEffects;
 
-            // Zapamiętujemy parametry, żeby PipelineManager mógł je przywrócić po wyjściu
-            // z trybu ambientowego (ExitAmbientMode odtwarza dokładnie ten stan).
             settings.LastWledEffectId = fxId;
             settings.LastWledPaletteId = paletteId;
             settings.LastWledSpeed = speed;
             settings.LastWledIntensity = intensity;
             settings.LastWledBrightness = brightness ?? settings.LastWledBrightness;
+            settings.LastWledCustom1 = custom1 ?? settings.LastWledCustom1;
+            settings.LastWledCustom2 = custom2 ?? settings.LastWledCustom2;
+            settings.LastWledCustom3 = custom3 ?? settings.LastWledCustom3;
+            settings.LastWledCheck1 = check1 ?? settings.LastWledCheck1;
+            settings.LastWledCheck2 = check2 ?? settings.LastWledCheck2;
+            settings.LastWledCheck3 = check3 ?? settings.LastWledCheck3;
 
             if (primaryColor.HasValue)
             {
@@ -484,14 +554,39 @@ namespace AmbilightEngine
                 settings.LastWledSecondaryColorB = secondaryColor.Value.B;
             }
 
-            return await ledSender.SetEffectAsync(fxId, speed, intensity, paletteId, primaryColor, secondaryColor, brightness, cancellationToken);
+            return await ledSender.SetEffectAsync(
+                fxId, speed, intensity, paletteId, primaryColor, secondaryColor, brightness,
+                custom1, custom2, custom3, check1, check2, check3, cancellationToken);
+        }
+
+        public async Task<bool> PreviewWledEffectAsync(
+            int fxId,
+            int speed,
+            int intensity,
+            int paletteId = 0,
+            (byte R, byte G, byte B)? primaryColor = null,
+            (byte R, byte G, byte B)? secondaryColor = null,
+            int? brightness = null,
+            int? custom1 = null,
+            int? custom2 = null,
+            int? custom3 = null,
+            bool? check1 = null,
+            bool? check2 = null,
+            bool? check3 = null,
+            CancellationToken cancellationToken = default)
+        {
+            if (ledSender == null) return false;
+
+            return await ledSender.SetEffectAsync(
+                fxId, speed, intensity, paletteId, primaryColor, secondaryColor, brightness,
+                custom1, custom2, custom3, check1, check2, check3, cancellationToken);
         }
 
         public async Task<List<string>> GetAvailableWledEffectsAsync()
         {
-            if (ledSender is WledDdpNetworkSender activeWledSender)
+            if (ledSender != null)
             {
-                return await activeWledSender.GetAvailableEffectsAsync();
+                return await ledSender.GetAvailableEffectsAsync();
             }
 
             try
@@ -507,9 +602,9 @@ namespace AmbilightEngine
 
         public async Task<List<string>> GetAvailableWledPalettesAsync()
         {
-            if (ledSender is WledDdpNetworkSender activeWledSender)
+            if (ledSender != null)
             {
-                return await activeWledSender.GetAvailablePalettesAsync();
+                return await ledSender.GetAvailablePalettesAsync();
             }
 
             try
@@ -520,6 +615,24 @@ namespace AmbilightEngine
             catch (Exception)
             {
                 return new List<string>();
+            }
+        }
+
+        public async Task<List<WledEffectMetadata>> GetWledEffectMetadataAsync()
+        {
+            if (ledSender != null)
+            {
+                return await ledSender.GetEffectMetadataAsync();
+            }
+
+            try
+            {
+                using var probeSender = new WledDdpNetworkSender(settings.EspIpAddress, settings.LedCount);
+                return await probeSender.GetEffectMetadataAsync();
+            }
+            catch (Exception)
+            {
+                return new List<WledEffectMetadata>();
             }
         }
 
@@ -540,17 +653,17 @@ namespace AmbilightEngine
         {
             try
             {
+                StopCapture();
+
                 profileWatcher?.Dispose();
                 profileWatcher = null;
 
                 stateWatcher?.Dispose();
                 stateWatcher = null;
 
-                pipelineManager?.Dispose();
-                pipelineManager = null;
-
-                captureEngine?.Dispose();
-                captureEngine = null;
+                ledSender?.Close();
+                ledSender?.Dispose();
+                ledSender = null;
 
                 imageProcessor = null;
                 currentZones = null;

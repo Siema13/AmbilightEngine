@@ -93,7 +93,10 @@ namespace AmbilightEngine.Services
                         .Build());
 
                 await PublishStatusAsync("connection", "online");
-                await PublishStatusAsync("power", engineHost.IsRunning ? "ON" : "OFF");
+                // NOWOŚĆ: "power" odzwierciedla stan PRZECHWYTYWANIA (IsCapturing), nie samego
+                // połączenia z WLED (IsRunning) - to drugie jest aktywne praktycznie od startu
+                // aplikacji i nie ma sensu jako przełącznik "power" w Home Assistant.
+                await PublishStatusAsync("power", engineHost.IsCapturing ? "ON" : "OFF");
             }
             catch (Exception ex)
             {
@@ -145,6 +148,10 @@ namespace AmbilightEngine.Services
             }
         }
 
+        // NOWOŚĆ: komendy "power" sterują TYLKO przechwytywaniem ekranu (StartCaptureAsync/
+        // StopCapture) - połączenie z WLED (EnsureWledConnectionAsync) jest już nawiązane
+        // od startu aplikacji i nie jest tu w żaden sposób dotykane. Dzięki temu wyłączenie
+        // Ambilight przez Home Assistant nie zrywa połączenia z urządzeniem WLED.
         private async Task HandlePowerCommandAsync(string payload)
         {
             string command = (payload ?? string.Empty).Trim().ToUpperInvariant();
@@ -152,9 +159,9 @@ namespace AmbilightEngine.Services
             switch (command)
             {
                 case "ON":
-                    if (!engineHost.IsRunning)
+                    if (!engineHost.IsCapturing)
                     {
-                        bool started = await engineHost.StartAsync(windowHandleProvider());
+                        bool started = await engineHost.StartCaptureAsync(windowHandleProvider());
                         await PublishStatusAsync("power", started ? "ON" : "OFF");
                     }
                     else
@@ -164,23 +171,23 @@ namespace AmbilightEngine.Services
                     break;
 
                 case "OFF":
-                    if (engineHost.IsRunning)
+                    if (engineHost.IsCapturing)
                     {
-                        engineHost.Stop();
+                        engineHost.StopCapture();
                     }
 
                     await PublishStatusAsync("power", "OFF");
                     break;
 
                 case "TOGGLE":
-                    if (engineHost.IsRunning)
+                    if (engineHost.IsCapturing)
                     {
-                        engineHost.Stop();
+                        engineHost.StopCapture();
                         await PublishStatusAsync("power", "OFF");
                     }
                     else
                     {
-                        bool started = await engineHost.StartAsync(windowHandleProvider());
+                        bool started = await engineHost.StartCaptureAsync(windowHandleProvider());
                         await PublishStatusAsync("power", started ? "ON" : "OFF");
                     }
                     break;
@@ -231,9 +238,9 @@ namespace AmbilightEngine.Services
             return PublishStatusAsync("profile", profile.DisplayName ?? "unknown");
         }
 
-        public Task PublishPowerStateAsync(bool isRunning)
+        public Task PublishPowerStateAsync(bool isCapturing)
         {
-            return PublishStatusAsync("power", isRunning ? "ON" : "OFF");
+            return PublishStatusAsync("power", isCapturing ? "ON" : "OFF");
         }
 
         public Task PublishProfileStateAsync(string profileName)

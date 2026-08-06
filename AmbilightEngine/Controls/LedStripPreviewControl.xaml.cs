@@ -13,13 +13,13 @@ using Windows.UI;
 namespace AmbilightEngine.Controls
 {
     // Wizualizuje aktualny stan diod LED na kształcie przypominającym monitor.
-    // Podgląd kolorów pochodzi z funkcji "Peek" WLED przez WebSocket - działa
-    // niezależnie od tego, czy silnik Ambilight jest uruchomiony.
+    // Podgląd kolorów pochodzi z funkcji "Peek" WLED przez WebSocket, współdzielony
+    // przez WledLivePreviewHub - WLED serwuje strumień Peek tylko jednemu klientowi
+    // naraz, więc wszystkie instancje tej kontrolki (Dashboard, Ekran blokady,
+    // Bezczynność) muszą korzystać z JEDNEGO fizycznego połączenia per adres IP.
     //
-    // WAŻNE: połączenie WebSocket startuje bezpośrednio z Configure(), NIE z Loaded -
-    // elementy wewnątrz paneli z Visibility="Collapsed" nie odpalają zdarzenia Loaded
-    // w WinUI 3, więc poleganie na nim uniemożliwiało start połączenia, gdy panel
-    // (np. WledEffectsPanel albo LockScreenAmbientPanel) był domyślnie zwinięty.
+    // WAŻNE: Configure() startuje subskrypcję bezpośrednio, NIE z Loaded - elementy
+    // wewnątrz paneli z Visibility="Collapsed" nie odpalają zdarzenia Loaded w WinUI 3.
     public sealed partial class LedStripPreviewControl : UserControl
     {
         private const int NominalScreenWidth = 1920;
@@ -32,26 +32,28 @@ namespace AmbilightEngine.Controls
         private const double SwatchSize = 18;
         private const double SwatchOffset = 14;
 
-        private readonly WledLivePreviewClient liveClient = new WledLivePreviewClient();
         private readonly DispatcherQueue dispatcherQueue;
         private readonly List<Rectangle> ledSwatches = new();
 
+        private IDisposable? hubSubscription;
         private string? lastConfiguredIp;
+        private bool hasLoggedCountMismatch;
 
         public LedStripPreviewControl()
         {
             InitializeComponent();
             dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
-            liveClient.LiveColorsReceived += OnLiveColorsReceived;
-            liveClient.ConnectionStateChanged += OnConnectionStateChanged;
-
-            Unloaded += (_, _) => liveClient.Stop();
+            Unloaded += (_, _) =>
+            {
+                hubSubscription?.Dispose();
+                hubSubscription = null;
+            };
         }
 
         // Przebudowuje geometrię wizualizacji i (re)łączy podgląd na żywo z aktualnym
-        // adresem IP WLED. Wywołaj po każdej zmianie ustawień geometrii lub adresu IP.
-        // Działa natychmiast, niezależnie od stanu Visibility/Loaded kontrolki.
+        // adresem IP WLED przez współdzielony Hub. Wywołaj po każdej zmianie ustawień
+        // geometrii lub adresu IP. Działa natychmiast, niezależnie od stanu Visibility/Loaded.
         public void Configure(AmbilightSettings settings)
         {
             System.Diagnostics.Debug.WriteLine(
@@ -61,8 +63,10 @@ namespace AmbilightEngine.Controls
 
             if (!string.Equals(lastConfiguredIp, settings.EspIpAddress, StringComparison.OrdinalIgnoreCase))
             {
+                hubSubscription?.Dispose();
                 lastConfiguredIp = settings.EspIpAddress;
-                liveClient.Start(settings.EspIpAddress);
+                hubSubscription = WledLivePreviewHub.Instance.Subscribe(
+                    settings.EspIpAddress, OnLiveColorsReceived, OnConnectionStateChanged);
             }
         }
 
@@ -167,8 +171,6 @@ namespace AmbilightEngine.Controls
 
             return (-100, -100);
         }
-
-        private bool hasLoggedCountMismatch;
 
         private void OnLiveColorsReceived(RgbColor[] colors)
         {

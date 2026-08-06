@@ -152,6 +152,27 @@ namespace AmbilightEngine.Pages
             }
         }
 
+        private void ResetProfileImageDefaultsButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button button || button.Tag is not AppProfile profile)
+            {
+                return;
+            }
+
+            profile.BrightnessPercent = 100;
+            profile.SaturationBoost = 1.0;
+            profile.SmoothingSpeedMs = 120;
+            profile.BlackCutoffThreshold = 8;
+            profile.ColorTemperatureKelvin = 6500;
+            profile.GammaValue = 2.2;
+
+            SaveStatusText.Text = "Przywrócono domyślne parametry obrazu dla profilu. Zapisz zmiany, aby je utrwalić.";
+            ShowInfo(
+                severity: InfoBarSeverity.Informational,
+                title: "Domyślne parametry",
+                message: "Parametry obrazu dla tego profilu zostały zresetowane do wartości domyślnych.");
+        }
+
         private void SaveChangesButton_Click(object sender, RoutedEventArgs e)
         {
             if (mainWindow == null)

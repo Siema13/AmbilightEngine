@@ -74,13 +74,21 @@
                                 <TextBlock Text="Wybierz efekt WLED" FontWeight="SemiBold" />
 
                                 <ComboBox x:Name="WledEffectComboBox"
-                                          HorizontalAlignment="Stretch"
-                                          PlaceholderText="Wczytywanie efektów..."
-                                          SelectionChanged="WledEffectComboBox_SelectionChanged" />
+          HorizontalAlignment="Stretch"
+          PlaceholderText="Wczytywanie efektów..."
+          DropDownOpened="EffectComboBox_DropDownOpened"
+          SelectionChanged="WledEffectComboBox_SelectionChanged" />
 
                                 <TextBlock
                                     Text="Lista efektów wczytywana bezpośrednio z urządzenia WLED. Wybór natychmiast uruchamia efekt na diodach."
                                     Style="{StaticResource SectionSubTextStyle}" />
+
+                                <controls:InfoBar x:Name="Matrix2DWarningBar"
+                                         IsOpen="False"
+                                         IsClosable="False"
+                                         Severity="Warning"
+                                         Title="Efekt wymaga matrycy 2D"
+                                         Message="Ten efekt może wyglądać niepoprawnie na zwykłym pasku LED." />
 
                                 <!-- Podgląd na żywo (WLED Peek) - przeniesiony pod listę efektów, żeby był widoczny
                                      od razu podczas przeglądania i konfigurowania efektu, niezależnie od stanu silnika Ambilight. -->
@@ -114,11 +122,57 @@
                                     Text="Nasycenie/wyrazistość efektu - znaczenie zależy od wybranego efektu (np. gęstość iskier, szerokość paska)."
                                     Style="{StaticResource SectionSubTextStyle}" />
 
+                                <StackPanel x:Name="Custom1Panel" Spacing="8" Visibility="Collapsed">
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="60" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock x:Name="Custom1Label" Text="Custom 1" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        <TextBlock x:Name="Custom1ValueText" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Text="128" />
+                                    </Grid>
+                                    <Slider x:Name="Custom1Slider" Minimum="0" Maximum="255" StepFrequency="1"
+                                            ValueChanged="Custom1Slider_ValueChanged" />
+                                </StackPanel>
+
+                                <StackPanel x:Name="Custom2Panel" Spacing="8" Visibility="Collapsed">
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="60" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock x:Name="Custom2Label" Text="Custom 2" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        <TextBlock x:Name="Custom2ValueText" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Text="128" />
+                                    </Grid>
+                                    <Slider x:Name="Custom2Slider" Minimum="0" Maximum="255" StepFrequency="1"
+                                            ValueChanged="Custom2Slider_ValueChanged" />
+                                </StackPanel>
+
+                                <StackPanel x:Name="Custom3Panel" Spacing="8" Visibility="Collapsed">
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="60" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock x:Name="Custom3Label" Text="Custom 3" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        <TextBlock x:Name="Custom3ValueText" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0" />
+                                    </Grid>
+                                    <Slider x:Name="Custom3Slider" Minimum="0" Maximum="31" StepFrequency="1"
+                                            ValueChanged="Custom3Slider_ValueChanged" />
+                                </StackPanel>
+
+                                <StackPanel x:Name="CheckboxesPanel" Orientation="Horizontal" Spacing="16">
+                                    <CheckBox x:Name="Check1CheckBox" Content="Opcja 1" Visibility="Collapsed" Checked="CheckBox_Changed" Unchecked="CheckBox_Changed" />
+                                    <CheckBox x:Name="Check2CheckBox" Content="Opcja 2" Visibility="Collapsed" Checked="CheckBox_Changed" Unchecked="CheckBox_Changed" />
+                                    <CheckBox x:Name="Check3CheckBox" Content="Opcja 3" Visibility="Collapsed" Checked="CheckBox_Changed" Unchecked="CheckBox_Changed" />
+                                </StackPanel>
+
                                 <TextBlock Text="Paleta kolorów" FontWeight="SemiBold" />
                                 <ComboBox x:Name="WledPaletteComboBox"
-                                          HorizontalAlignment="Stretch"
-                                          PlaceholderText="Wybierz paletę..."
-                                          SelectionChanged="WledPaletteComboBox_SelectionChanged" />
+          HorizontalAlignment="Stretch"
+          PlaceholderText="Wybierz paletę..."
+          DropDownOpened="PaletteComboBox_DropDownOpened"
+          SelectionChanged="WledPaletteComboBox_SelectionChanged" />
                                 <TextBlock
                                     Text="Zestaw kolorów używany przez efekty gradientowe (ignorowane przez efekty jednokolorowe)."
                                     Style="{StaticResource SectionSubTextStyle}" />
