@@ -162,11 +162,13 @@ namespace AmbilightEngine.Core.SystemState
             if (shouldBeIdle && !isIdleTriggered)
             {
                 isIdleTriggered = true;
+                WriteDiagLog($"CheckIdleState: wyzwalam tryb Idle po {idleDuration.TotalSeconds:F1}s bezczynności (próg: {settings.IdleTimeoutMinutes} min).");
                 AmbientModeRequested?.Invoke(SystemAmbientTrigger.Idle);
             }
             else if (!shouldBeIdle && isIdleTriggered)
             {
                 isIdleTriggered = false;
+                WriteDiagLog("CheckIdleState: wychodzę z trybu Idle (wykryto aktywność).");
                 NormalModeRequested?.Invoke();
             }
         }

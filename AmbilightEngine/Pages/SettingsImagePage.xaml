@@ -365,6 +365,68 @@
                                 </StackPanel>
                             </StackPanel>
                         </Border>
+                        <!-- Wykrywanie czarnych pasów -->
+                        <Border Style="{StaticResource CardStyle}">
+                            <StackPanel Spacing="12">
+                                <TextBlock Text="Wykrywanie czarnych pasów"
+                                   Style="{StaticResource SectionHeaderTextStyle}" />
+                                <TextBlock Text="Automatycznie wykrywa czarne pasy (letterbox) przy filmach w formacie kinowym i przesuwa strefy diod na faktyczny obraz."
+                                   Style="{StaticResource SectionSubTextStyle}" />
+
+                                <ToggleSwitch x:Name="BlackBarToggle"
+                                      Header="Włącz wykrywanie czarnych pasów"
+                                      IsOn="False"
+                                      Toggled="BlackBarToggle_Toggled" />
+
+                                <StackPanel x:Name="BlackBarPanel" Spacing="12">
+                                    <!-- Próg czerni -->
+                                    <StackPanel Spacing="6">
+                                        <Grid ColumnSpacing="12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBlock Text="Próg czerni pasów"
+                                               FontWeight="SemiBold" />
+                                            <TextBlock x:Name="BlackBarThresholdValueText"
+                                               Grid.Column="1"
+                                               Text="18" />
+                                        </Grid>
+                                        <Slider x:Name="BlackBarThresholdSlider"
+                                        Minimum="0"
+                                        Maximum="64"
+                                        StepFrequency="1"
+                                        ValueChanged="BlackBarThresholdSlider_ValueChanged" />
+                                        <TextBlock Text="Piksele jaśniejsze niż ten próg nie są uznawane za czarny pas."
+                                           Style="{StaticResource SectionSubTextStyle}" />
+                                    </StackPanel>
+
+                                    <!-- Wymagany udział czarnych pikseli -->
+                                    <StackPanel Spacing="6">
+                                        <Grid ColumnSpacing="12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBlock Text="Wymagany udział czarnych pikseli (%)"
+                                               FontWeight="SemiBold" />
+                                            <TextBlock x:Name="BlackBarMinRatioValueText"
+                                               Grid.Column="1"
+                                               Text="92" />
+                                        </Grid>
+                                        <Slider x:Name="BlackBarMinRatioSlider"
+                                        Minimum="50"
+                                        Maximum="100"
+                                        StepFrequency="1"
+                                        ValueChanged="BlackBarMinRatioSlider_ValueChanged" />
+                                        <TextBlock Text="Im wyższa wartość, tym pewniej algorytm musi być, że linia jest pasem, zanim ją odetnie."
+                                           Style="{StaticResource SectionSubTextStyle}" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </Border>
 

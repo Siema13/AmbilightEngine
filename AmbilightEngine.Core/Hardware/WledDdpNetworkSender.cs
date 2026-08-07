@@ -380,7 +380,8 @@ namespace AmbilightEngine.Core.Hardware
                 var rootPayload = new Dictionary<string, object>
                 {
                     ["on"] = true,
-                    ["lor"] = 0,
+                    ["lor"] = 1, // ZMIANA: było 0. Wymusza natychmiastowe przejęcie kontroli z powrotem
+                                 // od sesji DDP/realtime, niezależnie od ustawionego w WLED Sync/Realtime timeout.
                     ["transition"] = 0,
                     ["seg"] = new[] { segPayload }
                 };

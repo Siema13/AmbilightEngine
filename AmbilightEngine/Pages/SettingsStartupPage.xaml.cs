@@ -55,6 +55,15 @@ namespace AmbilightEngine.Pages
             StartMinimizedToTrayCheckBox.IsChecked = settings.StartMinimizedToTray;
             CloseToTrayCheckBox.IsChecked = settings.CloseToTray;
             AutoMonitorCheckBox.IsChecked = settings.AutoStartWithDefaultMonitor;
+            AutoStartAmbilightCheckBox.IsChecked = settings.AutoStartAmbilight;
+            AutoStartDisplayModeComboBox.SelectedIndex = settings.AutoStartDisplayMode switch
+            {
+                DisplayMode.StaticColor => 1,
+                DisplayMode.WledEffects => 2,
+                _ => 0
+            };
+
+            AutoStartDisplayModeComboBox.IsEnabled = settings.AutoStartAmbilight;
 
             RefreshMonitorsList();
 
@@ -81,7 +90,6 @@ namespace AmbilightEngine.Pages
             LockScreenPreviewControl.Configure(settings);
             IdlePreviewControl.Configure(settings);
         }
-
         private void SettingsStartupPage_Unloaded(object sender, RoutedEventArgs e)
         {
             lockScreenDebounceTimer?.Stop();
@@ -316,12 +324,53 @@ namespace AmbilightEngine.Pages
 
         private void AutoStartAmbilightCheckBox_Checked(object sender, RoutedEventArgs e)
         {
+            if (isLoadingUi || mainWindow == null)
+            {
+                return;
+            }
+
+            mainWindow.Settings.AutoStartAmbilight = true;
+            AutoStartDisplayModeComboBox.IsEnabled = true;
+
+            mainWindow.SettingsService.Save(mainWindow.Settings);
         }
 
         private void AutoStartAmbilightCheckBox_Unchecked(object sender, RoutedEventArgs e)
         {
-        }
+            if (isLoadingUi || mainWindow == null)
+            {
+                return;
+            }
 
+            mainWindow.Settings.AutoStartAmbilight = false;
+            AutoStartDisplayModeComboBox.IsEnabled = false;
+
+            mainWindow.SettingsService.Save(mainWindow.Settings);
+        }
+        private void AutoStartDisplayModeComboBox_SelectionChanged(
+    object sender,
+    SelectionChangedEventArgs e)
+        {
+            if (isLoadingUi || mainWindow == null)
+            {
+                return;
+            }
+
+            if (AutoStartDisplayModeComboBox.SelectedItem is not ComboBoxItem selectedItem ||
+                selectedItem.Tag is not string modeTag)
+            {
+                return;
+            }
+
+            mainWindow.Settings.AutoStartDisplayMode = modeTag switch
+            {
+                "StaticColor" => DisplayMode.StaticColor,
+                "WledEffects" => DisplayMode.WledEffects,
+                _ => DisplayMode.VideoSync
+            };
+
+            mainWindow.SettingsService.Save(mainWindow.Settings);
+        }
         private void AutoMonitorCheckBox_Checked(object sender, RoutedEventArgs e)
         {
             if (isLoadingUi || mainWindow == null) return;
@@ -340,7 +389,7 @@ namespace AmbilightEngine.Pages
         // Wcześniej RefreshMonitorsButton_Click i MonitorComboBox_SelectionChanged miały
         // puste ciała - ComboBox nigdy nie był wypełniany, mimo działającego UI.
         // MonitorEnumerationHelper enumeruje monitory przez natywne Win32 EnumDisplayMonitors.
-
+           
         private void RefreshMonitorsList()
         {
             loadedMonitors = MonitorEnumerationHelper.EnumerateMonitors();

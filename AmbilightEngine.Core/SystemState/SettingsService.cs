@@ -27,16 +27,27 @@ namespace AmbilightEngine.Core.SystemState
             {
                 if (!File.Exists(filePath))
                 {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[DIAG] SettingsService: brak pliku ustawień, tworzę domyślne: {filePath}");
+
                     return new AmbilightSettings();
                 }
 
                 string json = File.ReadAllText(filePath);
+
                 var loaded = JsonSerializer.Deserialize<AmbilightSettings>(json);
+
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DIAG] SettingsService: wczytano ustawienia z: {filePath}; " +
+                    $"AutoStartAmbilight={loaded?.AutoStartAmbilight}");
+
                 return loaded ?? new AmbilightSettings();
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Jeśli plik jest uszkodzony lub nieczytelny, bezpiecznie wracamy do wartości domyślnych.
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DIAG] SettingsService: BŁĄD odczytu ustawień z '{filePath}': {ex}");
+
                 return new AmbilightSettings();
             }
         }
@@ -47,10 +58,14 @@ namespace AmbilightEngine.Core.SystemState
             {
                 string json = JsonSerializer.Serialize(settings, jsonOptions);
                 File.WriteAllText(filePath, json);
+
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DIAG] SettingsService: zapisano ustawienia do: {filePath}");
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Błąd zapisu (np. brak uprawnień) nie powinien wywalić aplikacji.
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DIAG] SettingsService: BŁĄD zapisu ustawień do '{filePath}': {ex}");
             }
         }
     }

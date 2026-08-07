@@ -431,7 +431,12 @@ namespace AmbilightEngine
             blackBarDetector.IsEnabled = enabled;
             pipelineManager?.SetBlackBarDetectionEnabled(enabled);
         }
-
+        public void SetBlackBarDetectionParameters(byte threshold, double minRatio)
+        {
+            blackBarDetector.BlackThreshold = threshold;
+            blackBarDetector.MinBlackRatio = minRatio;
+            pipelineManager?.SetBlackBarDetectionParameters(threshold, minRatio);
+        }
         private void InitializeProfileWatcher()
         {
             Debug.WriteLine($"[DIAG] EvaluateActiveProfile wywołane o {DateTime.Now:HH:mm:ss.fff}");
@@ -558,7 +563,37 @@ namespace AmbilightEngine
                 fxId, speed, intensity, paletteId, primaryColor, secondaryColor, brightness,
                 custom1, custom2, custom3, check1, check2, check3, cancellationToken);
         }
+        public async Task<bool> ActivateStaticColorAsync(
+    byte red,
+    byte green,
+    byte blue,
+    CancellationToken cancellationToken = default)
+        {
+            if (ledSender == null)
+            {
+                return false;
+            }
 
+            settings.ActiveDisplayMode = DisplayMode.StaticColor;
+            settings.StaticColorR = red;
+            settings.StaticColorG = green;
+            settings.StaticColorB = blue;
+
+            return await ledSender.SetEffectAsync(
+                fxId: 0,
+                speed: 0,
+                intensity: 0,
+                paletteId: 0,
+                primaryColor: (red, green, blue),
+                secondaryColor: (0, 0, 0),
+                brightness: 255,
+                cancellationToken: cancellationToken);
+        }
+        public async Task<bool> DisableWledRealtimeOverrideAsync(CancellationToken cancellationToken = default)
+        {
+            if (ledSender == null) return false;
+            return await ledSender.DisableRealtimeOverrideAsync(cancellationToken);
+        }
         public async Task<bool> PreviewWledEffectAsync(
             int fxId,
             int speed,

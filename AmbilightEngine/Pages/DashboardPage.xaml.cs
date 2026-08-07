@@ -43,9 +43,9 @@ public sealed partial class DashboardPage : Page
         Unloaded += DashboardPageUnloaded;
     }
 
-    private void DashboardPageLoaded(object sender, RoutedEventArgs e)
+    private async void DashboardPageLoaded(object sender, RoutedEventArgs e)
     {
-        mainWindow = Application.Current as App is { MainAppWindow: not null } app
+        mainWindow = Application.Current is App { MainAppWindow: not null } app
             ? app.MainAppWindow
             : null;
 
@@ -70,6 +70,33 @@ public sealed partial class DashboardPage : Page
         fpsTimer.Start();
 
         UpdateFps();
+
+        // NOWOŚĆ: przywrócenie zapamiętanego trybu wyświetlania po powrocie na tę stronę.
+        isLoadingUi = true;
+        switch (mainWindow.Settings.ActiveDisplayMode)
+        {
+            case DisplayMode.StaticColor:
+                StaticColorModeRadio.IsChecked = true;
+                StaticColorPanel.Visibility = Visibility.Visible;
+                WledEffectsPanel.Visibility = Visibility.Collapsed;
+                break;
+
+            case DisplayMode.WledEffects:
+                WledEffectsModeRadio.IsChecked = true;
+                StaticColorPanel.Visibility = Visibility.Collapsed;
+                WledEffectsPanel.Visibility = Visibility.Visible;
+                isLoadingUi = false;
+                await LoadWledEffectsAsync();
+                isLoadingUi = true;
+                break;
+
+            default:
+                VideoSyncModeRadio.IsChecked = true;
+                StaticColorPanel.Visibility = Visibility.Collapsed;
+                WledEffectsPanel.Visibility = Visibility.Collapsed;
+                break;
+        }
+        isLoadingUi = false;
     }
 
     private void DashboardPageUnloaded(object sender, RoutedEventArgs e)
@@ -225,6 +252,12 @@ public sealed partial class DashboardPage : Page
         {
             await LoadWledEffectsAsync();
         }
+        else
+        {
+            // Oddajemy priorytet danym DDP (VideoSync/StaticColor) - inaczej WLED wciąż
+            // ignoruje przychodzące ramki z powodu lor:1 ustawionego przy ostatniej komendzie efektu.
+            await mainWindow.EngineHost.DisableWledRealtimeOverrideAsync();
+        }
     }
 
     private void StaticColorPicker_ColorChanged(ColorPicker sender, ColorChangedEventArgs args)
@@ -265,6 +298,7 @@ public sealed partial class DashboardPage : Page
         StatusInfoBar.Message = "Wczytywanie listy efektów z urządzenia...";
 
         isLoadingUi = true;
+        bool effectRestored = false;
         try
         {
             WledEffectComboBox.PlaceholderText = "Wczytywanie efektów...";
@@ -288,6 +322,8 @@ public sealed partial class DashboardPage : Page
                 PopulateEffectComboBox();
                 PopulatePaletteComboBox();
 
+                effectRestored = RestoreLastEffectState();
+
                 WledEffectComboBox.PlaceholderText = "Wybierz efekt";
                 StatusInfoBar.Severity = InfoBarSeverity.Success;
                 StatusInfoBar.Message = $"Wczytano {loadedWledEffects.Count} efektów i {loadedWledPalettes.Count} palet z urządzenia WLED.";
@@ -304,8 +340,59 @@ public sealed partial class DashboardPage : Page
             isLoadingUi = false;
             SetUiBusy(false);
         }
-    }
 
+        // NOWOŚĆ: dopiero TERAZ, po zwolnieniu isLoadingUi i poza blokiem try/finally
+        // wczytywania listy, wymuszamy wysłanie odtworzonego stanu do urządzenia WLED.
+        // Dzięki temu aplikacja zawsze staje się "źródłem prawdy" dla WLED przy każdym
+        // wejściu w ten panel (start aplikacji, przełączenie trybu, kliknięcie Odśwież),
+        // niezależnie od tego, co ktoś ustawił na urządzeniu w międzyczasie.
+        if (effectRestored)
+        {
+            effectApplyCts?.Cancel();
+            effectApplyCts?.Dispose();
+            effectApplyCts = new CancellationTokenSource();
+            await ApplyCurrentEffectAsync(effectApplyCts.Token);
+        }
+    }
+    private bool RestoreLastEffectState()
+    {
+        if (mainWindow == null) return false;
+
+        var settings = mainWindow.Settings;
+
+        int effectPosition = effectIndexMap.IndexOf(settings.LastWledEffectId);
+        if (effectPosition >= 0)
+        {
+            WledEffectComboBox.SelectedIndex = effectPosition;
+        }
+
+        int palettePosition = paletteIndexMap.IndexOf(settings.LastWledPaletteId);
+        if (palettePosition >= 0)
+        {
+            WledPaletteComboBox.SelectedIndex = palettePosition;
+        }
+
+        EffectSpeedSlider.Value = settings.LastWledSpeed;
+        EffectSpeedValueText.Text = settings.LastWledSpeed.ToString();
+
+        EffectIntensitySlider.Value = settings.LastWledIntensity;
+        EffectIntensityValueText.Text = settings.LastWledIntensity.ToString();
+
+        EffectBrightnessSlider.Value = settings.LastWledBrightness;
+        EffectBrightnessValueText.Text = settings.LastWledBrightness.ToString();
+
+        EffectPrimaryColorPicker.Color = Windows.UI.Color.FromArgb(
+            255, settings.LastWledPrimaryColorR, settings.LastWledPrimaryColorG, settings.LastWledPrimaryColorB);
+
+        EffectSecondaryColorPicker.Color = Windows.UI.Color.FromArgb(
+            255, settings.LastWledSecondaryColorR, settings.LastWledSecondaryColorG, settings.LastWledSecondaryColorB);
+
+        // ApplyEffectMetadataToUi ustawia Custom1-3 / Check1-3 na podstawie SelectedIndex
+        // efektu - wywołujemy jawnie tutaj, bo SelectionChanged nic nie zrobi (isLoadingUi).
+        ApplyEffectMetadataToUi();
+
+        return effectPosition >= 0;
+    }
     // Wypełnia ComboBox efektów alfabetycznie, oznacza efekty wymagające matrycy 2D,
     // i ukrywa zarezerwowane wpisy "RSVD"/"-" (WLED wypełniacze numeracji, które przy
     // wybraniu bezgłośnie przełączają się na Solid - dokumentacja WLED wprost radzi je
@@ -387,7 +474,32 @@ public sealed partial class DashboardPage : Page
 
         try
         {
-            mainWindow.Settings.SelectedWledEffectId = fxId.ToString();
+            var settings = mainWindow.Settings;
+
+            // Zachowane dla kompatybilności z istniejącym kodem korzystającym z SelectedWledEffectId.
+            settings.SelectedWledEffectId = fxId.ToString();
+
+            // Pełny stan ostatnio zastosowanego efektu - wykorzystywany przez RestoreLastEffectState().
+            settings.LastWledEffectId = fxId;
+            settings.LastWledPaletteId = paletteId;
+            settings.LastWledSpeed = speed;
+            settings.LastWledIntensity = intensity;
+            settings.LastWledBrightness = brightness;
+            settings.LastWledPrimaryColorR = primaryColor.Item1;
+            settings.LastWledPrimaryColorG = primaryColor.Item2;
+            settings.LastWledPrimaryColorB = primaryColor.Item3;
+            settings.LastWledSecondaryColorR = secondaryColor.Item1;
+            settings.LastWledSecondaryColorG = secondaryColor.Item2;
+            settings.LastWledSecondaryColorB = secondaryColor.Item3;
+            settings.LastWledCustom1 = custom1;
+            settings.LastWledCustom2 = custom2;
+            settings.LastWledCustom3 = custom3;
+            settings.LastWledCheck1 = check1;
+            settings.LastWledCheck2 = check2;
+            settings.LastWledCheck3 = check3;
+
+            mainWindow.SettingsService.Save(settings);
+
             bool success = await mainWindow.EngineHost.ActivateWledEffectAsync(
                 fxId, speed, intensity, paletteId, primaryColor, secondaryColor, brightness,
                 custom1, custom2, custom3, check1, check2, check3, cancellationToken);
@@ -409,6 +521,7 @@ public sealed partial class DashboardPage : Page
         {
         }
     }
+
 
     private void RequestApplyEffectDebounced()
     {

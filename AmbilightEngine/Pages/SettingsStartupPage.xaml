@@ -71,7 +71,27 @@
                                   Style="{StaticResource SettingsCheckBoxStyle}"
                                   Checked="AutoStartAmbilightCheckBox_Checked"
                                   Unchecked="AutoStartAmbilightCheckBox_Unchecked" />
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Tryb uruchamiany automatycznie"
+               FontWeight="SemiBold" />
 
+                            <ComboBox x:Name="AutoStartDisplayModeComboBox"
+              HorizontalAlignment="Stretch"
+              Style="{StaticResource SettingsComboBoxStyle}"
+              SelectionChanged="AutoStartDisplayModeComboBox_SelectionChanged">
+                                <ComboBoxItem Content="Video Sync"
+                      Tag="VideoSync" />
+
+                                <ComboBoxItem Content="Static Color"
+                      Tag="StaticColor" />
+
+                                <ComboBoxItem Content="WLED Effects"
+                      Tag="WledEffects" />
+                            </ComboBox>
+
+                            <TextBlock Text="Video Sync uruchamia przechwytywanie ekranu. Static Color wysyła zapisany kolor. WLED Effects uruchamia ostatnio użyty efekt."
+               Style="{StaticResource SectionSubTextStyle}" />
+                        </StackPanel>
                         <CheckBox x:Name="AutoMonitorCheckBox"
                                   Content="Automatycznie użyj głównego monitora"
                                   Style="{StaticResource SettingsCheckBoxStyle}"

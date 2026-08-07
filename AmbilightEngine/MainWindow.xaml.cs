@@ -97,17 +97,81 @@ namespace AmbilightEngine
             try
             {
                 bool connected = await EngineHost.EnsureWledConnectionAsync(hwnd);
+
                 System.Diagnostics.Debug.WriteLine(
                     connected
                         ? "DIAG: Połączenie z WLED nawiązane automatycznie przy starcie aplikacji."
                         : "DIAG: Nie udało się automatycznie połączyć z WLED przy starcie.");
+
+                if (!connected || !Settings.AutoStartAmbilight)
+                {
+                    return;
+                }
+
+                bool started = await StartConfiguredAutoStartModeAsync(hwnd);
+
+                System.Diagnostics.Debug.WriteLine(
+                    started
+                        ? $"DIAG: Automatycznie uruchomiono tryb: {Settings.AutoStartDisplayMode}."
+                        : $"DIAG: Nie udało się automatycznie uruchomić trybu: {Settings.AutoStartDisplayMode}.");
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"DIAG: Wyjątek podczas automatycznego łączenia z WLED: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine(
+                    $"DIAG: Wyjątek podczas automatycznego uruchamiania Ambilight: {ex.Message}");
             }
         }
+        private async System.Threading.Tasks.Task<bool> StartConfiguredAutoStartModeAsync(IntPtr hwnd)
+        {
+            try
+            {
+                switch (Settings.AutoStartDisplayMode)
+                {
+                    case DisplayMode.StaticColor:
+                        return await EngineHost.ActivateStaticColorAsync(
+                            Settings.StaticColorR,
+                            Settings.StaticColorG,
+                            Settings.StaticColorB);
 
+                    case DisplayMode.WledEffects:
+                        var primaryColor = (
+                            Settings.LastWledPrimaryColorR,
+                            Settings.LastWledPrimaryColorG,
+                            Settings.LastWledPrimaryColorB);
+
+                        var secondaryColor = (
+                            Settings.LastWledSecondaryColorR,
+                            Settings.LastWledSecondaryColorG,
+                            Settings.LastWledSecondaryColorB);
+
+                        return await EngineHost.ActivateWledEffectAsync(
+                            Settings.LastWledEffectId,
+                            Settings.LastWledSpeed,
+                            Settings.LastWledIntensity,
+                            Settings.LastWledPaletteId,
+                            primaryColor,
+                            secondaryColor,
+                            Settings.LastWledBrightness,
+                            Settings.LastWledCustom1,
+                            Settings.LastWledCustom2,
+                            Settings.LastWledCustom3,
+                            Settings.LastWledCheck1,
+                            Settings.LastWledCheck2,
+                            Settings.LastWledCheck3);
+
+                    case DisplayMode.VideoSync:
+                    default:
+                        return await EngineHost.StartCaptureAsync(hwnd);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"DIAG: Błąd podczas uruchamiania trybu autostartu: {ex.Message}");
+
+                return false;
+            }
+        }
         public bool ShouldStartMinimizedToTray(string[] args)
         {
             bool hasTrayArgument = args.Any(a => string.Equals(a, "--tray", StringComparison.OrdinalIgnoreCase));

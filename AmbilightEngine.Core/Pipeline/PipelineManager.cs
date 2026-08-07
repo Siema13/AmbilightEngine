@@ -116,13 +116,19 @@ namespace AmbilightEngine.Core.Pipeline
             };
             channel = Channel.CreateBounded<FrameEnvelope>(options);
             cts = new CancellationTokenSource();
+            blackBarDetector.BlackThreshold = settings.BlackBarThreshold;
+            blackBarDetector.MinBlackRatio = settings.BlackBarMinRatio;
         }
 
         public void SetBlackBarDetectionEnabled(bool enabled)
         {
             blackBarDetector.IsEnabled = enabled;
         }
-
+        public void SetBlackBarDetectionParameters(byte threshold, double minRatio)
+        {
+            blackBarDetector.BlackThreshold = threshold;
+            blackBarDetector.MinBlackRatio = minRatio;
+        }
         public void Start()
         {
             if (isRunning) return;

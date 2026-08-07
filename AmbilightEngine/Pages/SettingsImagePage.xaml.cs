@@ -72,6 +72,16 @@ public sealed partial class SettingsImagePage : Page
 
         MinBrightnessSlider.Value = settings.MinimumBrightnessFloor;
         MinBrightnessValueText.Text = settings.MinimumBrightnessFloor.ToString();
+        BlackBarToggle.IsOn = settings.EnableBlackBarDetection;
+        BlackBarThresholdSlider.Value = settings.BlackBarThreshold;
+        BlackBarThresholdValueText.Text = settings.BlackBarThreshold.ToString();
+
+        int minRatioPercent = (int)Math.Round(settings.BlackBarMinRatio * 100.0);
+        BlackBarMinRatioSlider.Value = minRatioPercent;
+        BlackBarMinRatioValueText.Text = minRatioPercent.ToString();
+
+        BlackBarPanel.Opacity = settings.EnableBlackBarDetection ? 1.0 : 0.45;
+        BlackBarPanel.IsHitTestVisible = settings.EnableBlackBarDetection;
 
         LoadWallColorSettings();
 
@@ -250,7 +260,61 @@ public sealed partial class SettingsImagePage : Page
         // przy najbliższym cyklu.
         SaveImageSettings();
     }
+    private void BlackBarToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (isInitializing || settings is null)
+        {
+            return;
+        }
 
+        bool enabled = BlackBarToggle.IsOn;
+        settings.EnableBlackBarDetection = enabled;
+
+        BlackBarPanel.Opacity = enabled ? 1.0 : 0.45;
+        BlackBarPanel.IsHitTestVisible = enabled;
+
+        SaveImageSettings();
+        ApplyLiveBlackBarSettings();
+    }
+
+    private void BlackBarThresholdSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (isInitializing || settings is null)
+        {
+            return;
+        }
+
+        byte value = (byte)Math.Round(e.NewValue);
+        BlackBarThresholdValueText.Text = value.ToString();
+        settings.BlackBarThreshold = value;
+        SaveImageSettings();
+        ApplyLiveBlackBarSettings();
+    }
+
+    private void BlackBarMinRatioSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (isInitializing || settings is null)
+        {
+            return;
+        }
+
+        int percent = (int)Math.Round(e.NewValue);
+        BlackBarMinRatioValueText.Text = percent.ToString();
+        settings.BlackBarMinRatio = percent / 100.0;
+        SaveImageSettings();
+        ApplyLiveBlackBarSettings();
+    }
+
+    private void ApplyLiveBlackBarSettings()
+    {
+        if (mainWindow?.EngineHost is null || settings is null)
+        {
+            return;
+        }
+
+        mainWindow.EngineHost.SetBlackBarDetectionEnabled(settings.EnableBlackBarDetection);
+        mainWindow.EngineHost.SetBlackBarDetectionParameters(settings.BlackBarThreshold, settings.BlackBarMinRatio);
+    }
     private void LedCountBox_ValueChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
     {
         if (isInitializing || settings is null || double.IsNaN(args.NewValue))
