@@ -373,26 +373,59 @@ namespace AmbilightEngine
             ApplyColorCalibrationToProcessor(newProcessor);
         }
 
-        private CaptureZone[] BuildZones(int width, int height, BlackBarInsets insets = default)
+        private CaptureZone[] BuildZones(
+    int width,
+    int height,
+    BlackBarInsets insets = default)
         {
             int effectiveWidth = width - insets.Left - insets.Right;
             int effectiveHeight = height - insets.Top - insets.Bottom;
 
-            if (effectiveWidth <= 0) effectiveWidth = width;
-            if (effectiveHeight <= 0) effectiveHeight = height;
+            if (effectiveWidth <= 0 || effectiveHeight <= 0)
+            {
+                insets = BlackBarInsets.None;
+                effectiveWidth = width;
+                effectiveHeight = height;
+            }
+
+            int effectiveSamplingDepth = Math.Min(
+                settings.SamplingDepth,
+                Math.Min(effectiveWidth, effectiveHeight));
+
+            effectiveSamplingDepth = Math.Max(1, effectiveSamplingDepth);
+
+            Debug.WriteLine(
+                $"[DIAG] BuildZones: ekran={width}x{height}, " +
+                $"insets={insets}, obszar={effectiveWidth}x{effectiveHeight}, " +
+                $"offsetX={insets.Left}, offsetY={insets.Top}");
 
             if (settings.UseCustomZoneLayout)
             {
                 return ZoneMapGenerator.Generate(
-                    effectiveWidth, effectiveHeight,
-                    settings.TopLedCount, settings.BottomLedCount,
-                    settings.LeftLedCount, settings.RightLedCount,
-                    settings.SamplingDepth,
-                    settings.ZoneStartCorner, settings.ZoneStripDirection,
-                    settings.ZoneShiftOffset, settings.ExcludedLedIndices);
+                    effectiveWidth,
+                    effectiveHeight,
+                    settings.TopLedCount,
+                    settings.BottomLedCount,
+                    settings.LeftLedCount,
+                    settings.RightLedCount,
+                    effectiveSamplingDepth,
+                    settings.ZoneStartCorner,
+                    settings.ZoneStripDirection,
+                    settings.ZoneShiftOffset,
+                    settings.ExcludedLedIndices,
+                    offsetX: insets.Left,
+                    offsetY: insets.Top);
             }
 
-            return ZoneMapGenerator.Generate(effectiveWidth, effectiveHeight, settings.LedCount, settings.SamplingDepth);
+            return ZoneMapGenerator.Generate(
+                effectiveWidth,
+                effectiveHeight,
+                settings.LedCount,
+                effectiveSamplingDepth,
+                settings.ZoneStartCorner,
+                settings.ZoneStripDirection,
+                offsetX: insets.Left,
+                offsetY: insets.Top);
         }
 
         private void OnBlackBarInsetsChanged(BlackBarInsets insets)
@@ -568,27 +601,27 @@ namespace AmbilightEngine
     byte green,
     byte blue,
     CancellationToken cancellationToken = default)
-        {
-            if (ledSender == null)
-            {
-                return false;
-            }
+{
+    if (ledSender == null)
+    {
+        return false;
+    }
 
-            settings.ActiveDisplayMode = DisplayMode.StaticColor;
-            settings.StaticColorR = red;
-            settings.StaticColorG = green;
-            settings.StaticColorB = blue;
+    settings.ActiveDisplayMode = DisplayMode.StaticColor;
+    settings.StaticColorR = red;
+    settings.StaticColorG = green;
+    settings.StaticColorB = blue;
 
-            return await ledSender.SetEffectAsync(
-                fxId: 0,
-                speed: 0,
-                intensity: 0,
-                paletteId: 0,
-                primaryColor: (red, green, blue),
-                secondaryColor: (0, 0, 0),
-                brightness: 255,
-                cancellationToken: cancellationToken);
-        }
+    return await ledSender.SetEffectAsync(
+        fxId: 0,
+        speed: 0,
+        intensity: 0,
+        paletteId: 0,
+        primaryColor: (red, green, blue),
+        secondaryColor: (0, 0, 0),
+        brightness: 255,
+        cancellationToken: cancellationToken);
+}
         public async Task<bool> DisableWledRealtimeOverrideAsync(CancellationToken cancellationToken = default)
         {
             if (ledSender == null) return false;
