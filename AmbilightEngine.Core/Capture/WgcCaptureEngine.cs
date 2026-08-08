@@ -38,7 +38,7 @@ namespace AmbilightEngine.Core.Capture
         private int currentHeight;
 
         public event ICaptureSource.FrameCapturedHandler? OnFrameCaptured;
-
+        public bool IsBorderRequired { get; set; } = true;
         public WgcCaptureEngine()
         {
             InitializeDirectX();
@@ -97,7 +97,10 @@ namespace AmbilightEngine.Core.Capture
                     targetItem.Size);
 
                 framePool.FrameArrived += OnFrameArrived;
+
                 captureSession = framePool.CreateCaptureSession(targetItem);
+                captureSession.IsBorderRequired = IsBorderRequired;
+
                 captureSession.StartCapture();
                 isRunning = true;
             }

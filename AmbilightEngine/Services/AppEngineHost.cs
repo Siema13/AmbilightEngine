@@ -11,6 +11,7 @@ using AmbilightEngine.Core.Pipeline;
 using AmbilightEngine.Core.Processing;
 using AmbilightEngine.Core.SystemState;
 using Windows.Graphics.Capture;
+using Windows.Security.Authorization.AppCapabilityAccess;
 using WinRT.Interop;
 
 namespace AmbilightEngine
@@ -25,7 +26,7 @@ namespace AmbilightEngine
         private PipelineManager? pipelineManager;
         private SystemStateWatcher? stateWatcher;
         private ProcessProfileWatcher? profileWatcher;
-
+        private volatile bool isProfilePreviewActive;
         private int lastCapturedWidth;
         private int lastCapturedHeight;
         private CaptureZone[]? currentZones;
@@ -37,6 +38,7 @@ namespace AmbilightEngine
         public bool IsCapturing { get; private set; }
 
         public string CurrentProfileName { get; private set; } = "Domyślny";
+        private string? currentProfileId;
         public EngineStatusInfo CurrentStatus { get; private set; } = EngineStatusInfo.Stopped("Gotowy do startu.");
 
         public event Action<EngineStatusInfo>? StatusChanged;
@@ -126,6 +128,16 @@ namespace AmbilightEngine
 
             try
             {
+                AppCapabilityAccessStatus borderlessAccess =
+                    await GraphicsCaptureAccess.RequestAccessAsync(
+                        GraphicsCaptureAccessKind.Borderless);
+
+                bool canDisableCaptureBorder =
+                    borderlessAccess == AppCapabilityAccessStatus.Allowed;
+
+                Debug.WriteLine(
+                    $"[DIAG] Borderless Capture: wynik zgody Windows = {borderlessAccess}.");
+
                 GraphicsCaptureItem? item;
 
                 if (settings.AutoStartWithDefaultMonitor)
@@ -193,7 +205,11 @@ namespace AmbilightEngine
                 }
 
                 captureEngine?.Dispose();
-                captureEngine = new WgcCaptureEngine();
+
+                captureEngine = new WgcCaptureEngine
+                {
+                    IsBorderRequired = !canDisableCaptureBorder
+                };
 
                 pipelineManager?.Dispose();
                 pipelineManager = new PipelineManager(captureEngine, imageProcessor, ledSender, settings, zones.Length);
@@ -204,6 +220,9 @@ namespace AmbilightEngine
                 captureEngine.Start(item);
 
                 IsCapturing = true;
+
+                profileWatcher?.ResetActiveProfile();
+
                 SetStatus(EngineStatusInfo.Running($"Aktywne: {item.DisplayName} -> {settings.EspIpAddress}"));
                 return true;
             }
@@ -257,7 +276,16 @@ namespace AmbilightEngine
                 profile.BlackCutoffThreshold,
                 profile.ColorTemperatureKelvin,
                 profile.GammaValue);
-
+            Debug.WriteLine(
+    $"[DIAG] AppEngineHost: parametry profilu '{profile.DisplayName}': " +
+    $"Id={profile.ProfileId}, " +
+    $"Jasność={profile.BrightnessPercent}%, " +
+    $"Nasycenie={profile.SaturationBoost:F2}, " +
+    $"Smoothing={profile.SmoothingSpeedMs} ms, " +
+    $"BlackCutoff={profile.BlackCutoffThreshold}, " +
+    $"Temperatura={profile.ColorTemperatureKelvin} K, " +
+    $"Gamma={profile.GammaValue:F2}, " +
+    $"źródło={triggerSource}.");
             newImageProcessor.SetWallColorFromHex(settings.WallColorHex, settings.WallColorStrength);
 
             pipelineManager.ReplaceImageProcessor(newImageProcessor);
@@ -267,10 +295,44 @@ namespace AmbilightEngine
                 ? "Domyślny"
                 : profile.DisplayName;
 
+            currentProfileId = profile.ProfileId;
             SetStatus(EngineStatusInfo.Running($"Profil aktywny: {CurrentProfileName} (źródło: {triggerSource})"));
             ProfileChanged?.Invoke(CurrentProfileName);
         }
+        public void PreviewProfile(AppProfile profile)
+        {
+            if (profile == null)
+            {
+                return;
+            }
 
+            if (currentZones == null || pipelineManager == null)
+            {
+                SetStatus(EngineStatusInfo.Stopped(
+                    "Podgląd profilu jest dostępny po uruchomieniu Video Sync."));
+
+                return;
+            }
+
+            isProfilePreviewActive = true;
+
+            ActivateProfile(profile, "podgląd na żywo");
+        }
+
+        public void EndProfilePreview()
+        {
+            if (!isProfilePreviewActive)
+            {
+                return;
+            }
+
+            isProfilePreviewActive = false;
+
+            profileWatcher?.ResetActiveProfile();
+
+            Debug.WriteLine(
+                "[DIAG] AppEngineHost: zakończono podgląd profilu; przywracam automatyczny wybór profilu.");
+        }
         public void ActivateDefaultProfile(string triggerSource = "domyślny")
         {
             var defaultProfile = settings.DefaultProfile ?? new AppProfile
@@ -294,6 +356,9 @@ namespace AmbilightEngine
                 CurrentProfileName = string.IsNullOrWhiteSpace(defaultProfile.DisplayName)
                     ? "Domyślny"
                     : defaultProfile.DisplayName;
+
+                currentProfileId = defaultProfile.ProfileId;
+
                 ProfileChanged?.Invoke(CurrentProfileName);
             }
         }
@@ -349,11 +414,10 @@ namespace AmbilightEngine
 
         private void ApplyProfileOrCalibration(ImageProcessor newProcessor)
         {
-            if (!string.IsNullOrWhiteSpace(CurrentProfileName) &&
-                !string.Equals(CurrentProfileName, "Domyślny", StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrWhiteSpace(currentProfileId))
             {
                 var activeProfile = settings.Profiles?.Find(p =>
-                    string.Equals(p.DisplayName, CurrentProfileName, StringComparison.OrdinalIgnoreCase));
+                    string.Equals(p.ProfileId, currentProfileId, StringComparison.Ordinal));
 
                 if (activeProfile != null)
                 {
@@ -449,7 +513,7 @@ namespace AmbilightEngine
                     (float)settings.ColorSensitivity,
                     settings.MinimumBrightnessFloor);
                 newProcessor.SetQuality(settings.PixelSkipStep);
-                ApplyColorCalibrationToProcessor(newProcessor);
+                ApplyProfileOrCalibration(newProcessor);
 
                 pipelineManager?.ReplaceImageProcessor(newProcessor);
                 imageProcessor = newProcessor;
@@ -495,7 +559,7 @@ namespace AmbilightEngine
         {
             profileWatcher?.SetProfiles(settings.Profiles);
 
-            if (IsCapturing)
+            if (IsCapturing && !isProfilePreviewActive)
             {
                 ActivateDefaultProfile("odświeżenie listy profili");
             }
@@ -503,6 +567,13 @@ namespace AmbilightEngine
 
         private void OnProfileActivationRequested(object? sender, ProfileActivatedEventArgs e)
         {
+            if (isProfilePreviewActive)
+            {
+                Debug.WriteLine(
+                    "[DIAG] AppEngineHost: automatyczna aktywacja profilu pominięta — trwa podgląd na żywo.");
+
+                return;
+            }
             if (currentZones == null || pipelineManager == null)
             {
                 Debug.WriteLine("[DIAG] AppEngineHost: profil zignorowany - potok przechwytywania nie jest aktywny.");
@@ -721,6 +792,8 @@ namespace AmbilightEngine
         {
             try
             {
+                isProfilePreviewActive = false;
+
                 StopCapture();
 
                 profileWatcher?.Dispose();
@@ -738,6 +811,7 @@ namespace AmbilightEngine
 
                 IsRunning = false;
                 CurrentProfileName = "Domyślny";
+                currentProfileId = null;
                 ProfileChanged?.Invoke(CurrentProfileName);
 
                 SetStatus(EngineStatusInfo.Stopped("Ambilight został zatrzymany."));

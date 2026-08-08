@@ -359,7 +359,9 @@ namespace AmbilightEngine.Core.Pipeline
                             }
                         }
 
-                        ReadOnlySpan<RgbColor> processed = imageProcessor.ProcessFrame(
+                        ImageProcessor activeProcessor = Volatile.Read(ref imageProcessor);
+
+                        ReadOnlySpan<RgbColor> processed = activeProcessor.ProcessFrame(
                             envelope.RentedBuffer.AsSpan(0, envelope.DataLength),
                             envelope.Stride);
 

@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using AmbilightEngine.Core.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 
 namespace AmbilightEngine.Pages
 {
@@ -11,11 +12,12 @@ namespace AmbilightEngine.Pages
     {
         private MainWindow? mainWindow;
         private ObservableCollection<AppProfile> profiles = new();
-
+        private bool isLivePreviewEnabled;
         public ProfilesPage()
         {
             InitializeComponent();
             Loaded += ProfilesPage_Loaded;
+            Unloaded += ProfilesPage_Unloaded;
         }
 
         private void ProfilesPage_Loaded(object sender, RoutedEventArgs e)
@@ -77,6 +79,8 @@ namespace AmbilightEngine.Pages
             {
                 DisplayName = "Nowy profil",
                 ExecutableFileName = string.Empty,
+                AllowBackgroundActivation = false,
+                Priority = 0,
                 BrightnessPercent = 100,
                 SaturationBoost = 1.0,
                 SmoothingSpeedMs = 120,
@@ -208,7 +212,44 @@ namespace AmbilightEngine.Pages
                     message: $"Nie udało się zapisać profili: {ex.Message}");
             }
         }
+        private void EnableLivePreviewButton_Click(object sender, RoutedEventArgs e)
+        {
+            isLivePreviewEnabled = true;
 
+            SaveStatusText.Text =
+                "Podgląd na żywo jest włączony. Zmień dowolny suwak parametrów obrazu, aby zobaczyć efekt na LED-ach.";
+        }
+
+        private void DisableLivePreviewButton_Click(object sender, RoutedEventArgs e)
+        {
+            isLivePreviewEnabled = false;
+
+            mainWindow?.EngineHost.EndProfilePreview();
+
+            SaveStatusText.Text =
+                "Podgląd na żywo został wyłączony. Automatyczne profile znów działają normalnie.";
+        }
+
+        private void ProfileImageSlider_ValueChanged(
+            object sender,
+            RangeBaseValueChangedEventArgs e)
+        {
+            if (!isLivePreviewEnabled ||
+                mainWindow == null ||
+                sender is not FrameworkElement element ||
+                element.DataContext is not AppProfile profile)
+            {
+                return;
+            }
+
+            mainWindow.EngineHost.PreviewProfile(profile);
+        }
+
+        private void ProfilesPage_Unloaded(object sender, RoutedEventArgs e)
+        {
+            isLivePreviewEnabled = false;
+            mainWindow?.EngineHost.EndProfilePreview();
+        }
         private void ShowInfo(InfoBarSeverity severity, string title, string message)
         {
             if (ProfilesInfoBar == null)

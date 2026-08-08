@@ -46,31 +46,55 @@
 
             <!-- Akcje -->
             <Border Grid.Row="2"
-                    Margin="0,20,0,0"
-                    MaxWidth="860"
-                    HorizontalAlignment="Left"
-                    Style="{StaticResource CardStyle}">
+        Margin="0,20,0,0"
+        MaxWidth="860"
+        HorizontalAlignment="Left"
+        Style="{StaticResource CardStyle}">
                 <StackPanel Spacing="12">
                     <TextBlock Text="Zarządzanie profilami"
-                               Style="{StaticResource SectionHeaderTextStyle}" />
+                   Style="{StaticResource SectionHeaderTextStyle}" />
 
                     <TextBlock Text="Dodawaj nowe profile, przypisuj pliki .exe i zapisuj zmiany do konfiguracji aplikacji."
-                               Style="{StaticResource SectionSubTextStyle}"
-                               TextWrapping="Wrap" />
+                   Style="{StaticResource SectionSubTextStyle}"
+                   TextWrapping="Wrap" />
 
-                    <StackPanel Orientation="Horizontal" Spacing="12">
+                    <StackPanel Orientation="Horizontal"
+                    Spacing="12">
                         <Button Content="Dodaj profil"
-                                Click="AddProfileButton_Click"
-                                Style="{StaticResource AccentButtonStyle}" />
+                    Click="AddProfileButton_Click"
+                    Style="{StaticResource AccentButtonStyle}" />
 
                         <Button Content="Zapisz zmiany"
-                                Click="SaveChangesButton_Click" />
+                    Click="SaveChangesButton_Click" />
                     </StackPanel>
 
                     <TextBlock x:Name="SaveStatusText"
-                               Text=""
-                               Style="{StaticResource SectionSubTextStyle}"
-                               TextWrapping="Wrap" />
+                   Text=""
+                   Style="{StaticResource SectionSubTextStyle}"
+                   TextWrapping="Wrap" />
+
+                    <Border Padding="12"
+                CornerRadius="10"
+                Background="{ThemeResource M3SurfaceContainerHighBrush}">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Podgląd profilu na żywo"
+                           FontWeight="SemiBold" />
+
+                            <TextBlock Text="Włącz podgląd, a zmiana parametrów obrazu suwakiem będzie od razu widoczna na LED-ach. Zapis ustawień nadal wymaga kliknięcia „Zapisz zmiany”."
+                           Style="{StaticResource SectionSubTextStyle}"
+                           TextWrapping="Wrap" />
+
+                            <StackPanel Orientation="Horizontal"
+                            Spacing="12">
+                                <Button Content="Włącz podgląd"
+                            Click="EnableLivePreviewButton_Click"
+                            Style="{StaticResource AccentButtonStyle}" />
+
+                                <Button Content="Zakończ podgląd"
+                            Click="DisableLivePreviewButton_Click" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </Border>
 
@@ -155,7 +179,39 @@
                                                     HorizontalAlignment="Left"
                                                     Tag="{Binding}"
                                                     Click="PickApplicationButton_Click" />
+                                            <StackPanel Spacing="4">
+                                                <CheckBox Content="Aktywuj także, gdy aplikacja działa w tle"
+              IsChecked="{Binding AllowBackgroundActivation, Mode=TwoWay}" />
+
+                                                <TextBlock Text="Wyłącz dla zwykłych aplikacji, np. przeglądarki lub Notatnika. Włącz tylko dla gier, odtwarzaczy lub aplikacji, których profil ma pozostać aktywny po utracie fokusu."
+               Style="{StaticResource SectionSubTextStyle}"
+               TextWrapping="Wrap" />
+                                            </StackPanel>
+                                            <StackPanel Spacing="6">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <TextBlock Text="Priorytet działania w tle"
+                   FontWeight="SemiBold" />
+
+                                                    <TextBlock Grid.Column="1"
+                   Text="{Binding Priority, Mode=OneWay}" />
+                                                </Grid>
+
+                                                <Slider Minimum="0"
+            Maximum="100"
+            StepFrequency="1"
+            Value="{Binding Priority, Mode=TwoWay}" />
+
+                                                <TextBlock Text="Większa wartość wygrywa, gdy kilka aplikacji z włączonym działaniem w tle działa jednocześnie. Wartość jest ignorowana, gdy działanie w tle jest wyłączone."
+               Style="{StaticResource SectionSubTextStyle}"
+               TextWrapping="Wrap" />
+                                            </StackPanel>
                                         </StackPanel>
+                                        
                                     </Border>
 
                                     <!-- Parametry obrazu -->
@@ -184,7 +240,8 @@
                                                 <Slider Minimum="1"
                                                         Maximum="100"
                                                         StepFrequency="1"
-                                                        Value="{Binding BrightnessPercent, Mode=TwoWay}" />
+                                                        Value="{Binding BrightnessPercent, Mode=TwoWay}" 
+                                                        ValueChanged="ProfileImageSlider_ValueChanged"/>
                                             </StackPanel>
 
                                             <!-- Wygładzanie (ms) -->
@@ -204,7 +261,8 @@
                                                 <Slider Minimum="0"
                                                         Maximum="2000"
                                                         StepFrequency="10"
-                                                        Value="{Binding SmoothingSpeedMs, Mode=TwoWay}" />
+                                                        Value="{Binding SmoothingSpeedMs, Mode=TwoWay}" 
+                                                        ValueChanged="ProfileImageSlider_ValueChanged"/>
                                             </StackPanel>
 
                                             <!-- Próg czerni -->
@@ -224,7 +282,8 @@
                                                 <Slider Minimum="0"
                                                         Maximum="255"
                                                         StepFrequency="1"
-                                                        Value="{Binding BlackCutoffThreshold, Mode=TwoWay}" />
+                                                        Value="{Binding BlackCutoffThreshold, Mode=TwoWay}" 
+                                                        ValueChanged="ProfileImageSlider_ValueChanged"/>
                                             </StackPanel>
 
                                             <!-- Temperatura barwowa -->
@@ -244,7 +303,8 @@
                                                 <Slider Minimum="1000"
                                                         Maximum="12000"
                                                         StepFrequency="100"
-                                                        Value="{Binding ColorTemperatureKelvin, Mode=TwoWay}" />
+                                                        Value="{Binding ColorTemperatureKelvin, Mode=TwoWay}" 
+                                                        ValueChanged="ProfileImageSlider_ValueChanged"/>
                                             </StackPanel>
 
                                             <!-- Gamma -->
@@ -264,7 +324,8 @@
                                                 <Slider Minimum="1"
                                                         Maximum="4"
                                                         StepFrequency="0.1"
-                                                        Value="{Binding GammaValue, Mode=TwoWay}" />
+                                                        Value="{Binding GammaValue, Mode=TwoWay}" 
+                                                        ValueChanged="ProfileImageSlider_ValueChanged"/>
                                             </StackPanel>
 
                                             <!-- Nasycenie -->
@@ -282,9 +343,10 @@
                                                 </Grid>
 
                                                 <Slider Minimum="0"
-                                                        Maximum="5"
+                                                        Maximum="3"
                                                         StepFrequency="0.1"
-                                                        Value="{Binding SaturationBoost, Mode=TwoWay}" />
+                                                        Value="{Binding SaturationBoost, Mode=TwoWay}" 
+                                                        ValueChanged="ProfileImageSlider_ValueChanged"/>
                                             </StackPanel>
 
                                             <!-- Reset do domyślnych -->

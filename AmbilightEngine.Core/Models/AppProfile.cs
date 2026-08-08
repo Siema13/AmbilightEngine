@@ -1,40 +1,145 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 
 namespace AmbilightEngine.Core.Models
 {
-    // Reprezentuje zestaw parametrów obrazu, który można zapisać ręcznie z ustawień
-    // (np. "Kino wieczorem") albo powiązać automatycznie z konkretnym procesem (np. cs2.exe).
-    public sealed class AppProfile
+    public sealed class AppProfile : INotifyPropertyChanged
     {
-        public string ProfileId { get; set; } = Guid.NewGuid().ToString("N");
-        public string DisplayName { get; set; } = string.Empty;
+        private string profileId = Guid.NewGuid().ToString("N");
+        private string displayName = string.Empty;
+        private string executableFileName = string.Empty;
+        private bool allowBackgroundActivation;
+        private int priority;
 
-        // Pusty ExecutableFileName oznacza profil czysto manualny (bez auto-przełączania).
-        public string ExecutableFileName { get; set; } = string.Empty;
-        public int Priority { get; set; } = 0;
+        private int brightnessPercent = 100;
+        private double saturationBoost = 1.0;
+        private int smoothingSpeedMs = 120;
+        private int blackCutoffThreshold = 8;
+        private int colorTemperatureKelvin = 6500;
+        private double gammaValue = 2.2;
 
-        public int BrightnessPercent { get; set; } = 100;
-        public double SaturationBoost { get; set; } = 1.0;
-        public int SmoothingSpeedMs { get; set; } = 120;
-        public int BlackCutoffThreshold { get; set; } = 8;
-        public int ColorTemperatureKelvin { get; set; } = 6500;
+        private bool isBuiltInDefault;
+        private bool isManualSnapshot;
+        private DateTime createdAtUtc = DateTime.UtcNow;
 
-        public double GammaValue { get; set; } = 2.2;
-        public bool IsBuiltInDefault { get; set; } = false;
+        public event PropertyChangedEventHandler? PropertyChanged;
 
-        // Odróżnia profile zapisane ręcznie z ekranu ustawień obrazu od profili
-        // auto-przełączanych przez ProcessProfileWatcher — potrzebne, żeby UI wiedziało,
-        // które profile pokazywać na liście "Zapisane profile obrazu".
-        public bool IsManualSnapshot { get; set; } = false;
+        public string ProfileId
+        {
+            get => profileId;
+            set => SetProperty(ref profileId, value);
+        }
 
-        public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+        public string DisplayName
+        {
+            get => displayName;
+            set => SetProperty(ref displayName, value);
+        }
+
+        public string ExecutableFileName
+        {
+            get => executableFileName;
+            set => SetProperty(ref executableFileName, value);
+        }
+
+        // Gdy false, profil działa wyłącznie dla aktywnego okna.
+        // Gdy true, profil może zostać wybrany także dla procesu w tle.
+        public bool AllowBackgroundActivation
+        {
+            get => allowBackgroundActivation;
+            set => SetProperty(ref allowBackgroundActivation, value);
+        }
+
+        public int Priority
+        {
+            get => priority;
+            set => SetProperty(ref priority, value);
+        }
+
+        public int BrightnessPercent
+        {
+            get => brightnessPercent;
+            set => SetProperty(ref brightnessPercent, value);
+        }
+
+        public double SaturationBoost
+        {
+            get => saturationBoost;
+            set => SetProperty(ref saturationBoost, value);
+        }
+
+        public int SmoothingSpeedMs
+        {
+            get => smoothingSpeedMs;
+            set => SetProperty(ref smoothingSpeedMs, value);
+        }
+
+        public int BlackCutoffThreshold
+        {
+            get => blackCutoffThreshold;
+            set => SetProperty(ref blackCutoffThreshold, value);
+        }
+
+        public int ColorTemperatureKelvin
+        {
+            get => colorTemperatureKelvin;
+            set => SetProperty(ref colorTemperatureKelvin, value);
+        }
+
+        public double GammaValue
+        {
+            get => gammaValue;
+            set => SetProperty(ref gammaValue, value);
+        }
+
+        public bool IsBuiltInDefault
+        {
+            get => isBuiltInDefault;
+            set => SetProperty(ref isBuiltInDefault, value);
+        }
+
+        public bool IsManualSnapshot
+        {
+            get => isManualSnapshot;
+            set => SetProperty(ref isManualSnapshot, value);
+        }
+
+        public DateTime CreatedAtUtc
+        {
+            get => createdAtUtc;
+            set => SetProperty(ref createdAtUtc, value);
+        }
 
         public bool MatchesProcess(string processExeName)
         {
-            if (string.IsNullOrWhiteSpace(processExeName) || string.IsNullOrWhiteSpace(ExecutableFileName))
+            if (string.IsNullOrWhiteSpace(processExeName) ||
+                string.IsNullOrWhiteSpace(ExecutableFileName))
+            {
                 return false;
+            }
 
-            return string.Equals(processExeName, ExecutableFileName, StringComparison.OrdinalIgnoreCase);
+            return string.Equals(
+                processExeName,
+                ExecutableFileName,
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        private void SetProperty<T>(
+            ref T field,
+            T value,
+            [CallerMemberName] string? propertyName = null)
+        {
+            if (EqualityComparer<T>.Default.Equals(field, value))
+            {
+                return;
+            }
+
+            field = value;
+            PropertyChanged?.Invoke(
+                this,
+                new PropertyChangedEventArgs(propertyName));
         }
     }
 }
