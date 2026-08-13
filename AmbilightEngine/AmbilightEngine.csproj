@@ -106,6 +106,12 @@
 	  <Folder Include="Controls\" />
 	</ItemGroup>
 
+	<ItemGroup>
+	  <Page Update="Pages\CalibrationWizardPage.xaml">
+	    <Generator>MSBuild:Compile</Generator>
+	  </Page>
+	</ItemGroup>
+
 	<PropertyGroup Condition="'$(DisableHasPackageAndPublishMenuAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
 		<HasPackageAndPublishMenu>true</HasPackageAndPublishMenu>
 	</PropertyGroup>

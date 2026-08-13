@@ -43,6 +43,90 @@ namespace AmbilightEngine.Core.SystemState
         public int PixelSkipStep { get; set; } = 4;
         public int SamplingDepth { get; set; } = 80;
 
+        private int edgeFeatherPixels = 2;
+        public int EdgeFeatherPixels
+        {
+            get => edgeFeatherPixels;
+            set => edgeFeatherPixels = value < 0 ? 0 : (value > 40 ? 40 : value);
+        }
+
+        private double phaseSmoothingStrength = 0.0;
+        public double PhaseSmoothingStrength
+        {
+            get => phaseSmoothingStrength;
+            set => phaseSmoothingStrength = value < 0.0 ? 0.0 : (value > 1.0 ? 1.0 : value);
+        }
+
+        // --- Kalibracja per-kanał RGB: Gain (mnożnik) ---
+        private double channelGainR = 1.0;
+        public double ChannelGainR
+        {
+            get => channelGainR;
+            set => channelGainR = value < 0.2 ? 0.2 : (value > 2.0 ? 2.0 : value);
+        }
+
+        private double channelGainG = 1.0;
+        public double ChannelGainG
+        {
+            get => channelGainG;
+            set => channelGainG = value < 0.2 ? 0.2 : (value > 2.0 ? 2.0 : value);
+        }
+
+        private double channelGainB = 1.0;
+        public double ChannelGainB
+        {
+            get => channelGainB;
+            set => channelGainB = value < 0.2 ? 0.2 : (value > 2.0 ? 2.0 : value);
+        }
+
+        // NOWOŚĆ: kalibracja per-kanał RGB - Gamma (koryguje nieliniowość w środkowych
+        // tonach NIEZALEŻNIE per kanał, w przeciwieństwie do globalnej GammaValue profilu).
+        // 1.0 = neutralne.
+        private double channelGammaR = 1.0;
+        public double ChannelGammaR
+        {
+            get => channelGammaR;
+            set => channelGammaR = value < 0.3 ? 0.3 : (value > 3.0 ? 3.0 : value);
+        }
+
+        private double channelGammaG = 1.0;
+        public double ChannelGammaG
+        {
+            get => channelGammaG;
+            set => channelGammaG = value < 0.3 ? 0.3 : (value > 3.0 ? 3.0 : value);
+        }
+
+        private double channelGammaB = 1.0;
+        public double ChannelGammaB
+        {
+            get => channelGammaB;
+            set => channelGammaB = value < 0.3 ? 0.3 : (value > 3.0 ? 3.0 : value);
+        }
+
+        // NOWOŚĆ: kalibracja per-kanał RGB - Offset/Lift (przesuwa czernie kanału).
+        // Koryguje sytuację, gdy dioda "czerwona" świeci lekko pomarańczowo nawet przy
+        // zerowym sygnale wejściowym. 0.0 = neutralne. Zakres: -0.2..0.2 (znormalizowane).
+        private double channelOffsetR = 0.0;
+        public double ChannelOffsetR
+        {
+            get => channelOffsetR;
+            set => channelOffsetR = value < -0.2 ? -0.2 : (value > 0.2 ? 0.2 : value);
+        }
+
+        private double channelOffsetG = 0.0;
+        public double ChannelOffsetG
+        {
+            get => channelOffsetG;
+            set => channelOffsetG = value < -0.2 ? -0.2 : (value > 0.2 ? 0.2 : value);
+        }
+
+        private double channelOffsetB = 0.0;
+        public double ChannelOffsetB
+        {
+            get => channelOffsetB;
+            set => channelOffsetB = value < -0.2 ? -0.2 : (value > 0.2 ? 0.2 : value);
+        }
+
         // --- Tryb ambientowy ---
         public AmbientEffectConfig LockScreenAmbient { get; set; } = new();
         public AmbientEffectConfig IdleAmbient { get; set; } = new();
@@ -159,15 +243,30 @@ namespace AmbilightEngine.Core.SystemState
         public double ColorSensitivity { get; set; } = 1.0;
         public byte MinimumBrightnessFloor { get; set; } = 5;
 
+        private double zonePeakWeight = 0.3;
+        public double ZonePeakWeight
+        {
+            get => zonePeakWeight;
+            set => zonePeakWeight = value < 0.0 ? 0.0 : (value > 1.0 ? 1.0 : value);
+        }
+
+        private double shadowBoostStrength = 1.0;
+        public double ShadowBoostStrength
+        {
+            get => shadowBoostStrength;
+            set => shadowBoostStrength = value < 1.0 ? 1.0 : (value > 4.0 ? 4.0 : value);
+        }
+
+        public byte NoiseFloor { get; set; } = 4;
+
+        public bool HasCompletedCalibrationOnboarding { get; set; } = false;
+
         // --- Zachowanie aplikacji ---
         public bool StartWithWindows { get; set; } = false;
         public bool StartMinimizedToTray { get; set; } = false;
         public bool CloseToTray { get; set; } = true;
 
-        // Automatyczne uruchomienie wybranego trybu po starcie programu.
         public bool AutoStartAmbilight { get; set; } = false;
-        // Tryb, który aplikacja uruchomi automatycznie po starcie,
-        // jeśli AutoStartAmbilight jest włączony.
         public DisplayMode AutoStartDisplayMode { get; set; } = DisplayMode.VideoSync;
 
         // --- Profile ---

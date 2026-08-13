@@ -68,6 +68,11 @@ namespace AmbilightEngine.Core.Pipeline
     // Tryb ambientowy (blokada ekranu / bezczynność) NIE wysyła już cyklicznie DDP - zamiast tego
     // jednorazowo wywołuje natywny efekt WLED przez JSON API (SetEffectAsync). Firmware WLED sam
     // podtrzymuje animację lokalnie, co eliminuje problem z timeoutem realtime i migotaniem.
+    //
+    // NOWOŚĆ: dla trybów opartych na strumieniu DDP (Video Sync, Static Color) zarządzana jest
+    // dodatkowo trwała sesja "live" WLED (patrz UpdateRealtimeSession) - eliminuje to zależność
+    // Video Sync od skonfigurowanego w WLED Realtime Timeout przy dłuższych przerwach w
+    // dostarczaniu klatek z Windows Graphics Capture (np. całkowicie statyczny obraz na ekranie).
     public sealed class PipelineManager : IDisposable
     {
         private readonly ICaptureSource captureSource;
@@ -76,6 +81,8 @@ namespace AmbilightEngine.Core.Pipeline
         private readonly Channel<FrameEnvelope> channel;
         private readonly CancellationTokenSource cts;
         private readonly Stopwatch fpsStopwatch = new Stopwatch();
+        private readonly Stopwatch frameGapStopwatch = new Stopwatch();
+        private const int StutterWarningThresholdMs = 150;
 
         // Liczba diod ustalona przy budowie potoku - przechowywana lokalnie, ponieważ
         // IOutputDevice (kontrakt ogólny) nie deklaruje właściwości LedCount.
@@ -90,6 +97,7 @@ namespace AmbilightEngine.Core.Pipeline
         private Task? consumerTask;
         private volatile bool isRunning;
         private volatile bool isAmbientModeActive;
+        private volatile bool isRealtimeSessionActive;
         private DisplayStateSnapshot? preAmbientSnapshot;
         private CancellationTokenSource? ambientEffectCts;
         private bool isDisposed;
@@ -124,11 +132,13 @@ namespace AmbilightEngine.Core.Pipeline
         {
             blackBarDetector.IsEnabled = enabled;
         }
+
         public void SetBlackBarDetectionParameters(byte threshold, double minRatio)
         {
             blackBarDetector.BlackThreshold = threshold;
             blackBarDetector.MinBlackRatio = minRatio;
         }
+
         public void Start()
         {
             if (isRunning) return;
@@ -136,6 +146,12 @@ namespace AmbilightEngine.Core.Pipeline
             fpsStopwatch.Restart();
 
             outputDevice.Open();
+
+            // NOWOŚĆ: włączamy trwałą sesję "live" WLED od razu, jeśli aktywny tryb korzysta
+            // z ciągłego strumienia DDP (Video Sync / Static Color). W trybie WLED Effects
+            // sesja live pozostaje wyłączona, żeby nie blokować natywnej animacji urządzenia.
+            UpdateRealtimeSession(settings.ActiveDisplayMode != DisplayMode.WledEffects);
+
             captureSource.OnFrameCaptured += OnFrameCapturedFromCaptureThread;
             consumerTask = Task.Run(() => ConsumerLoopAsync(cts.Token));
 
@@ -149,6 +165,10 @@ namespace AmbilightEngine.Core.Pipeline
 
             ambientEffectCts?.Cancel();
             isAmbientModeActive = false;
+
+            // NOWOŚĆ: zwalniamy sesję "live" WLED synchronicznie (z krótkim oczekiwaniem),
+            // żeby urządzenie na pewno wróciło do stanu domyślnego przed zamknięciem gniazda UDP.
+            UpdateRealtimeSession(false, waitForCompletion: true);
 
             captureSource.OnFrameCaptured -= OnFrameCapturedFromCaptureThread;
             channel.Writer.TryComplete();
@@ -171,6 +191,19 @@ namespace AmbilightEngine.Core.Pipeline
             Interlocked.Exchange(ref imageProcessor, newProcessor);
         }
 
+        // NOWOŚĆ: wywoływane z warstwy UI/hosta po każdej zmianie trybu wyświetlania (Video Sync /
+        // Static Color / WLED Effects) dokonanej podczas działania przechwytywania (bez Stop/Start),
+        // aby sesja "live" WLED zawsze odpowiadała aktualnie wybranemu trybowi.
+        public void NotifyDisplayModeChanged()
+        {
+            if (!isRunning || isAmbientModeActive)
+            {
+                return;
+            }
+
+            UpdateRealtimeSession(settings.ActiveDisplayMode != DisplayMode.WledEffects);
+        }
+
         // Wchodzi w tryb ambientowy: zapisuje snapshot aktualnego stanu wyświetlania,
         // a następnie jednorazowo wywołuje skonfigurowany efekt WLED (JSON API) - bez
         // ciągłego wysyłania DDP. Jeśli config.IsEnabled == false, diody są gaszone.
@@ -178,6 +211,9 @@ namespace AmbilightEngine.Core.Pipeline
         {
             if (isAmbientModeActive) return;
             isAmbientModeActive = true;
+
+            // NOWOŚĆ: tryb ambientowy nie korzysta z ciągłego DDP, więc zwalniamy sesję "live".
+            UpdateRealtimeSession(false);
 
             preAmbientSnapshot = new DisplayStateSnapshot(
                 settings.ActiveDisplayMode,
@@ -218,8 +254,8 @@ namespace AmbilightEngine.Core.Pipeline
                     try
                     {
                         await wledSender.SetEffectAsync(
-    config.EffectId, config.Speed, config.Intensity, config.PaletteId,
-    primary, secondary, config.Brightness, cancellationToken: token);
+                            config.EffectId, config.Speed, config.Intensity, config.PaletteId,
+                            primary, secondary, config.Brightness, cancellationToken: token);
                     }
                     catch (OperationCanceledException)
                     {
@@ -249,6 +285,9 @@ namespace AmbilightEngine.Core.Pipeline
 
             settings.ActiveDisplayMode = snapshot.Mode;
 
+            // NOWOŚĆ: przywracamy sesję "live" WLED tylko wtedy, gdy przywracany tryb korzysta z DDP.
+            UpdateRealtimeSession(snapshot.Mode != DisplayMode.WledEffects);
+
             if (snapshot.Mode == DisplayMode.WledEffects && outputDevice is WledDdpNetworkSender wledSender)
             {
                 var restoreCts = new CancellationTokenSource();
@@ -258,9 +297,9 @@ namespace AmbilightEngine.Core.Pipeline
                     try
                     {
                         await wledSender.SetEffectAsync(
-    snapshot.WledEffectId, snapshot.WledSpeed, snapshot.WledIntensity, snapshot.WledPaletteId,
-    snapshot.WledPrimaryColor, snapshot.WledSecondaryColor, snapshot.WledBrightness,
-    cancellationToken: restoreCts.Token);
+                            snapshot.WledEffectId, snapshot.WledSpeed, snapshot.WledIntensity, snapshot.WledPaletteId,
+                            snapshot.WledPrimaryColor, snapshot.WledSecondaryColor, snapshot.WledBrightness,
+                            cancellationToken: restoreCts.Token);
                     }
                     catch (Exception)
                     {
@@ -270,6 +309,53 @@ namespace AmbilightEngine.Core.Pipeline
             }
 
             preAmbientSnapshot = null;
+        }
+
+        // NOWOŚĆ: zarządza trwałą sesją "live" WLED (JSON API), niezależną od skonfigurowanego
+        // w WLED Realtime Timeout. Zgodnie z dokumentacją WLED, ustawienie {"live":true} sprawia,
+        // że urządzenie NIE wraca do lokalnego efektu, nawet jeśli przez dłuższą chwilę (np. przy
+        // całkowicie statycznym obrazie z WGC) nie nadejdzie żaden kolejny pakiet DDP. Wywoływane
+        // tylko dla trybów opartych na strumieniu DDP (Video Sync, Static Color) - w trybie WLED
+        // Effects sesja live musi być wyłączona, aby nie blokować natywnej animacji.
+        private void UpdateRealtimeSession(bool shouldBeActive, bool waitForCompletion = false)
+        {
+            if (outputDevice is not WledDdpNetworkSender wledSender)
+            {
+                return;
+            }
+
+            if (shouldBeActive == isRealtimeSessionActive)
+            {
+                return;
+            }
+
+            isRealtimeSessionActive = shouldBeActive;
+
+            Task sessionTask = SetLiveOverrideSafeAsync(wledSender, shouldBeActive);
+
+            if (waitForCompletion)
+            {
+                try
+                {
+                    sessionTask.Wait(TimeSpan.FromMilliseconds(800));
+                }
+                catch (Exception)
+                {
+                    // Best-effort: nie blokujemy zatrzymania silnika błędem komunikacji z WLED.
+                }
+            }
+        }
+
+        private static async Task SetLiveOverrideSafeAsync(WledDdpNetworkSender wledSender, bool enabled)
+        {
+            try
+            {
+                await wledSender.SetLiveOverrideAsync(enabled).ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                // Błąd komunikacji z WLED przy zmianie sesji realtime nie może zabić silnika.
+            }
         }
 
         private void SendBlackFrame()
@@ -291,8 +377,26 @@ namespace AmbilightEngine.Core.Pipeline
         {
             if (!isRunning || isAmbientModeActive) return;
 
+            // NOWOŚĆ: diagnostyka szarpania - mierzymy realny czas między dwoma kolejnymi
+            // dostarczonymi klatkami z WGC. Jeśli przerwa jest podejrzanie długa (dłuższa
+            // niż typowy pojedynczy klatka nawet przy 30 FPS), logujemy to w DIAG - pomaga
+            // odróżnić, czy szarpanie pochodzi z samego przechwytywania (WGC/GPU/kompozytor),
+            // czy dopiero z dalszej części pipeline (przetwarzanie obrazu, wysyłka DDP po Wi-Fi).
+            if (frameGapStopwatch.IsRunning)
+            {
+                long gapMs = frameGapStopwatch.ElapsedMilliseconds;
+                if (gapMs > StutterWarningThresholdMs)
+                {
+                    Debug.WriteLine(
+                        $"[DIAG] PipelineManager: wykryto przerwę w dostarczaniu klatek z WGC: {gapMs} ms " +
+                        $"(próg={StutterWarningThresholdMs} ms) - możliwe szarpanie po stronie przechwytywania.");
+                }
+            }
+            frameGapStopwatch.Restart();
+
             Interlocked.Increment(ref framesCaptured);
 
+        
             byte[] rentedBuffer = ArrayPool<byte>.Shared.Rent(rawPixels.Length);
             try
             {
@@ -363,7 +467,9 @@ namespace AmbilightEngine.Core.Pipeline
 
                         ReadOnlySpan<RgbColor> processed = activeProcessor.ProcessFrame(
                             envelope.RentedBuffer.AsSpan(0, envelope.DataLength),
-                            envelope.Stride);
+                            envelope.Stride,
+                            envelope.Width,
+                            envelope.Height);
 
                         outputDevice.SendFrame(processed);
                         Interlocked.Increment(ref framesSent);

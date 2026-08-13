@@ -380,8 +380,8 @@ namespace AmbilightEngine.Core.Hardware
                 var rootPayload = new Dictionary<string, object>
                 {
                     ["on"] = true,
-                    ["lor"] = 1, // ZMIANA: było 0. Wymusza natychmiastowe przejęcie kontroli z powrotem
-                                 // od sesji DDP/realtime, niezależnie od ustawionego w WLED Sync/Realtime timeout.
+                    ["lor"] = 1, // Wymusza natychmiastowe przejęcie kontroli z powrotem od sesji
+                                 // DDP/realtime, niezależnie od ustawionego w WLED Sync/Realtime timeout.
                     ["transition"] = 0,
                     ["seg"] = new[] { segPayload }
                 };
@@ -454,6 +454,46 @@ namespace AmbilightEngine.Core.Hardware
             {
                 System.Diagnostics.Debug.WriteLine(
                     $"[DIAG] WLED JSON API: nie udało się wyłączyć realtime override - {ex.Message}");
+                return false;
+            }
+        }
+
+        // NOWOŚĆ: ustawia trwałą sesję "live" WLED przez JSON API (pole "live" w /json/state).
+        // W przeciwieństwie do samego strumienia DDP, ten stan NIE zależy od skonfigurowanego
+        // w WLED "Realtime timeout" - urządzenie zostaje w trybie realtime bezwarunkowo, dopóki
+        // nie otrzyma {"live":false}. Rozwiązuje to problem powrotu do natywnego efektu WLED
+        // przy dłuższych przerwach w dostarczaniu klatek z Windows Graphics Capture (np. gdy
+        // obraz na ekranie jest całkowicie statyczny i WGC nie generuje nowych ramek) -
+        // niezależnie od tego, jak wysoki jest ustawiony w WLED Realtime timeout.
+        public async Task<bool> SetLiveOverrideAsync(bool enabled, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                string json = enabled ? "{\"live\":true}" : "{\"live\":false}";
+
+                using var requestMessage = new HttpRequestMessage(HttpMethod.Post, httpBaseUrl)
+                {
+                    Content = new StringContent(json, Encoding.UTF8, "application/json")
+                };
+                requestMessage.Headers.ConnectionClose = true;
+
+                using var response = await httpClient.SendAsync(requestMessage, cancellationToken);
+
+                bool isSuccess = response.IsSuccessStatusCode;
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DIAG] WLED JSON API: sesja live={enabled}, status HTTP: {(int)response.StatusCode}, sukces: {isSuccess}");
+
+                return isSuccess;
+            }
+            catch (OperationCanceledException)
+            {
+                System.Diagnostics.Debug.WriteLine("[DIAG] WLED JSON API: żądanie zmiany sesji live anulowane.");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DIAG] WLED JSON API: nie udało się ustawić sesji live={enabled} - {ex.Message}");
                 return false;
             }
         }

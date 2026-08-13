@@ -50,6 +50,45 @@ namespace AmbilightEngine
             blackBarDetector.IsEnabled = settings.EnableBlackBarDetection;
         }
 
+        // NOWOŚĆ / FIX: jedno, wspólne miejsce konfigurujące dynamikę (Attack, Decay,
+        // Czułość, MinBrightness) i próbkowanie (PixelSkipStep, peak-blend, shadow boost,
+        // noise floor) na podstawie AmbilightSettings. Musi być wywołane dla KAŻDEGO nowo
+        // utworzonego ImageProcessor - wcześniej ActivateProfile (wywoływane przy każdej
+        // zmianie aktywnego okna) w ogóle nie wołało SetDynamics/SetQuality, więc czułość
+        // i pokrewne parametry cichcem resetowały się do wartości domyślnych klasy (1.0 / 0)
+        // przy każdym przełączeniu profilu - niezależnie od tego, co użytkownik ustawił
+        // w Ustawieniach obrazu. Wywołuj PRZED ApplyDspParameters/ApplyColorCalibration,
+        // ponieważ ApplyDspParameters wewnętrznie przekazuje bieżące pola sensitivity/
+        // minBrightness dalej do SetDynamics - taka kolejność zachowuje wartości globalne,
+        // a jednocześnie pozwala profilowi nadpisać tylko Attack/Decay (przez Smoothing).
+        private void ConfigureProcessorDynamics(ImageProcessor processor)
+        {
+            processor.SetDynamics(
+                (float)settings.MotionAttackSpeed,
+                (float)settings.MotionDecaySpeed,
+                (float)settings.ColorSensitivity,
+                settings.MinimumBrightnessFloor);
+
+            processor.SetQuality(settings.PixelSkipStep);
+
+            processor.SetAdvancedSampling(
+                (float)settings.ZonePeakWeight,
+                (float)settings.ShadowBoostStrength,
+                settings.NoiseFloor,
+                settings.EdgeFeatherPixels,
+                (float)settings.PhaseSmoothingStrength,
+                (float)settings.ChannelGainR,
+                (float)settings.ChannelGainG,
+                (float)settings.ChannelGainB);
+
+            // NOWOŚĆ: pełna kalibracja per-kanał RGB (Gain + Gamma + Offset), sterowana
+            // przez CalibrationOverlayWindow (9 sliderów widocznych od razu).
+            processor.SetChannelCalibration(
+                (float)settings.ChannelGainR, (float)settings.ChannelGammaR, (float)settings.ChannelOffsetR,
+                (float)settings.ChannelGainG, (float)settings.ChannelGammaG, (float)settings.ChannelOffsetG,
+                (float)settings.ChannelGainB, (float)settings.ChannelGammaB, (float)settings.ChannelOffsetB);
+        }
+
         public async Task<bool> EnsureWledConnectionAsync(IntPtr windowHandle)
         {
             if (ledSender != null)
@@ -65,12 +104,7 @@ namespace AmbilightEngine
                 currentZones = zones;
 
                 imageProcessor = new ImageProcessor(zones);
-                imageProcessor.SetDynamics(
-                    (float)settings.MotionAttackSpeed,
-                    (float)settings.MotionDecaySpeed,
-                    (float)settings.ColorSensitivity,
-                    settings.MinimumBrightnessFloor);
-                imageProcessor.SetQuality(settings.PixelSkipStep);
+                ConfigureProcessorDynamics(imageProcessor);
                 ApplyColorCalibrationToProcessor(imageProcessor);
 
                 ledSender = new WledDdpNetworkSender(settings.EspIpAddress, zones.Length);
@@ -190,12 +224,7 @@ namespace AmbilightEngine
                 currentZones = zones;
 
                 var newProcessor = new ImageProcessor(zones);
-                newProcessor.SetDynamics(
-                    (float)settings.MotionAttackSpeed,
-                    (float)settings.MotionDecaySpeed,
-                    (float)settings.ColorSensitivity,
-                    settings.MinimumBrightnessFloor);
-                newProcessor.SetQuality(settings.PixelSkipStep);
+                ConfigureProcessorDynamics(newProcessor);
                 ApplyProfileOrCalibration(newProcessor);
                 imageProcessor = newProcessor;
 
@@ -268,6 +297,13 @@ namespace AmbilightEngine
             {
                 newImageProcessor.SeedState(imageProcessor);
             }
+
+            // FIX: bez tego wywołania nowy processor miał sensitivity/minBrightness/
+            // pixelSkipStep/peak-blend/shadow-boost/noise-floor ustawione na wartości
+            // domyślne klasy - ApplyDspParameters przekazuje te pola dalej bez zmian
+            // (nadpisuje tylko Attack/Decay na podstawie Smoothing profilu), więc bez
+            // tej linii KAŻDA zmiana aktywnego okna cichcem resetowała czułość do 1.0.
+            ConfigureProcessorDynamics(newImageProcessor);
 
             newImageProcessor.ApplyDspParameters(
                 profile.BrightnessPercent,
@@ -379,12 +415,13 @@ namespace AmbilightEngine
                 int previousLedCount = ledSender?.LedCount ?? -1;
 
                 var newProcessor = new ImageProcessor(zones);
-                newProcessor.SetDynamics(
-                    (float)settings.MotionAttackSpeed,
-                    (float)settings.MotionDecaySpeed,
-                    (float)settings.ColorSensitivity,
-                    settings.MinimumBrightnessFloor);
-                newProcessor.SetQuality(settings.PixelSkipStep);
+
+                // FIX (ten sam mechanizm jak w OnBlackBarInsetsChanged) - zachowujemy
+                // płynność EMA przy ręcznej zmianie geometrii, o ile liczba LED nie
+                // zmieniła się (SeedState samo sprawdza zgodność długości tablic).
+                newProcessor.SeedState(imageProcessor);
+
+                ConfigureProcessorDynamics(newProcessor);
                 ApplyProfileOrCalibration(newProcessor);
                 imageProcessor = newProcessor;
 
@@ -507,12 +544,16 @@ namespace AmbilightEngine
                 currentZones = zones;
 
                 var newProcessor = new ImageProcessor(zones);
-                newProcessor.SetDynamics(
-                    (float)settings.MotionAttackSpeed,
-                    (float)settings.MotionDecaySpeed,
-                    (float)settings.ColorSensitivity,
-                    settings.MinimumBrightnessFloor);
-                newProcessor.SetQuality(settings.PixelSkipStep);
+
+                // FIX (migotanie): bez tego wywołania nowy processor startował z EMA
+                // wyzerowanym do czerni (previousR/G/B = 0) przy KAŻDEJ zmianie wykrytych
+                // insetów - nawet fałszywej, spowodowanej przejściową anomalią w detekcji
+                // black barów - co dawało realny, widoczny skok do czerni i płynny powrót
+                // (efekt "mrygnięcia"). SeedState kopiuje stan wygładzania ze starego
+                // processora, więc zmiana geometrii stref nie przerywa płynności światła.
+                newProcessor.SeedState(imageProcessor);
+
+                ConfigureProcessorDynamics(newProcessor);
                 ApplyProfileOrCalibration(newProcessor);
 
                 pipelineManager?.ReplaceImageProcessor(newProcessor);
@@ -672,27 +713,27 @@ namespace AmbilightEngine
     byte green,
     byte blue,
     CancellationToken cancellationToken = default)
-{
-    if (ledSender == null)
-    {
-        return false;
-    }
+        {
+            if (ledSender == null)
+            {
+                return false;
+            }
 
-    settings.ActiveDisplayMode = DisplayMode.StaticColor;
-    settings.StaticColorR = red;
-    settings.StaticColorG = green;
-    settings.StaticColorB = blue;
+            settings.ActiveDisplayMode = DisplayMode.StaticColor;
+            settings.StaticColorR = red;
+            settings.StaticColorG = green;
+            settings.StaticColorB = blue;
 
-    return await ledSender.SetEffectAsync(
-        fxId: 0,
-        speed: 0,
-        intensity: 0,
-        paletteId: 0,
-        primaryColor: (red, green, blue),
-        secondaryColor: (0, 0, 0),
-        brightness: 255,
-        cancellationToken: cancellationToken);
-}
+            return await ledSender.SetEffectAsync(
+                fxId: 0,
+                speed: 0,
+                intensity: 0,
+                paletteId: 0,
+                primaryColor: (red, green, blue),
+                secondaryColor: (0, 0, 0),
+                brightness: 255,
+                cancellationToken: cancellationToken);
+        }
         public async Task<bool> DisableWledRealtimeOverrideAsync(CancellationToken cancellationToken = default)
         {
             if (ledSender == null) return false;
@@ -778,14 +819,25 @@ namespace AmbilightEngine
         public double CaptureFps => pipelineManager?.CurrentCaptureFps ?? 0;
         public double SendFps => pipelineManager?.CurrentSendFps ?? 0;
 
+        // FIX: teraz wywołuje ConfigureProcessorDynamics, żeby nowe parametry (peak-blend,
+        // shadow boost, noise floor) trafiały do żywego procesora tak samo jak Attack/Decay/
+        // Czułość/MinBrightness - jedna, spójna ścieżka konfiguracji.
         public void ApplyLiveSettings()
         {
-            imageProcessor?.SetDynamics(
-                (float)settings.MotionAttackSpeed,
-                (float)settings.MotionDecaySpeed,
-                (float)settings.ColorSensitivity,
-                settings.MinimumBrightnessFloor);
-            imageProcessor?.SetQuality(settings.PixelSkipStep);
+            if (imageProcessor == null)
+            {
+                return;
+            }
+
+            ConfigureProcessorDynamics(imageProcessor);
+        }
+
+        // NOWOŚĆ: synchronizuje sesję "live" WLED w PipelineManagerze z aktualnie wybranym trybem
+        // wyświetlania (Video Sync / Static Color / WLED Effects). Bezpieczne wywołanie nawet
+        // gdy przechwytywanie nie jest aktywne - PipelineManager wtedy nic nie robi.
+        public void NotifyDisplayModeChanged()
+        {
+            pipelineManager?.NotifyDisplayModeChanged();
         }
 
         public void Stop()

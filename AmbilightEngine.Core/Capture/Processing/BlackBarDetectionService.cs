@@ -12,6 +12,12 @@ namespace AmbilightEngine.Core.Processing
         private const int MaximumBarSizeDivisor = 3;
         private const int SymmetryTolerancePixels = 24;
 
+        // NOWOŚĆ: liczba kolejnych wierszy/kolumn tolerowanych jako przejściowa anomalia
+        // (np. jasny, szybko przemykający obiekt przecinający obszar pasa) bez natychmiastowego
+        // przerywania skanu. Zmniejsza fałszywe "zniknięcia" realnego pasa filmowego podczas
+        // krótkiego przecięcia przez ruchomy, jasny element.
+        private const int DefaultMaxTransientAnomalyRows = 3;
+
         private BlackBarInsets stableInsets = BlackBarInsets.None;
         private BlackBarInsets candidateInsets = BlackBarInsets.None;
         private int candidateFrameCount;
@@ -22,12 +28,12 @@ namespace AmbilightEngine.Core.Processing
 
         public bool IsEnabled { get; set; } = true;
 
-        // Liczba kolejnych analiz, które muszą wskazać ten sam kadr,
-        // zanim przebudujemy geometrię stref LED.
         public int RequiredConfirmationFrames { get; set; } = DefaultRequiredConfirmationFrames;
 
-        // Chroni przed wykrywaniem pojedynczych ciemnych linii jako pas filmowy.
         public int MinimumBarPixels { get; set; } = DefaultMinimumBarPixels;
+
+        // NOWOŚĆ: publiczny knob do dostrojenia tolerancji na przejściowe anomalie w skanie.
+        public int MaxTransientAnomalyRows { get; set; } = DefaultMaxTransientAnomalyRows;
 
         public BlackBarInsets Detect(byte[] bgraPixels, int width, int height, int stride)
         {
@@ -80,9 +86,6 @@ namespace AmbilightEngine.Core.Processing
                 width,
                 MinimumBarPixels);
 
-            // Całkowicie czarna lub niemal czarna scena często daje fałszywy wynik:
-            // "pasy" jednocześnie na górze, dole, lewej i prawej stronie.
-            // Nie zmieniamy wtedy geometrii i zachowujemy ostatni stabilny kadr.
             if (hasHorizontalBars && hasVerticalBars)
             {
                 return stableInsets;
@@ -156,6 +159,14 @@ namespace AmbilightEngine.Core.Processing
             return stableInsets;
         }
 
+        // FIX (migotanie): poprzednia wersja przerywała skan natychmiast po pierwszym
+        // niepasującym wierszu - jeden jasny obiekt przecinający obszar pasa (np. szybko
+        // przemykający element z materiału testowego) mógł sztucznie "obciąć" wykrytą
+        // wysokość pasa do zera w danej klatce, co przy dostatecznie długim przecięciu
+        // prowadziło do fałszywej zmiany stanu (bary "znikały") i przebudowy geometrii.
+        // Teraz tolerujemy do MaxTransientAnomalyRows kolejnych anomalii w skanie -
+        // wiersze/kolumny w tym oknie NIE są liczone jako część pasa, ale nie przerywają
+        // też całego pomiaru, jeśli po nich skan wraca do czerni.
         private int ScanHorizontalBar(
             byte[] pixels,
             int width,
@@ -164,21 +175,29 @@ namespace AmbilightEngine.Core.Processing
             bool fromTop)
         {
             int maxScanRows = height / MaximumBarSizeDivisor;
-            int detectedRows = 0;
+            int lastConfirmedRow = -1;
+            int consecutiveAnomalies = 0;
+            int maxAnomalies = Math.Max(0, MaxTransientAnomalyRows);
 
             for (int row = 0; row < maxScanRows; row++)
             {
                 int y = fromTop ? row : height - 1 - row;
 
-                if (!IsRowMostlyBlack(pixels, width, stride, y))
+                if (IsRowMostlyBlack(pixels, width, stride, y))
+                {
+                    lastConfirmedRow = row;
+                    consecutiveAnomalies = 0;
+                    continue;
+                }
+
+                consecutiveAnomalies++;
+                if (consecutiveAnomalies > maxAnomalies)
                 {
                     break;
                 }
-
-                detectedRows++;
             }
 
-            return detectedRows;
+            return lastConfirmedRow + 1;
         }
 
         private int ScanVerticalBar(
@@ -189,21 +208,29 @@ namespace AmbilightEngine.Core.Processing
             bool fromLeft)
         {
             int maxScanColumns = width / MaximumBarSizeDivisor;
-            int detectedColumns = 0;
+            int lastConfirmedColumn = -1;
+            int consecutiveAnomalies = 0;
+            int maxAnomalies = Math.Max(0, MaxTransientAnomalyRows);
 
             for (int column = 0; column < maxScanColumns; column++)
             {
                 int x = fromLeft ? column : width - 1 - column;
 
-                if (!IsColumnMostlyBlack(pixels, height, stride, x))
+                if (IsColumnMostlyBlack(pixels, height, stride, x))
+                {
+                    lastConfirmedColumn = column;
+                    consecutiveAnomalies = 0;
+                    continue;
+                }
+
+                consecutiveAnomalies++;
+                if (consecutiveAnomalies > maxAnomalies)
                 {
                     break;
                 }
-
-                detectedColumns++;
             }
 
-            return detectedColumns;
+            return lastConfirmedColumn + 1;
         }
 
         private bool IsRowMostlyBlack(
@@ -297,11 +324,8 @@ namespace AmbilightEngine.Core.Processing
         }
 
         public int Top { get; }
-
         public int Bottom { get; }
-
         public int Left { get; }
-
         public int Right { get; }
 
         public bool HasAnyBar => Top > 0 || Bottom > 0 || Left > 0 || Right > 0;

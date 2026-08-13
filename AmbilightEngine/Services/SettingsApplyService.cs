@@ -30,6 +30,16 @@ public sealed class SettingsApplyService : ISettingsApplyService
         if (engineHost.IsRunning)
         {
             engineHost.ApplyLiveColorCalibration();
+
+            // FIX: ApplyLiveColorCalibration() aktualizuje wyłącznie brightness/saturation/
+            // blackCutoff/kelvin/gamma z DefaultProfile - NIE dotyka dynamiki EMA (Attack,
+            // Decay, ColorSensitivity, MinimumBrightnessFloor), która żyje bezpośrednio w
+            // AmbilightSettings, nie w profilu. Bez tego wywołania slidery "Reakcja
+            // przechwytywania" (w tym Czułość) zapisywały się na dysk, ale NIGDY nie
+            // trafiały do działającego ImageProcessor - dopóki użytkownik nie zrestartował
+            // Video Sync (Stop→Start), co tworzyło nowy processor i jednorazowo je odczytywało.
+            // ApplyLiveSettings() istniała w AppEngineHost, ale nie była wołana z tej ścieżki.
+            engineHost.ApplyLiveSettings();
         }
     }
 

@@ -72,6 +72,38 @@ public sealed partial class SettingsImagePage : Page
 
         MinBrightnessSlider.Value = settings.MinimumBrightnessFloor;
         MinBrightnessValueText.Text = settings.MinimumBrightnessFloor.ToString();
+
+        // Peak-blend, shadow boost, noise floor, edge feather
+        int peakWeightPercent = (int)Math.Round(settings.ZonePeakWeight * 100.0);
+        ZonePeakWeightSlider.Value = peakWeightPercent;
+        ZonePeakWeightValueText.Text = peakWeightPercent.ToString();
+
+        ShadowBoostSlider.Value = settings.ShadowBoostStrength * 10.0;
+        ShadowBoostValueText.Text = settings.ShadowBoostStrength.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
+
+        NoiseFloorSlider.Value = settings.NoiseFloor;
+        NoiseFloorValueText.Text = settings.NoiseFloor.ToString();
+
+        EdgeFeatherSlider.Value = settings.EdgeFeatherPixels;
+        EdgeFeatherValueText.Text = settings.EdgeFeatherPixels.ToString();
+
+        // NOWOŚĆ: wygładzanie fazowe i kalibracja per-kanał RGB
+        int phaseSmoothingPercent = (int)Math.Round(settings.PhaseSmoothingStrength * 100.0);
+        PhaseSmoothingSlider.Value = phaseSmoothingPercent;
+        PhaseSmoothingValueText.Text = phaseSmoothingPercent.ToString();
+
+        int channelGainRPercent = (int)Math.Round(settings.ChannelGainR * 100.0);
+        ChannelGainRSlider.Value = channelGainRPercent;
+        ChannelGainRValueText.Text = channelGainRPercent.ToString();
+
+        int channelGainGPercent = (int)Math.Round(settings.ChannelGainG * 100.0);
+        ChannelGainGSlider.Value = channelGainGPercent;
+        ChannelGainGValueText.Text = channelGainGPercent.ToString();
+
+        int channelGainBPercent = (int)Math.Round(settings.ChannelGainB * 100.0);
+        ChannelGainBSlider.Value = channelGainBPercent;
+        ChannelGainBValueText.Text = channelGainBPercent.ToString();
+
         BlackBarToggle.IsOn = settings.EnableBlackBarDetection;
         BlackBarThresholdSlider.Value = settings.BlackBarThreshold;
         BlackBarThresholdValueText.Text = settings.BlackBarThreshold.ToString();
@@ -253,13 +285,130 @@ public sealed partial class SettingsImagePage : Page
         ApplyLiveDynamics();
     }
 
+    private void ZonePeakWeightSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (isInitializing || settings is null)
+        {
+            return;
+        }
+
+        int percent = (int)Math.Round(e.NewValue);
+        ZonePeakWeightValueText.Text = percent.ToString();
+        settings.ZonePeakWeight = percent / 100.0;
+        SaveImageSettings();
+        ApplyLiveDynamics();
+    }
+
+    private void ShadowBoostSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (isInitializing || settings is null)
+        {
+            return;
+        }
+
+        double value = Math.Round(e.NewValue / 10.0, 1);
+        ShadowBoostValueText.Text = value.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
+        settings.ShadowBoostStrength = value;
+        SaveImageSettings();
+        ApplyLiveDynamics();
+    }
+
+    private void NoiseFloorSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (isInitializing || settings is null)
+        {
+            return;
+        }
+
+        byte value = (byte)Math.Round(e.NewValue);
+        NoiseFloorValueText.Text = value.ToString();
+        settings.NoiseFloor = value;
+        SaveImageSettings();
+        ApplyLiveDynamics();
+    }
+
+    private void EdgeFeatherSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (isInitializing || settings is null)
+        {
+            return;
+        }
+
+        int value = (int)Math.Round(e.NewValue);
+        settings.EdgeFeatherPixels = value;
+        EdgeFeatherValueText.Text = value.ToString();
+        SaveImageSettings();
+        ApplyLiveDynamics();
+    }
+
+    // NOWOŚĆ: slider "Wygładzanie fazowe" - steruje PhaseSmoothingStrength (tłumienie
+    // aliasingu fazowego siatki próbkowania przy bardzo powolnym, subpikselowym ruchu treści).
+    private void PhaseSmoothingSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (isInitializing || settings is null)
+        {
+            return;
+        }
+
+        int percent = (int)Math.Round(e.NewValue);
+        PhaseSmoothingValueText.Text = percent.ToString();
+        settings.PhaseSmoothingStrength = percent / 100.0;
+        SaveImageSettings();
+        ApplyLiveDynamics();
+    }
+
+    // NOWOŚĆ: trzy slidery kalibracji per-kanał RGB - korekta rozjazdu koloru ekran <-> LED.
+    private void ChannelGainRSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (isInitializing || settings is null)
+        {
+            return;
+        }
+
+        int percent = (int)Math.Round(e.NewValue);
+        ChannelGainRValueText.Text = percent.ToString();
+        settings.ChannelGainR = percent / 100.0;
+        SaveImageSettings();
+        ApplyLiveDynamics();
+    }
+
+    private void ChannelGainGSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (isInitializing || settings is null)
+        {
+            return;
+        }
+
+        int percent = (int)Math.Round(e.NewValue);
+        ChannelGainGValueText.Text = percent.ToString();
+        settings.ChannelGainG = percent / 100.0;
+        SaveImageSettings();
+        ApplyLiveDynamics();
+    }
+
+    private void ChannelGainBSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (isInitializing || settings is null)
+        {
+            return;
+        }
+
+        int percent = (int)Math.Round(e.NewValue);
+        ChannelGainBValueText.Text = percent.ToString();
+        settings.ChannelGainB = percent / 100.0;
+        SaveImageSettings();
+        ApplyLiveDynamics();
+    }
+
     private void ApplyLiveDynamics()
     {
-        // Na razie wystarczy zapis ustawień – silnik odczyta nowe wartości
-        // MotionAttackSpeed / MotionDecaySpeed / ColorSensitivity / MinimumBrightnessFloor
-        // przy najbliższym cyklu.
+        // SaveImageSettings() woła settingsApplyService.SaveAndApplyImage(), które zapisuje
+        // ustawienia na dysk ORAZ wywołuje engineHost.ApplyLiveSettings() - dzięki temu
+        // wszystkie parametry z tej strony trafiają do żywego ImageProcessor natychmiast,
+        // bez restartu Video Sync.
         SaveImageSettings();
     }
+
     private void BlackBarToggle_Toggled(object sender, RoutedEventArgs e)
     {
         if (isInitializing || settings is null)
@@ -315,6 +464,7 @@ public sealed partial class SettingsImagePage : Page
         mainWindow.EngineHost.SetBlackBarDetectionEnabled(settings.EnableBlackBarDetection);
         mainWindow.EngineHost.SetBlackBarDetectionParameters(settings.BlackBarThreshold, settings.BlackBarMinRatio);
     }
+
     private void LedCountBox_ValueChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
     {
         if (isInitializing || settings is null || double.IsNaN(args.NewValue))
@@ -464,6 +614,17 @@ public sealed partial class SettingsImagePage : Page
         settings.ColorSensitivity = 1.0;
         settings.MinimumBrightnessFloor = 5;
 
+        settings.ZonePeakWeight = 0.3;
+        settings.ShadowBoostStrength = 1.0;
+        settings.NoiseFloor = 4;
+        settings.EdgeFeatherPixels = 2;
+
+        // NOWOŚĆ: przywracamy też domyślne wartości wygładzania fazowego i kalibracji RGB.
+        settings.PhaseSmoothingStrength = 0.0;
+        settings.ChannelGainR = 1.0;
+        settings.ChannelGainG = 1.0;
+        settings.ChannelGainB = 1.0;
+
         // Uaktualnij suwaki i wartości tekstowe
         BrightnessSlider.Value = settings.DefaultProfile.BrightnessPercent;
         BrightnessValueText.Text = settings.DefaultProfile.BrightnessPercent.ToString();
@@ -492,11 +653,41 @@ public sealed partial class SettingsImagePage : Page
         MinBrightnessSlider.Value = settings.MinimumBrightnessFloor;
         MinBrightnessValueText.Text = settings.MinimumBrightnessFloor.ToString();
 
+        int peakWeightPercent = (int)Math.Round(settings.ZonePeakWeight * 100.0);
+        ZonePeakWeightSlider.Value = peakWeightPercent;
+        ZonePeakWeightValueText.Text = peakWeightPercent.ToString();
+
+        ShadowBoostSlider.Value = settings.ShadowBoostStrength * 10.0;
+        ShadowBoostValueText.Text = settings.ShadowBoostStrength.ToString("0.0");
+
+        NoiseFloorSlider.Value = settings.NoiseFloor;
+        NoiseFloorValueText.Text = settings.NoiseFloor.ToString();
+
+        EdgeFeatherSlider.Value = settings.EdgeFeatherPixels;
+        EdgeFeatherValueText.Text = settings.EdgeFeatherPixels.ToString();
+
+        int phaseSmoothingPercent = (int)Math.Round(settings.PhaseSmoothingStrength * 100.0);
+        PhaseSmoothingSlider.Value = phaseSmoothingPercent;
+        PhaseSmoothingValueText.Text = phaseSmoothingPercent.ToString();
+
+        int channelGainRPercent = (int)Math.Round(settings.ChannelGainR * 100.0);
+        ChannelGainRSlider.Value = channelGainRPercent;
+        ChannelGainRValueText.Text = channelGainRPercent.ToString();
+
+        int channelGainGPercent = (int)Math.Round(settings.ChannelGainG * 100.0);
+        ChannelGainGSlider.Value = channelGainGPercent;
+        ChannelGainGValueText.Text = channelGainGPercent.ToString();
+
+        int channelGainBPercent = (int)Math.Round(settings.ChannelGainB * 100.0);
+        ChannelGainBSlider.Value = channelGainBPercent;
+        ChannelGainBValueText.Text = channelGainBPercent.ToString();
+
         isInitializing = false;
 
         SaveImageSettings();
         ApplyLiveDynamics();
     }
+
     private void WallStrengthSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         if (WallStrengthValueText is not null)

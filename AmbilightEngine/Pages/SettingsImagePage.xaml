@@ -65,6 +65,29 @@
                             Maximum="300"
                             StepFrequency="1"
                             ValueChanged="SamplingDepthSlider_ValueChanged" />
+
+                    <Grid ColumnSpacing="12" Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Text="Miękka krawędź obrazu (px)"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center" />
+                        <TextBlock x:Name="EdgeFeatherValueText"
+                                   Grid.Column="1"
+                                   VerticalAlignment="Center"
+                                   Text="2" />
+                    </Grid>
+
+                    <Slider x:Name="EdgeFeatherSlider"
+                            Minimum="0"
+                            Maximum="40"
+                            StepFrequency="1"
+                            ValueChanged="EdgeFeatherSlider_ValueChanged" />
+                    <TextBlock Text="Osłabia wpływ pierwszych N pikseli od krawędzi obrazu na kolor diod (zamiast całkowicie je odcinać) - eliminuje obrys przechwytywania Windows lub overscan, zachowując płynne przejście."
+                               Style="{StaticResource SectionSubTextStyle}" />
                 </StackPanel>
             </Border>
 
@@ -258,10 +281,10 @@
                                 </Grid>
                                 <Slider x:Name="ColorSensitivitySlider"
                                         Minimum="0.1"
-                                        Maximum="3.0"
+                                        Maximum="6.0"
                                         StepFrequency="0.1"
                                         ValueChanged="ColorSensitivitySlider_ValueChanged" />
-                                <TextBlock Text="Wyższa wartość = reaguje nawet na drobne zmiany; niższa = filtruje szum."
+                                <TextBlock Text="Wyższa wartość = reaguje nawet na drobne zmiany; niższa = filtruje szum. Zakres rozszerzony do 6.0."
                                            Style="{StaticResource SectionSubTextStyle}" />
                             </StackPanel>
 
@@ -287,7 +310,171 @@
                                 <TextBlock Text="0 = pełna czerń przy ciemnym obrazie, wyższe wartości = delikatna poświata tła."
                                            Style="{StaticResource SectionSubTextStyle}" />
                             </StackPanel>
+
+                            <!-- Wykrywanie szybkich/małych obiektów (peak-blend) -->
+                            <StackPanel Spacing="6">
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock Text="Wykrywanie szybkich/małych obiektów (%)"
+                                               FontWeight="SemiBold" />
+                                    <TextBlock x:Name="ZonePeakWeightValueText"
+                                               Grid.Column="1"
+                                               Text="30" />
+                                </Grid>
+                                <Slider x:Name="ZonePeakWeightSlider"
+                                        Minimum="0"
+                                        Maximum="100"
+                                        StepFrequency="5"
+                                        ValueChanged="ZonePeakWeightSlider_ValueChanged" />
+                                <TextBlock Text="0 = czysta średnia strefy (jak dotychczas), więcej = mocniej reaguje na pojedynczy jasny obiekt, nawet jeśli zajmuje małą część strefy."
+                                           Style="{StaticResource SectionSubTextStyle}" />
+                            </StackPanel>
+
+                            <!-- Wzmocnienie cieni -->
+                            <StackPanel Spacing="6">
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock Text="Wzmocnienie cieni"
+                                               FontWeight="SemiBold" />
+                                    <TextBlock x:Name="ShadowBoostValueText"
+                                               Grid.Column="1"
+                                               Text="1.0" />
+                                </Grid>
+                                <Slider x:Name="ShadowBoostSlider"
+                                        Minimum="10"
+                                        Maximum="40"
+                                        StepFrequency="1"
+                                        ValueChanged="ShadowBoostSlider_ValueChanged" />
+                                <TextBlock Text="1.0 = wyłączone. Wyższe wartości silniej podnoszą słabe/ciemne kolory, bez rozjaśniania już jasnych scen."
+                                           Style="{StaticResource SectionSubTextStyle}" />
+                            </StackPanel>
+
+                            <!-- Próg szumu -->
+                            <StackPanel Spacing="6">
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock Text="Próg szumu"
+                                               FontWeight="SemiBold" />
+                                    <TextBlock x:Name="NoiseFloorValueText"
+                                               Grid.Column="1"
+                                               Text="4" />
+                                </Grid>
+                                <Slider x:Name="NoiseFloorSlider"
+                                        Minimum="0"
+                                        Maximum="32"
+                                        StepFrequency="1"
+                                        ValueChanged="NoiseFloorSlider_ValueChanged" />
+                                <TextBlock Text="Chroni przed migotaniem na czarnym tle przy wysokiej czułości/wzmocnieniu cieni. Zwiększ, jeśli widzisz szum na ciemnych scenach."
+                                           Style="{StaticResource SectionSubTextStyle}" />
+                            </StackPanel>
+
+                            <!-- Wygładzanie fazowe -->
+                            <StackPanel Spacing="6">
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock Text="Wygładzanie fazowe (%)"
+                                               FontWeight="SemiBold" />
+                                    <TextBlock x:Name="PhaseSmoothingValueText"
+                                               Grid.Column="1"
+                                               Text="0" />
+                                </Grid>
+                                <Slider x:Name="PhaseSmoothingSlider"
+                                        Minimum="0"
+                                        Maximum="100"
+                                        StepFrequency="5"
+                                        ValueChanged="PhaseSmoothingSlider_ValueChanged" />
+                                <TextBlock Text="0 = wyłączone. Redukuje subtelną chropowatość koloru przy bardzo powolnym ruchu treści o kilka pikseli, kosztem niewielkiego dodatkowego opóźnienia."
+                                           Style="{StaticResource SectionSubTextStyle}" />
+                            </StackPanel>
                         </StackPanel>
+
+                        <!-- Kalibracja koloru per kanał RGB -->
+                        <Border Style="{StaticResource CardStyle}">
+                            <StackPanel Spacing="12">
+                                <TextBlock Text="Kalibracja koloru per kanał"
+                                           Style="{StaticResource SectionHeaderTextStyle}" />
+                                <TextBlock Text="Koryguje rozjazd koloru między obrazem na ekranie a rzeczywistym wyświetlaniem LED (np. różnice w widmie diod)."
+                                           Style="{StaticResource SectionSubTextStyle}" />
+
+                                <StackPanel Spacing="6">
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBlock Text="Kanał R (%)"
+                                                   FontWeight="SemiBold" />
+                                        <TextBlock x:Name="ChannelGainRValueText"
+                                                   Grid.Column="1"
+                                                   Text="100" />
+                                    </Grid>
+                                    <Slider x:Name="ChannelGainRSlider"
+                                            Minimum="20"
+                                            Maximum="200"
+                                            StepFrequency="1"
+                                            ValueChanged="ChannelGainRSlider_ValueChanged" />
+                                </StackPanel>
+
+                                <StackPanel Spacing="6">
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBlock Text="Kanał G (%)"
+                                                   FontWeight="SemiBold" />
+                                        <TextBlock x:Name="ChannelGainGValueText"
+                                                   Grid.Column="1"
+                                                   Text="100" />
+                                    </Grid>
+                                    <Slider x:Name="ChannelGainGSlider"
+                                            Minimum="20"
+                                            Maximum="200"
+                                            StepFrequency="1"
+                                            ValueChanged="ChannelGainGSlider_ValueChanged" />
+                                </StackPanel>
+
+                                <StackPanel Spacing="6">
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBlock Text="Kanał B (%)"
+                                                   FontWeight="SemiBold" />
+                                        <TextBlock x:Name="ChannelGainBValueText"
+                                                   Grid.Column="1"
+                                                   Text="100" />
+                                    </Grid>
+                                    <Slider x:Name="ChannelGainBSlider"
+                                            Minimum="20"
+                                            Maximum="200"
+                                            StepFrequency="1"
+                                            ValueChanged="ChannelGainBSlider_ValueChanged" />
+                                    <TextBlock Text="100% = neutralne. Zwiększ kanał, jeśli LED wyświetla go za słabo względem ekranu; zmniejsz, jeśli za intensywnie."
+                                               Style="{StaticResource SectionSubTextStyle}" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
 
                         <!-- Kalibracja barwy ściany -->
                         <Border Style="{StaticResource CardStyle}">
@@ -297,16 +484,13 @@
                                 <TextBlock Text="Kompensuje wpływ koloru ściany na odcień diod. Wskaż dominującą barwę ściany za telewizorem."
                                            Style="{StaticResource SectionSubTextStyle}" />
 
-                                <!-- Włącz / wyłącz -->
                                 <ToggleSwitch x:Name="WallColorToggle"
                                               Header="Włącz kompensację barwy ściany"
                                               IsOn="False"
                                               Toggled="WallColorToggle_Toggled" />
 
-                                <!-- Panel z kontrolkami – aktywny tylko gdy ToggleSwitch ON -->
                                 <StackPanel x:Name="WallColorPanel" Spacing="12">
 
-                                    <!-- Podgląd wybranego koloru + przycisk picker -->
                                     <Grid ColumnSpacing="12">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
@@ -318,7 +502,6 @@
                                                    FontWeight="SemiBold"
                                                    VerticalAlignment="Center" />
 
-                                        <!-- Podgląd – prostokąt w wybranym kolorze -->
                                         <Border x:Name="WallColorPreview"
                                                 Grid.Column="1"
                                                 Width="40"
@@ -334,12 +517,10 @@
                                                 Click="WallColorPickerButton_Click" />
                                     </Grid>
 
-                                    <!-- Wyświetlany HEX -->
                                     <TextBlock x:Name="WallColorHexText"
                                                Text="#808080"
                                                Style="{StaticResource SectionSubTextStyle}" />
 
-                                    <!-- Siła kompensacji -->
                                     <StackPanel Spacing="6">
                                         <Grid ColumnSpacing="12">
                                             <Grid.ColumnDefinitions>
@@ -365,6 +546,7 @@
                                 </StackPanel>
                             </StackPanel>
                         </Border>
+
                         <!-- Wykrywanie czarnych pasów -->
                         <Border Style="{StaticResource CardStyle}">
                             <StackPanel Spacing="12">
@@ -379,7 +561,6 @@
                                       Toggled="BlackBarToggle_Toggled" />
 
                                 <StackPanel x:Name="BlackBarPanel" Spacing="12">
-                                    <!-- Próg czerni -->
                                     <StackPanel Spacing="6">
                                         <Grid ColumnSpacing="12">
                                             <Grid.ColumnDefinitions>
@@ -402,7 +583,6 @@
                                            Style="{StaticResource SectionSubTextStyle}" />
                                     </StackPanel>
 
-                                    <!-- Wymagany udział czarnych pikseli -->
                                     <StackPanel Spacing="6">
                                         <Grid ColumnSpacing="12">
                                             <Grid.ColumnDefinitions>

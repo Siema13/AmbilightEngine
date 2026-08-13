@@ -250,6 +250,9 @@ public sealed partial class DashboardPage : Page
 
         if (selectedMode == DisplayMode.WledEffects)
         {
+            // NOWOŚĆ: zwalniamy trwałą sesję "live" PRZED zastosowaniem efektu, aby WLED nie
+            // ignorował komendy efektu, myśląc że wciąż jest aktywny ciągły strumień DDP z Video Sync.
+            mainWindow.EngineHost.NotifyDisplayModeChanged();
             await LoadWledEffectsAsync();
         }
         else
@@ -257,6 +260,13 @@ public sealed partial class DashboardPage : Page
             // Oddajemy priorytet danym DDP (VideoSync/StaticColor) - inaczej WLED wciąż
             // ignoruje przychodzące ramki z powodu lor:1 ustawionego przy ostatniej komendzie efektu.
             await mainWindow.EngineHost.DisableWledRealtimeOverrideAsync();
+
+            // NOWOŚĆ: włączamy trwałą sesję "live" WLED, żeby Video Sync / Static Color nie
+            // zależały od skonfigurowanego w WLED Realtime Timeout - eliminuje to powroty do
+            // natywnego efektu WLED przy dłuższych przerwach w dostarczaniu klatek z ekranu
+            // (np. gdy obraz jest całkowicie statyczny i Windows Graphics Capture nie generuje
+            // nowych ramek nawet przez kilka sekund).
+            mainWindow.EngineHost.NotifyDisplayModeChanged();
         }
     }
 

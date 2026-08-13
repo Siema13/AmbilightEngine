@@ -13,6 +13,11 @@ namespace AmbilightEngine.Core.Processing
         private readonly float[] previousG;
         private readonly float[] previousB;
 
+        private readonly float[] previousRawR;
+        private readonly float[] previousRawG;
+        private readonly float[] previousRawB;
+        private bool hasPreviousRaw;
+
         private int pixelSkipStep = 4;
         private float attackFactor = 0.3f;
         private float decayFactor = 0.3f;
@@ -29,14 +34,44 @@ namespace AmbilightEngine.Core.Processing
         private float temperatureFactorG = 1.0f;
         private float temperatureFactorB = 1.0f;
 
+        // Niezależne mnożniki kalibracji per kanał RGB (Gain), stosowane po korekcji
+        // temperatury barwowej, przed nasyceniem. Koryguje rozjazd koloru ekran <-> LED.
+        private float channelGainR = 1.0f;
+        private float channelGainG = 1.0f;
+        private float channelGainB = 1.0f;
+
+        // NOWOŚĆ: kalibracja per-kanał RGB - model Lift/Gamma/Gain znany z kolorystyki
+        // filmowej. Offset (Lift) podnosi/opuszcza czernie danego kanału - koryguje sytuację,
+        // gdy dioda "czerwona" świeci lekko pomarańczowo nawet przy zerowym sygnale wejściowym.
+        // Gamma koryguje nieliniowość w środkowych tonach NIEZALEŻNIE per kanał (w przeciwieństwie
+        // do globalnego gammaValue, które działa jednakowo na R/G/B). Zakres offsetu: -0.2..0.2
+        // (w jednostkach znormalizowanych 0..1), zakres gammy per kanał: 0.3..3.0.
+        private float channelGammaR = 1.0f;
+        private float channelGammaG = 1.0f;
+        private float channelGammaB = 1.0f;
+
+        private float channelOffsetR = 0.0f;
+        private float channelOffsetG = 0.0f;
+        private float channelOffsetB = 0.0f;
+
         // ── Wall Color Compensation ──────────────────────────────────────────────
-        // Prekalkulowane mnożniki korekcji kanałów - wyliczane raz przy SetWallColor(),
-        // nie w pętli per-pixel (analogicznie do temperatureFactorX).
         private float wallCompR = 1.0f;
         private float wallCompG = 1.0f;
         private float wallCompB = 1.0f;
         private bool wallCompEnabled = false;
         // ────────────────────────────────────────────────────────────────────────
+
+        private const float AttackSpeedupFactor = 4.0f;
+
+        private float zonePeakWeight = 0.3f;
+        private float shadowBoostStrength = 1.0f;
+        private byte noiseFloor = 4;
+
+        private int edgeFeatherPixels = 2;
+        private const float MinEdgeWeight = 0.05f;
+        private const int TargetSamplesPerAxis = 16;
+
+        private float phaseSmoothingStrength = 0.0f;
 
         public ImageProcessor(CaptureZone[] zones)
         {
@@ -50,17 +85,12 @@ namespace AmbilightEngine.Core.Processing
             previousR = new float[ledCount];
             previousG = new float[ledCount];
             previousB = new float[ledCount];
+
+            previousRawR = new float[ledCount];
+            previousRawG = new float[ledCount];
+            previousRawB = new float[ledCount];
         }
 
-        // ── Publiczne API Wall Color Compensation ────────────────────────────────
-
-        /// <summary>
-        /// Ustawia korekcję barwy ściany. Wywołaj po każdej zmianie koloru lub siły w UI.
-        /// </summary>
-        /// <param name="wallR">Kanał R ściany, 0-255</param>
-        /// <param name="wallG">Kanał G ściany, 0-255</param>
-        /// <param name="wallB">Kanał B ściany, 0-255</param>
-        /// <param name="strength">Siła korekcji 0.0 (brak) – 1.0 (pełna)</param>
         public void SetWallColor(byte wallR, byte wallG, byte wallB, float strength)
         {
             strength = Math.Clamp(strength, 0f, 1f);
@@ -72,18 +102,10 @@ namespace AmbilightEngine.Core.Processing
                 return;
             }
 
-            // Każdy kanał ściany jest traktowany jako "przesunięcie od neutralnego (128)".
-            // Ściana mocno czerwona (wallR=220) → kompensujemy wzmacniając niebieski/zielony,
-            // osłabiając czerwony; ściana neutralna (128) → mnożnik = 1.0 (brak efektu).
-            //
-            // Wzór: comp_c = 1.0 + strength * (1.0 - wall_c / 128.0)
-            // Przykład: wallR=220, strength=0.5 → compR = 1 + 0.5*(1-220/128) = 1-0.359 = 0.641
-            //           wallG=128, strength=0.5 → compG = 1 + 0.5*(1-1.0)    = 1.0
             wallCompR = 1.0f + strength * (1.0f - wallR / 128.0f);
             wallCompG = 1.0f + strength * (1.0f - wallG / 128.0f);
             wallCompB = 1.0f + strength * (1.0f - wallB / 128.0f);
 
-            // Zabezpieczenie przed ujemnymi mnożnikami (bardzo nasycony kolor ściany + pełna siła)
             wallCompR = Math.Max(wallCompR, 0.05f);
             wallCompG = Math.Max(wallCompG, 0.05f);
             wallCompB = Math.Max(wallCompB, 0.05f);
@@ -91,10 +113,6 @@ namespace AmbilightEngine.Core.Processing
             wallCompEnabled = true;
         }
 
-        /// <summary>
-        /// Pomocnicze przeciążenie dla hex-stringa z ustawień (np. "#E8C090").
-        /// Wywoływane przez PipelineManager/SettingsImagePage.xaml.cs przy wczytaniu profilu.
-        /// </summary>
         public void SetWallColorFromHex(string? hexColor, float strength)
         {
             if (string.IsNullOrWhiteSpace(hexColor))
@@ -120,8 +138,6 @@ namespace AmbilightEngine.Core.Processing
             SetWallColor(128, 128, 128, 0f);
         }
 
-        // ────────────────────────────────────────────────────────────────────────
-
         public void ApplyDspParameters(int brightnessPercent, double saturation, int smoothingMs, int blackCutoff, int kelvin, double gamma = 2.2)
         {
             brightnessMultiplier = Math.Clamp(brightnessPercent, 0, 100) / 100f;
@@ -131,15 +147,21 @@ namespace AmbilightEngine.Core.Processing
             gammaValue = (float)Math.Clamp(gamma, 1.0, 4.0);
 
             RecalculateTemperatureFactors();
-            float derivedRate = 1.0f / Math.Max(1, smoothingMs / 16f);
-            SetDynamics(derivedRate, derivedRate, sensitivityMultiplier, minBrightnessFloor);
+
+            float decayMs = smoothingMs;
+            float attackMs = smoothingMs / AttackSpeedupFactor;
+
+            float derivedDecayRate = 1.0f / Math.Max(1, decayMs / 16f);
+            float derivedAttackRate = 1.0f / Math.Max(1, attackMs / 16f);
+
+            SetDynamics(derivedAttackRate, derivedDecayRate, sensitivityMultiplier, minBrightnessFloor);
         }
 
         public void SetDynamics(float attack, float decay, float sensitivity, float minBrightness)
         {
             attackFactor = Math.Clamp(attack, 0.01f, 1.0f);
             decayFactor = Math.Clamp(decay, 0.01f, 1.0f);
-            sensitivityMultiplier = Math.Clamp(sensitivity, 0.1f, 3.0f);
+            sensitivityMultiplier = Math.Clamp(sensitivity, 0.1f, 6.0f);
             minBrightnessFloor = Math.Clamp(minBrightness, 0f, 255f);
         }
 
@@ -148,83 +170,199 @@ namespace AmbilightEngine.Core.Processing
             pixelSkipStep = Math.Clamp(skipStep, 1, 20);
         }
 
+        public void SetAdvancedSampling(
+            float peakWeight,
+            float shadowBoost,
+            byte noiseFloorValue,
+            int edgeFeather,
+            float phaseSmoothing,
+            float channelGainRValue,
+            float channelGainGValue,
+            float channelGainBValue)
+        {
+            zonePeakWeight = Math.Clamp(peakWeight, 0f, 1f);
+            shadowBoostStrength = Math.Clamp(shadowBoost, 1.0f, 4.0f);
+            noiseFloor = noiseFloorValue;
+            edgeFeatherPixels = Math.Clamp(edgeFeather, 0, 40);
+            phaseSmoothingStrength = Math.Clamp(phaseSmoothing, 0f, 1f);
+            channelGainR = Math.Clamp(channelGainRValue, 0.2f, 2.0f);
+            channelGainG = Math.Clamp(channelGainGValue, 0.2f, 2.0f);
+            channelGainB = Math.Clamp(channelGainBValue, 0.2f, 2.0f);
+        }
+
+        // NOWOŚĆ: ustawia pełną kalibrację per-kanał (Gain + Gamma + Offset) dla R/G/B.
+        // Wywołuj to OBOK SetAdvancedSampling (który wciąż steruje samym Gain, zachowane
+        // dla zgodności z istniejącym UI) - ta metoda dodaje dwa kolejne stopnie swobody
+        // per kanał, niezbędne, gdy sam mnożnik nie wystarcza do skorygowania koloru LED.
+        public void SetChannelCalibration(
+            float gainR, float gammaR, float offsetR,
+            float gainG, float gammaG, float offsetG,
+            float gainB, float gammaB, float offsetB)
+        {
+            channelGainR = Math.Clamp(gainR, 0.2f, 2.0f);
+            channelGainG = Math.Clamp(gainG, 0.2f, 2.0f);
+            channelGainB = Math.Clamp(gainB, 0.2f, 2.0f);
+
+            channelGammaR = Math.Clamp(gammaR, 0.3f, 3.0f);
+            channelGammaG = Math.Clamp(gammaG, 0.3f, 3.0f);
+            channelGammaB = Math.Clamp(gammaB, 0.3f, 3.0f);
+
+            channelOffsetR = Math.Clamp(offsetR, -0.2f, 0.2f);
+            channelOffsetG = Math.Clamp(offsetG, -0.2f, 0.2f);
+            channelOffsetB = Math.Clamp(offsetB, -0.2f, 0.2f);
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public ReadOnlySpan<RgbColor> ProcessFrame(ReadOnlySpan<byte> rawPixels, int stride)
+        private float ComputeEdgeWeight(int coordinate, int dimensionSize)
+        {
+            if (edgeFeatherPixels <= 0)
+            {
+                return 1.0f;
+            }
+
+            int distanceFromNearEdge = coordinate;
+            int distanceFromFarEdge = (dimensionSize - 1) - coordinate;
+            int distanceFromEdge = Math.Min(distanceFromNearEdge, distanceFromFarEdge);
+
+            if (distanceFromEdge >= edgeFeatherPixels)
+            {
+                return 1.0f;
+            }
+
+            float ratio = distanceFromEdge / (float)edgeFeatherPixels;
+            return MinEdgeWeight + (1.0f - MinEdgeWeight) * ratio;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ReadOnlySpan<RgbColor> ProcessFrame(ReadOnlySpan<byte> rawPixels, int stride, int imageWidth, int imageHeight)
         {
             for (int i = 0; i < zones.Length; i++)
             {
                 CaptureZone zone = zones[i];
-                long sumB = 0, sumG = 0, sumR = 0;
-                int pixelCount = 0;
+                float sumB = 0f, sumG = 0f, sumR = 0f;
+                float weightSum = 0f;
 
-                for (int y = zone.Y; y < zone.Y + zone.Height; y += pixelSkipStep)
+                int peakLuminanceScaled = -1;
+                byte peakR = 0, peakG = 0, peakB = 0;
+
+                int stepX = Math.Max(1, Math.Min(pixelSkipStep, zone.Width / TargetSamplesPerAxis));
+                int stepY = Math.Max(1, Math.Min(pixelSkipStep, zone.Height / TargetSamplesPerAxis));
+
+                for (int y = zone.Y; y < zone.Y + zone.Height; y += stepY)
                 {
                     int rowOffset = y * stride;
+                    float weightY = ComputeEdgeWeight(y, imageHeight);
 
-                    for (int x = zone.X; x < zone.X + zone.Width; x += pixelSkipStep)
+                    for (int x = zone.X; x < zone.X + zone.Width; x += stepX)
                     {
                         int offset = rowOffset + x * 4;
                         if (offset + 2 >= rawPixels.Length) continue;
 
-                        sumB += rawPixels[offset];
-                        sumG += rawPixels[offset + 1];
-                        sumR += rawPixels[offset + 2];
-                        pixelCount++;
+                        byte pixelB = rawPixels[offset];
+                        byte pixelG = rawPixels[offset + 1];
+                        byte pixelR = rawPixels[offset + 2];
+
+                        float weightX = ComputeEdgeWeight(x, imageWidth);
+                        float pixelWeight = weightX * weightY;
+
+                        sumB += pixelB * pixelWeight;
+                        sumG += pixelG * pixelWeight;
+                        sumR += pixelR * pixelWeight;
+                        weightSum += pixelWeight;
+
+                        int pixelLuminanceScaled = 299 * pixelR + 587 * pixelG + 114 * pixelB;
+                        if (pixelLuminanceScaled > peakLuminanceScaled)
+                        {
+                            peakLuminanceScaled = pixelLuminanceScaled;
+                            peakR = pixelR;
+                            peakG = pixelG;
+                            peakB = pixelB;
+                        }
                     }
                 }
 
-                if (pixelCount == 0) pixelCount = 1;
+                if (weightSum <= 0f) weightSum = 1f;
 
-                float rawAvgR = sumR / (float)pixelCount;
-                float rawAvgG = sumG / (float)pixelCount;
-                float rawAvgB = sumB / (float)pixelCount;
+                float rawAvgR = sumR / weightSum;
+                float rawAvgG = sumG / weightSum;
+                float rawAvgB = sumB / weightSum;
 
-                float correctedR = rawAvgR * temperatureFactorR;
-                float correctedG = rawAvgG * temperatureFactorG;
-                float correctedB = rawAvgB * temperatureFactorB;
+                if (phaseSmoothingStrength > 0f && hasPreviousRaw)
+                {
+                    rawAvgR = previousRawR[i] + (rawAvgR - previousRawR[i]) * (1.0f - phaseSmoothingStrength);
+                    rawAvgG = previousRawG[i] + (rawAvgG - previousRawG[i]) * (1.0f - phaseSmoothingStrength);
+                    rawAvgB = previousRawB[i] + (rawAvgB - previousRawB[i]) * (1.0f - phaseSmoothingStrength);
+                }
 
-                float luminance = 0.299f * correctedR + 0.587f * correctedG + 0.114f * correctedB;
+                previousRawR[i] = rawAvgR;
+                previousRawG[i] = rawAvgG;
+                previousRawB[i] = rawAvgB;
+
+                float blendedR = rawAvgR + (peakR - rawAvgR) * zonePeakWeight;
+                float blendedG = rawAvgG + (peakG - rawAvgG) * zonePeakWeight;
+                float blendedB = rawAvgB + (peakB - rawAvgB) * zonePeakWeight;
+
+                float correctedR = blendedR * temperatureFactorR;
+                float correctedG = blendedG * temperatureFactorG;
+                float correctedB = blendedB * temperatureFactorB;
+
+                // ── Kalibracja per-kanał RGB: Lift (Offset) → Gamma → Gain ─────────
+                // NOWOŚĆ: pełny model Lift/Gamma/Gain per kanał, zamiast samego mnożnika.
+                // 1) Offset (Lift) przesuwa czernie kanału - koryguje "podbarwienie" diody
+                //    nawet przy zerowym sygnale wejściowym.
+                // 2) Gamma per kanał koryguje nieliniowość w środkowych tonach TEGO kanału
+                //    niezależnie od pozostałych - w przeciwieństwie do globalnej gammaValue.
+                // 3) Gain skaluje wynik na końcu, tak jak dotychczas.
+                correctedR = ApplyChannelCalibration(correctedR, channelOffsetR, channelGammaR, channelGainR);
+                correctedG = ApplyChannelCalibration(correctedG, channelOffsetG, channelGammaG, channelGainG);
+                correctedB = ApplyChannelCalibration(correctedB, channelOffsetB, channelGammaB, channelGainB);
+                // ─────────────────────────────────────────────────────────────────
+
+                float denoisedR = ApplyNoiseFloor(correctedR);
+                float denoisedG = ApplyNoiseFloor(correctedG);
+                float denoisedB = ApplyNoiseFloor(correctedB);
+
+                float shadowedR = ApplyShadowBoost(denoisedR);
+                float shadowedG = ApplyShadowBoost(denoisedG);
+                float shadowedB = ApplyShadowBoost(denoisedB);
+
+                float gainedR = Math.Clamp(shadowedR * sensitivityMultiplier, 0f, 255f);
+                float gainedG = Math.Clamp(shadowedG * sensitivityMultiplier, 0f, 255f);
+                float gainedB = Math.Clamp(shadowedB * sensitivityMultiplier, 0f, 255f);
+
+                float luminance = 0.299f * gainedR + 0.587f * gainedG + 0.114f * gainedB;
 
                 if (luminance < blackCutoffThreshold)
                 {
-                    correctedR = 0f;
-                    correctedG = 0f;
-                    correctedB = 0f;
+                    gainedR = 0f;
+                    gainedG = 0f;
+                    gainedB = 0f;
                 }
                 else if (saturationBoost != 1.0f)
                 {
-                    correctedR = luminance + (correctedR - luminance) * saturationBoost;
-                    correctedG = luminance + (correctedG - luminance) * saturationBoost;
-                    correctedB = luminance + (correctedB - luminance) * saturationBoost;
+                    gainedR = luminance + (gainedR - luminance) * saturationBoost;
+                    gainedG = luminance + (gainedG - luminance) * saturationBoost;
+                    gainedB = luminance + (gainedB - luminance) * saturationBoost;
 
-                    correctedR = Math.Clamp(correctedR, 0f, 255f);
-                    correctedG = Math.Clamp(correctedG, 0f, 255f);
-                    correctedB = Math.Clamp(correctedB, 0f, 255f);
+                    gainedR = Math.Clamp(gainedR, 0f, 255f);
+                    gainedG = Math.Clamp(gainedG, 0f, 255f);
+                    gainedB = Math.Clamp(gainedB, 0f, 255f);
                 }
 
-                // ── Wall Color Compensation ───────────────────────────────────────
-                // Stosujemy po nasyceniu, przed smoothingiem - korekcja dotyczy wartości
-                // "docelowej" koloru, nie skumulowanego stanu EMA. Dzięki temu zmiana
-                // siły kompensacji reaguje płynnie przez smoothing, bez artefaktów.
                 if (wallCompEnabled)
                 {
-                    correctedR = Math.Clamp(correctedR * wallCompR, 0f, 255f);
-                    correctedG = Math.Clamp(correctedG * wallCompG, 0f, 255f);
-                    correctedB = Math.Clamp(correctedB * wallCompB, 0f, 255f);
+                    gainedR = Math.Clamp(gainedR * wallCompR, 0f, 255f);
+                    gainedG = Math.Clamp(gainedG * wallCompG, 0f, 255f);
+                    gainedB = Math.Clamp(gainedB * wallCompB, 0f, 255f);
                 }
-                // ─────────────────────────────────────────────────────────────────
 
-                float ampR = previousR[i] + (correctedR - previousR[i]) * sensitivityMultiplier;
-                float ampG = previousG[i] + (correctedG - previousG[i]) * sensitivityMultiplier;
-                float ampB = previousB[i] + (correctedB - previousB[i]) * sensitivityMultiplier;
+                float rateR = gainedR > previousR[i] ? attackFactor : decayFactor;
+                float rateG = gainedG > previousG[i] ? attackFactor : decayFactor;
+                float rateB = gainedB > previousB[i] ? attackFactor : decayFactor;
 
-                float rateR = ampR > previousR[i] ? attackFactor : decayFactor;
-                float rateG = ampG > previousG[i] ? attackFactor : decayFactor;
-                float rateB = ampB > previousB[i] ? attackFactor : decayFactor;
-
-                float smoothedR = ampR * rateR + previousR[i] * (1.0f - rateR);
-                float smoothedG = ampG * rateG + previousG[i] * (1.0f - rateG);
-                float smoothedB = ampB * rateB + previousB[i] * (1.0f - rateB);
+                float smoothedR = gainedR * rateR + previousR[i] * (1.0f - rateR);
+                float smoothedG = gainedG * rateG + previousG[i] * (1.0f - rateG);
+                float smoothedB = gainedB * rateB + previousB[i] * (1.0f - rateB);
 
                 previousR[i] = smoothedR;
                 previousG[i] = smoothedG;
@@ -253,7 +391,51 @@ namespace AmbilightEngine.Core.Processing
                 finalColors[i] = new RgbColor((byte)finalR, (byte)finalG, (byte)finalB);
             }
 
+            hasPreviousRaw = true;
+
             return new ReadOnlySpan<RgbColor>(finalColors);
+        }
+
+        // NOWOŚĆ: implementuje model Lift/Gamma/Gain dla jednego kanału. Wejście i wyjście
+        // w skali 0..255 (zgodnie z resztą toru przetwarzania w tej klasie).
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static float ApplyChannelCalibration(float channelValue255, float offset, float gamma, float gain)
+        {
+            float normalized = channelValue255 / 255f;
+            normalized = Math.Clamp(normalized + offset, 0f, 1f);
+
+            float gammaCorrected = MathF.Pow(normalized, 1.0f / gamma);
+
+            return Math.Clamp(gammaCorrected * gain * 255f, 0f, 255f);
+        }
+
+        private float ApplyNoiseFloor(float channelValue)
+        {
+            if (noiseFloor <= 0 || channelValue <= 0f)
+            {
+                return Math.Max(0f, channelValue);
+            }
+
+            if (channelValue >= noiseFloor)
+            {
+                return channelValue;
+            }
+
+            float ratio = channelValue / noiseFloor;
+            return channelValue * ratio;
+        }
+
+        private float ApplyShadowBoost(float channelValue)
+        {
+            if (shadowBoostStrength <= 1.0f)
+            {
+                return channelValue;
+            }
+
+            float normalized = Math.Clamp(channelValue / 255f, 0f, 1f);
+            float exponent = 1.0f / shadowBoostStrength;
+            float boosted = MathF.Pow(normalized, exponent);
+            return boosted * 255f;
         }
 
         private float ApplyGamma(float channelValue)
@@ -269,6 +451,11 @@ namespace AmbilightEngine.Core.Processing
             Array.Clear(previousG, 0, previousG.Length);
             Array.Clear(previousB, 0, previousB.Length);
             Array.Clear(finalColors, 0, finalColors.Length);
+
+            Array.Clear(previousRawR, 0, previousRawR.Length);
+            Array.Clear(previousRawG, 0, previousRawG.Length);
+            Array.Clear(previousRawB, 0, previousRawB.Length);
+            hasPreviousRaw = false;
         }
 
         public void SeedState(ImageProcessor previousProcessor)
@@ -279,6 +466,14 @@ namespace AmbilightEngine.Core.Processing
             Array.Copy(previousProcessor.previousR, previousR, previousR.Length);
             Array.Copy(previousProcessor.previousG, previousG, previousG.Length);
             Array.Copy(previousProcessor.previousB, previousB, previousB.Length);
+
+            if (previousProcessor.previousRawR.Length == previousRawR.Length)
+            {
+                Array.Copy(previousProcessor.previousRawR, previousRawR, previousRawR.Length);
+                Array.Copy(previousProcessor.previousRawG, previousRawG, previousRawG.Length);
+                Array.Copy(previousProcessor.previousRawB, previousRawB, previousRawB.Length);
+                hasPreviousRaw = previousProcessor.hasPreviousRaw;
+            }
         }
 
         public void ApplyColorCalibration(int brightnessPercent, double saturation, int blackCutoff, int kelvin, double gamma)

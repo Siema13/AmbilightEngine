@@ -90,6 +90,12 @@ namespace AmbilightEngine
             // od razu po otwarciu aplikacji, bez konieczności klikania "Start" na Dashboard.
             IntPtr hwnd = WindowNative.GetWindowHandle(this);
             _ = InitializeWledConnectionOnStartupAsync(hwnd);
+
+            // NOWOŚĆ: przy pierwszym uruchomieniu aplikacji (flaga HasCompletedCalibrationOnboarding
+            // == false) automatycznie otwiera wizard kalibracji, żeby nowy użytkownik od razu
+            // trafiał na dobrze dostrojony obraz. Odpalane raz, po pierwszej aktywacji okna -
+            // odpina się od Activated natychmiast po pierwszym wywołaniu.
+            Activated += MainWindow_FirstActivationCheckOnboarding;
         }
 
         private async System.Threading.Tasks.Task InitializeWledConnectionOnStartupAsync(IntPtr hwnd)
@@ -188,6 +194,24 @@ namespace AmbilightEngine
         {
             NavView.SelectedItem = NavView.MenuItems[1];
             ContentFrame.Navigate(typeof(ProfilesPage));
+        }
+
+        // NOWOŚĆ: nawigacja programowa do wizarda kalibracji (używana przez onboarding
+        // przy pierwszym starcie). Szuka pozycji menu po Tag, więc jest odporna na to,
+        // w którym miejscu listy dodałeś NavigationViewItem z Tag="calibration_wizard".
+        public void NavigateToCalibrationWizard()
+        {
+            foreach (var menuItem in NavView.MenuItems)
+            {
+                if (menuItem is NavigationViewItem navItem &&
+                    string.Equals(navItem.Tag?.ToString(), "calibration_wizard", StringComparison.Ordinal))
+                {
+                    NavView.SelectedItem = navItem;
+                    break;
+                }
+            }
+
+            ContentFrame.Navigate(typeof(CalibrationWizardPage));
         }
 
         public void StartHiddenToTray()
@@ -426,6 +450,19 @@ namespace AmbilightEngine
             UpdateTrayToolTip(EngineHost.CurrentStatus);
         }
 
+        // NOWOŚĆ: przy pierwszej aktywacji okna sprawdza flagę HasCompletedCalibrationOnboarding
+        // i jeśli onboarding nie został jeszcze zakończony, automatycznie otwiera wizard
+        // kalibracji. Odpina się od Activated natychmiast, żeby nie odpalać się powtórnie.
+        private void MainWindow_FirstActivationCheckOnboarding(object sender, WindowActivatedEventArgs args)
+        {
+            Activated -= MainWindow_FirstActivationCheckOnboarding;
+
+            if (!Settings.HasCompletedCalibrationOnboarding)
+            {
+                NavigateToCalibrationWizard();
+            }
+        }
+
         private void TrySetMicaBackdrop()
         {
             if (!MicaController.IsSupported())
@@ -480,6 +517,10 @@ namespace AmbilightEngine
             else if (tag == "profiles")
             {
                 ContentFrame.Navigate(typeof(ProfilesPage));
+            }
+            else if (tag == "calibration_wizard")
+            {
+                ContentFrame.Navigate(typeof(CalibrationWizardPage));
             }
         }
 

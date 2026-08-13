@@ -1,0 +1,353 @@
+<Page
+    x:Class="AmbilightEngine.Pages.CalibrationWizardPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="using:Microsoft.UI.Xaml.Controls"
+    mc:Ignorable="d">
+
+    <Grid Background="{ThemeResource M3SurfaceContainerBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Nagłówek + wskaźnik postępu -->
+        <StackPanel Grid.Row="0"
+                    Padding="32,24,32,16"
+                    Spacing="8">
+            <TextBlock x:Name="StepTitleText"
+                       Text="Kalibracja obrazu i światła"
+                       Style="{StaticResource PageTitleTextStyle}" />
+            <TextBlock x:Name="StepSubtitleText"
+                       Text="Krok 1 z 5 — przygotowanie"
+                       Style="{StaticResource SectionSubTextStyle}" />
+            <ProgressBar x:Name="StepProgressBar"
+                         Minimum="0"
+                         Maximum="5"
+                         Value="1"
+                         Height="4"
+                         CornerRadius="2" />
+        </StackPanel>
+
+        <!-- Obszar kroku (dynamicznie przełączany) -->
+        <Grid Grid.Row="1" Padding="32,0,32,0">
+
+            <!-- KROK 0: Powitanie -->
+            <StackPanel x:Name="WelcomeStepPanel"
+                        VerticalAlignment="Center"
+                        HorizontalAlignment="Left"
+                        MaxWidth="640"
+                        Spacing="16"
+                        Visibility="Visible">
+                <TextBlock Text="Zanim zaczniemy"
+                           FontSize="22"
+                           FontWeight="SemiBold" />
+                <TextBlock TextWrapping="Wrap"
+                           Style="{StaticResource SectionSubTextStyle}"
+                           Text="Ten wizard pomoże dostroić kolory i parametry obrazu wyświetlane na diodach LED tak, aby wiernie odpowiadały temu, co widzisz na ekranie. Zajmie to około 2-3 minut." />
+                <TextBlock TextWrapping="Wrap"
+                           Style="{StaticResource SectionSubTextStyle}"
+                           Text="Zalecenia przed startem:" />
+                <StackPanel Spacing="4" Margin="8,0,0,0">
+                    <TextBlock Text="• Zgaś inne światła w pomieszczeniu (kalibracja w ciemności jest najdokładniejsza)." Style="{StaticResource SectionSubTextStyle}" />
+                    <TextBlock Text="• Usuń folię ochronną lub przeszkody z diod LED." Style="{StaticResource SectionSubTextStyle}" />
+                    <TextBlock Text="• Usiądź w miejscu, z którego normalnie patrzysz na ekran." Style="{StaticResource SectionSubTextStyle}" />
+                </StackPanel>
+            </StackPanel>
+
+            <!-- KROK 1-3: Pełnoekranowy blok koloru + slider kanału RGB -->
+            <Grid x:Name="ColorStepPanel"
+                  Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Border x:Name="ColorSwatchBorder"
+                        Grid.Row="0"
+                        CornerRadius="12"
+                        Background="#FF0000"
+                        MinHeight="280" />
+
+                <StackPanel Grid.Row="1"
+                            Margin="0,20,0,0"
+                            MaxWidth="640"
+                            Spacing="8">
+                    <TextBlock x:Name="ColorStepInstructionText"
+                               TextWrapping="Wrap"
+                               Style="{StaticResource SectionSubTextStyle}"
+                               Text="Porównaj kolor na ekranie z kolorem na diodach LED. Przesuwaj suwak, aż będą identyczne." />
+
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock x:Name="ColorStepSliderLabel"
+                                   Text="Kanał R (%)"
+                                   FontWeight="SemiBold" />
+                        <TextBlock x:Name="ColorStepValueText"
+                                   Grid.Column="1"
+                                   Text="100" />
+                    </Grid>
+
+                    <Slider x:Name="ColorStepSlider"
+                            Minimum="20"
+                            Maximum="200"
+                            StepFrequency="1"
+                            Value="100"
+                            ValueChanged="ColorStepSlider_ValueChanged" />
+
+                    <TextBlock Text="Wskazówka: jeśli LED jest za blady w tym kolorze, zwiększ wartość. Jeśli za intensywny, zmniejsz."
+                               Style="{StaticResource SectionSubTextStyle}" />
+                </StackPanel>
+            </Grid>
+
+            <!-- KROK 4: Dokrawanie na żywo (podgląd + wszystkie parametry obrazu) -->
+            <Grid x:Name="VerifyStepPanel"
+                  Visibility="Collapsed"
+                  ColumnSpacing="24">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1.3*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Lewa kolumna: podgląd -->
+                <Grid Grid.Column="0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0"
+                                Orientation="Horizontal"
+                                Spacing="8"
+                                Margin="0,0,0,16">
+                        <RadioButton x:Name="VerifySourceWhiteRadio"
+                                     Content="Biały ekran"
+                                     GroupName="VerifySource"
+                                     IsChecked="True"
+                                     Checked="VerifySourceRadio_Checked" />
+                        <RadioButton x:Name="VerifySourceDesktopRadio"
+                                     Content="Live podgląd (pulpit)"
+                                     GroupName="VerifySource"
+                                     Checked="VerifySourceRadio_Checked" />
+                        <RadioButton x:Name="VerifySourceVideoRadio"
+                                     Content="Wideo promocyjne"
+                                     GroupName="VerifySource"
+                                     Checked="VerifySourceRadio_Checked" />
+                        <RadioButton x:Name="VerifySourceRainbowRadio"
+                                     Content="Pasek tęczy"
+                                     GroupName="VerifySource"
+                                     Checked="VerifySourceRadio_Checked" />
+                    </StackPanel>
+
+                    <Grid Grid.Row="1" MinHeight="280">
+                        <Border x:Name="VerifyWhiteSwatch"
+                                CornerRadius="12"
+                                Background="#FFFFFF"
+                                Visibility="Visible" />
+
+                        <Border x:Name="VerifyDesktopPanel"
+                                CornerRadius="12"
+                                BorderThickness="1"
+                                BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                Visibility="Collapsed">
+                            <StackPanel VerticalAlignment="Center"
+                                        HorizontalAlignment="Center"
+                                        Spacing="8"
+                                        MaxWidth="480">
+                                <TextBlock Text="Podgląd pulpitu na żywo"
+                                           FontWeight="SemiBold"
+                                           HorizontalAlignment="Center" />
+                                <TextBlock TextWrapping="Wrap"
+                                           TextAlignment="Center"
+                                           Style="{StaticResource SectionSubTextStyle}"
+                                           Text="Przechwytywanie ekranu działa w tle bez zmian. Przełącz się na inną aplikację/pulpit i obserwuj diody LED. Wróć tutaj, aby kontynuować dokrawanie parametrów." />
+                            </StackPanel>
+                        </Border>
+
+                        <controls:WebView2 x:Name="VerifyVideoWebView"
+                                            Visibility="Collapsed" />
+
+                        <Border x:Name="VerifyRainbowSwatch"
+                                CornerRadius="12"
+                                Visibility="Collapsed" />
+                    </Grid>
+
+                    <TextBlock x:Name="VerifyInstructionText"
+                               Grid.Row="2"
+                               Margin="0,16,0,0"
+                               TextWrapping="Wrap"
+                               Style="{StaticResource SectionSubTextStyle}"
+                               Text="Sprawdź, czy biały kolor na ekranie i na diodach LED wygląda neutralnie. Dostrajaj parametry po prawej stronie, obserwując reakcję LED na żywo." />
+                </Grid>
+
+                <!-- Prawa kolumna: pełne dokrawanie parametrów -->
+                <ScrollViewer Grid.Column="1"
+                              VerticalScrollMode="Auto"
+                              VerticalScrollBarVisibility="Auto"
+                              MaxHeight="520">
+                    <StackPanel Spacing="16">
+
+                        <TextBlock Text="Dokrawanie parametrów obrazu"
+                                   Style="{StaticResource SectionHeaderTextStyle}" />
+
+                        <!-- Jasność -->
+                        <StackPanel Spacing="6">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Jasność (%)" FontWeight="SemiBold" />
+                                <TextBlock x:Name="WizardBrightnessValueText" Grid.Column="1" Text="100" />
+                            </Grid>
+                            <Slider x:Name="WizardBrightnessSlider"
+                                    Minimum="0" Maximum="100" StepFrequency="1"
+                                    ValueChanged="WizardParameterSlider_ValueChanged" />
+                        </StackPanel>
+
+                        <!-- Nasycenie -->
+                        <StackPanel Spacing="6">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Nasycenie (%)" FontWeight="SemiBold" />
+                                <TextBlock x:Name="WizardSaturationValueText" Grid.Column="1" Text="100" />
+                            </Grid>
+                            <Slider x:Name="WizardSaturationSlider"
+                                    Minimum="0" Maximum="300" StepFrequency="1"
+                                    ValueChanged="WizardParameterSlider_ValueChanged" />
+                        </StackPanel>
+
+                        <!-- Temperatura barwowa -->
+                        <StackPanel Spacing="6">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Temperatura barwowa (K)" FontWeight="SemiBold" />
+                                <TextBlock x:Name="WizardKelvinValueText" Grid.Column="1" Text="6500" />
+                            </Grid>
+                            <Slider x:Name="WizardKelvinSlider"
+                                    Minimum="1000" Maximum="12000" StepFrequency="100"
+                                    ValueChanged="WizardParameterSlider_ValueChanged" />
+                        </StackPanel>
+
+                        <!-- Gamma -->
+                        <StackPanel Spacing="6">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Korekcja gamma" FontWeight="SemiBold" />
+                                <TextBlock x:Name="WizardGammaValueText" Grid.Column="1" Text="2.2" />
+                            </Grid>
+                            <Slider x:Name="WizardGammaSlider"
+                                    Minimum="10" Maximum="40" StepFrequency="1"
+                                    ValueChanged="WizardParameterSlider_ValueChanged" />
+                        </StackPanel>
+
+                        <!-- Próg czerni -->
+                        <StackPanel Spacing="6">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Próg czerni" FontWeight="SemiBold" />
+                                <TextBlock x:Name="WizardBlackCutoffValueText" Grid.Column="1" Text="8" />
+                            </Grid>
+                            <Slider x:Name="WizardBlackCutoffSlider"
+                                    Minimum="0" Maximum="50" StepFrequency="1"
+                                    ValueChanged="WizardParameterSlider_ValueChanged" />
+                        </StackPanel>
+
+                        <!-- Szybkość ataku -->
+                        <StackPanel Spacing="6">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Szybkość reakcji (atak)" FontWeight="SemiBold" />
+                                <TextBlock x:Name="WizardAttackValueText" Grid.Column="1" Text="1.0" />
+                            </Grid>
+                            <Slider x:Name="WizardAttackSlider"
+                                    Minimum="0.1" Maximum="5.0" StepFrequency="0.1"
+                                    ValueChanged="WizardParameterSlider_ValueChanged" />
+                        </StackPanel>
+
+                        <!-- Szybkość zanikania -->
+                        <StackPanel Spacing="6">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Szybkość wygaszania (zanik)" FontWeight="SemiBold" />
+                                <TextBlock x:Name="WizardDecayValueText" Grid.Column="1" Text="1.0" />
+                            </Grid>
+                            <Slider x:Name="WizardDecaySlider"
+                                    Minimum="0.1" Maximum="5.0" StepFrequency="0.1"
+                                    ValueChanged="WizardParameterSlider_ValueChanged" />
+                        </StackPanel>
+
+                        <!-- Wygładzanie fazowe -->
+                        <StackPanel Spacing="6">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Wygładzanie fazowe (%)" FontWeight="SemiBold" />
+                                <TextBlock x:Name="WizardPhaseSmoothingValueText" Grid.Column="1" Text="0" />
+                            </Grid>
+                            <Slider x:Name="WizardPhaseSmoothingSlider"
+                                    Minimum="0" Maximum="100" StepFrequency="5"
+                                    ValueChanged="WizardParameterSlider_ValueChanged" />
+                        </StackPanel>
+
+                        <Button x:Name="WizardResetAllButton"
+                                Content="Przywróć domyślne parametry"
+                                Click="WizardResetAllButton_Click"
+                                HorizontalAlignment="Left" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </Grid>
+
+        <!-- Przyciski nawigacji -->
+        <StackPanel Grid.Row="2"
+                    Orientation="Horizontal"
+                    Padding="32,16,32,24"
+                    Spacing="12"
+                    HorizontalAlignment="Right">
+            <Button x:Name="ResetStepButton"
+                    Content="Przywróć neutralne (100%)"
+                    Click="ResetStepButton_Click"
+                    Visibility="Collapsed" />
+            <Button x:Name="BackButton"
+                    Content="Wstecz"
+                    Click="BackButton_Click"
+                    IsEnabled="False" />
+            <Button x:Name="NextButton"
+                    Content="Dalej"
+                    Style="{StaticResource AccentButtonStyle}"
+                    Click="NextButton_Click" />
+            <Button x:Name="CancelWizardButton"
+                    Content="Anuluj"
+                    Click="CancelWizardButton_Click" />
+        </StackPanel>
+    </Grid>
+</Page>
