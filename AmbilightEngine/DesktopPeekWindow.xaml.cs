@@ -21,7 +21,11 @@ public sealed partial class DesktopPeekWindow : Window
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
         var appWindow = AppWindow.GetFromWindowId(windowId);
 
-        appWindow.Resize(new SizeInt32(360, 70));
+        // FIX: poprzedni rozmiar 360x70 był zbyt mały dla treści TextBlock + Button
+        // w jednym poziomym StackPanelu - przycisk "Powrót do kalibratora (F9)" był
+        // fizycznie przycinany poza prawą krawędzią okna. Nowy rozmiar 540x76 daje
+        // bezpieczny margines nawet przy większym skalowaniu DPI Windows (125%/150%).
+        appWindow.Resize(new SizeInt32(540, 76));
         appWindow.MoveInZOrderAtTop();
 
         if (appWindow.Presenter is OverlappedPresenter presenter)

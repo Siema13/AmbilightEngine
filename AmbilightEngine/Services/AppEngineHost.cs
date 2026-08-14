@@ -27,6 +27,16 @@ namespace AmbilightEngine
         private SystemStateWatcher? stateWatcher;
         private ProcessProfileWatcher? profileWatcher;
         private volatile bool isProfilePreviewActive;
+
+        // NOWOŚĆ: chroni automatyczne przełączanie profili (ProcessProfileWatcher) przed
+        // nadpisaniem imageProcessor w trakcie trwania trybu ambientowego (blokada/idle).
+        // Bez tej flagi watcher (działający na własnym timerze 500ms, niezależnie od
+        // stanu ambientu) mógł w trakcie idle wykryć zmianę aktywnego procesu i wywołać
+        // ActivateProfile, które nadpisywało imageProcessor mimo że PipelineManager był
+        // w trybie ambientowym - po powrocie z idle użytkownik widział losowy profil
+        // zamiast tego, który był aktywny przed wejściem w ambient.
+        private volatile bool isAmbientModeActive;
+
         private int lastCapturedWidth;
         private int lastCapturedHeight;
         private CaptureZone[]? currentZones;
@@ -114,6 +124,12 @@ namespace AmbilightEngine
                 stateWatcher = new SystemStateWatcher(settings, windowHandle);
                 stateWatcher.AmbientModeRequested += trigger =>
                 {
+                    // FIX: musi być ustawione PRZED EnterAmbientMode, żeby
+                    // OnProfileActivationRequested (mogące odpalić się na wątku
+                    // ProcessProfileWatcher w dowolnym momencie) od razu widziało
+                    // aktywny tryb ambientowy i nie nadpisało imageProcessor.
+                    isAmbientModeActive = true;
+
                     var config = trigger == SystemAmbientTrigger.LockOrSleep
                         ? settings.LockScreenAmbient
                         : settings.IdleAmbient;
@@ -124,6 +140,15 @@ namespace AmbilightEngine
                 stateWatcher.NormalModeRequested += () =>
                 {
                     pipelineManager?.ExitAmbientMode();
+                    isAmbientModeActive = false;
+
+                    // NOWOŚĆ: wymuszamy natychmiastową, świeżą ocenę aktywnego procesu
+                    // po wyjściu z trybu ambientowego, zamiast czekać na przypadkową
+                    // zmianę fokusu okna - to zapewnia powrót do profilu odpowiadającego
+                    // faktycznie aktywnej aplikacji w momencie powrotu z idle/blokady,
+                    // a nie do stanu, który mógł "wisieć" z czasu przed wejściem w ambient.
+                    profileWatcher?.ResetActiveProfile();
+
                     SetStatus(IsCapturing
                         ? EngineStatusInfo.Running("Przechwytywanie aktywne.")
                         : EngineStatusInfo.Running("Połączono z WLED, przechwytywanie wyłączone."));
@@ -292,49 +317,68 @@ namespace AmbilightEngine
                 return;
             }
 
-            var newImageProcessor = new ImageProcessor(currentZones);
-            if (imageProcessor != null)
+            // NOWOŚĆ: profile mogą teraz wymuszać stały kolor albo efekt WLED zamiast
+            // zwykłej zmiany parametrów obrazu Video Sync (np. "gdy uruchamiam TeamSpeak,
+            // zaświeć diody na stały niebieski"). Rozwidlamy logikę na samym wejściu -
+            // te dwa tryby nie dotykają imageProcessor/pipelineManager w ogóle, tylko
+            // wysyłają komendę do WLED przez już istniejące ActivateStaticColorAsync /
+            // ActivateWledEffectAsync i aktualizują CurrentProfileName/ProfileChanged
+            // identycznie jak zwykły profil DSP.
+            if (profile.ActionType == ProfileActionType.StaticColor)
             {
-                newImageProcessor.SeedState(imageProcessor);
+                _ = ActivateStaticColorAsync(profile.StaticColorR, profile.StaticColorG, profile.StaticColorB);
+                pipelineManager.NotifyDisplayModeChanged();
+
+                CurrentProfileName = string.IsNullOrWhiteSpace(profile.DisplayName)
+                    ? "Domyślny"
+                    : profile.DisplayName;
+
+                currentProfileId = profile.ProfileId;
+                SetStatus(EngineStatusInfo.Running($"Profil aktywny: {CurrentProfileName} (stały kolor, źródło: {triggerSource})"));
+                ProfileChanged?.Invoke(CurrentProfileName);
+                return;
             }
 
-            // FIX: bez tego wywołania nowy processor miał sensitivity/minBrightness/
-            // pixelSkipStep/peak-blend/shadow-boost/noise-floor ustawione na wartości
-            // domyślne klasy - ApplyDspParameters przekazuje te pola dalej bez zmian
-            // (nadpisuje tylko Attack/Decay na podstawie Smoothing profilu), więc bez
-            // tej linii KAŻDA zmiana aktywnego okna cichcem resetowała czułość do 1.0.
-            ConfigureProcessorDynamics(newImageProcessor);
+            if (profile.ActionType == ProfileActionType.WledEffect)
+            {
+                _ = ActivateWledEffectAsync(
+                    profile.WledEffectId,
+                    profile.WledEffectSpeed,
+                    profile.WledEffectIntensity,
+                    profile.WledPaletteId,
+                    (profile.WledPrimaryColorR, profile.WledPrimaryColorG, profile.WledPrimaryColorB),
+                    (profile.WledSecondaryColorR, profile.WledSecondaryColorG, profile.WledSecondaryColorB),
+                    profile.WledEffectBrightness);
+                pipelineManager.NotifyDisplayModeChanged();
 
-            newImageProcessor.ApplyDspParameters(
-                profile.BrightnessPercent,
-                profile.SaturationBoost,
-                profile.SmoothingSpeedMs,
-                profile.BlackCutoffThreshold,
-                profile.ColorTemperatureKelvin,
-                profile.GammaValue);
-            Debug.WriteLine(
-    $"[DIAG] AppEngineHost: parametry profilu '{profile.DisplayName}': " +
-    $"Id={profile.ProfileId}, " +
-    $"Jasność={profile.BrightnessPercent}%, " +
-    $"Nasycenie={profile.SaturationBoost:F2}, " +
-    $"Smoothing={profile.SmoothingSpeedMs} ms, " +
-    $"BlackCutoff={profile.BlackCutoffThreshold}, " +
-    $"Temperatura={profile.ColorTemperatureKelvin} K, " +
-    $"Gamma={profile.GammaValue:F2}, " +
-    $"źródło={triggerSource}.");
-            newImageProcessor.SetWallColorFromHex(settings.WallColorHex, settings.WallColorStrength);
+                CurrentProfileName = string.IsNullOrWhiteSpace(profile.DisplayName)
+                    ? "Domyślny"
+                    : profile.DisplayName;
 
-            pipelineManager.ReplaceImageProcessor(newImageProcessor);
-            imageProcessor = newImageProcessor;
+                currentProfileId = profile.ProfileId;
+                SetStatus(EngineStatusInfo.Running($"Profil aktywny: {CurrentProfileName} (efekt WLED, źródło: {triggerSource})"));
+                ProfileChanged?.Invoke(CurrentProfileName);
+                return;
+            }
+            if (profile.ActionType == ProfileActionType.WledEffect)
+            {
+                // ... (bez zmian, to co już masz)
+                return;
+            }
 
-            CurrentProfileName = string.IsNullOrWhiteSpace(profile.DisplayName)
-                ? "Domyślny"
-                : profile.DisplayName;
+            // NOWOŚĆ / FIX: profil typu ImageDsp musi jawnie przywrócić Video Sync, jeśli
+            // poprzedni aktywny profil ustawił StaticColor/WledEffect - inaczej ConsumerLoopAsync
+            // w PipelineManager nadal ignorował imageProcessor (bo settings.ActiveDisplayMode
+            // zostawał na StaticColor/WledEffect), co wymagało ręcznej zmiany trybu w UI silnika.
+            if (settings.ActiveDisplayMode != DisplayMode.VideoSync)
+            {
+                settings.ActiveDisplayMode = DisplayMode.VideoSync;
+                pipelineManager.NotifyDisplayModeChanged();
+            }
 
-            currentProfileId = profile.ProfileId;
-            SetStatus(EngineStatusInfo.Running($"Profil aktywny: {CurrentProfileName} (źródło: {triggerSource})"));
-            ProfileChanged?.Invoke(CurrentProfileName);
-        }
+            var newImageProcessor = new ImageProcessor(currentZones);
+
+                    }
         public void PreviewProfile(AppProfile profile)
         {
             if (profile == null)
@@ -615,6 +659,20 @@ namespace AmbilightEngine
 
                 return;
             }
+
+            // NOWOŚĆ: blokuje automatyczne przełączanie profili w trakcie trybu
+            // ambientowego (blokada ekranu / bezczynność) - ProcessProfileWatcher działa
+            // niezależnie na własnym timerze i bez tej ochrony mógł nadpisać imageProcessor
+            // mimo że PipelineManager renderuje w tym czasie efekt ambientowy, co po powrocie
+            // z idle prowadziło do przywrócenia złego profilu.
+            if (isAmbientModeActive)
+            {
+                Debug.WriteLine(
+                    "[DIAG] AppEngineHost: automatyczna aktywacja profilu pominięta — trwa tryb ambientowy.");
+
+                return;
+            }
+
             if (currentZones == null || pipelineManager == null)
             {
                 Debug.WriteLine("[DIAG] AppEngineHost: profil zignorowany - potok przechwytywania nie jest aktywny.");
@@ -845,6 +903,7 @@ namespace AmbilightEngine
             try
             {
                 isProfilePreviewActive = false;
+                isAmbientModeActive = false;
 
                 StopCapture();
 

@@ -2,7 +2,12 @@
     x:Class="AmbilightEngine.Pages.ProfilesPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:controls="using:Microsoft.UI.Xaml.Controls">
+    xmlns:controls="using:Microsoft.UI.Xaml.Controls"
+    xmlns:converters="using:AmbilightEngine.Converters">
+
+    <Page.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+    </Page.Resources>
 
     <ScrollViewer HorizontalScrollMode="Disabled"
                   HorizontalScrollBarVisibility="Disabled"
@@ -60,9 +65,32 @@
 
                     <StackPanel Orientation="Horizontal"
                     Spacing="12">
-                        <Button Content="Dodaj profil"
-                    Click="AddProfileButton_Click"
-                    Style="{StaticResource AccentButtonStyle}" />
+                        <!-- NOWOŚĆ: DropDownButton zamiast prostego przycisku - pozwala wybrać
+                             gotowy szablon (Gra/Film/Lounge/Biuro) albo zacząć od pustego profilu,
+                             zamiast zawsze startować z jednego, neutralnego zestawu wartości. -->
+                        <DropDownButton Content="Dodaj profil"
+                                        Style="{StaticResource AccentButtonStyle}">
+                            <DropDownButton.Flyout>
+                                <MenuFlyout Placement="Bottom">
+                                    <MenuFlyoutItem Text="Puste (własne ustawienia)"
+                                                    Tag="Custom"
+                                                    Click="AddPresetProfileButton_Click" />
+                                    <MenuFlyoutSeparator />
+                                    <MenuFlyoutItem Text="Gra"
+                                                    Tag="Gaming"
+                                                    Click="AddPresetProfileButton_Click" />
+                                    <MenuFlyoutItem Text="Film"
+                                                    Tag="Movie"
+                                                    Click="AddPresetProfileButton_Click" />
+                                    <MenuFlyoutItem Text="Lounge / Muzyka"
+                                                    Tag="Lounge"
+                                                    Click="AddPresetProfileButton_Click" />
+                                    <MenuFlyoutItem Text="Biuro / Praca"
+                                                    Tag="Office"
+                                                    Click="AddPresetProfileButton_Click" />
+                                </MenuFlyout>
+                            </DropDownButton.Flyout>
+                        </DropDownButton>
 
                         <Button Content="Zapisz zmiany"
                     Click="SaveChangesButton_Click" />
@@ -116,10 +144,30 @@
                             <TextBlock Text="Profil pozwala przypisać osobne ustawienia obrazu do konkretnej aplikacji (.exe). To wygodny sposób na inne parametry dla gier, filmów i zwykłej pracy."
                                        Style="{StaticResource SectionSubTextStyle}"
                                        TextWrapping="Wrap" />
-                            <Button Content="Dodaj pierwszy profil"
-                                    Click="AddProfileButton_Click"
-                                    HorizontalAlignment="Left"
-                                    Style="{StaticResource AccentButtonStyle}" />
+                            <DropDownButton Content="Dodaj pierwszy profil"
+                                            HorizontalAlignment="Left"
+                                            Style="{StaticResource AccentButtonStyle}">
+                                <DropDownButton.Flyout>
+                                    <MenuFlyout Placement="Bottom">
+                                        <MenuFlyoutItem Text="Puste (własne ustawienia)"
+                                                        Tag="Custom"
+                                                        Click="AddPresetProfileButton_Click" />
+                                        <MenuFlyoutSeparator />
+                                        <MenuFlyoutItem Text="Gra"
+                                                        Tag="Gaming"
+                                                        Click="AddPresetProfileButton_Click" />
+                                        <MenuFlyoutItem Text="Film"
+                                                        Tag="Movie"
+                                                        Click="AddPresetProfileButton_Click" />
+                                        <MenuFlyoutItem Text="Lounge / Muzyka"
+                                                        Tag="Lounge"
+                                                        Click="AddPresetProfileButton_Click" />
+                                        <MenuFlyoutItem Text="Biuro / Praca"
+                                                        Tag="Office"
+                                                        Click="AddPresetProfileButton_Click" />
+                                    </MenuFlyout>
+                                </DropDownButton.Flyout>
+                            </DropDownButton>
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -211,8 +259,71 @@
                TextWrapping="Wrap" />
                                             </StackPanel>
                                         </StackPanel>
-                                        
+
                                     </Border>
+                                    <!-- NOWOŚĆ: wybór typu akcji profilu -->
+                                    <Border Padding="16"
+                                            CornerRadius="12"
+                                            Background="{ThemeResource M3SurfaceContainerHighBrush}">
+                                        <StackPanel Spacing="14">
+                                            <TextBlock Text="Co ma się dziać po aktywacji"
+                                                       FontWeight="SemiBold"
+                                                       FontSize="14" />
+
+                                            <TextBlock Text="Domyślnie profil zmienia parametry obrazu Video Sync. Możesz też wymusić stały kolor LED albo konkretny efekt WLED, niezależnie od tego, co jest aktualnie na ekranie."
+                                                       Style="{StaticResource SectionSubTextStyle}"
+                                                       TextWrapping="Wrap" />
+
+                                            <StackPanel Orientation="Horizontal" Spacing="16">
+                                                <RadioButton Content="Parametry obrazu"
+                                                             GroupName="{Binding ProfileId}"
+                                                             Tag="{Binding}"
+                                                             IsChecked="{Binding IsActionTypeImageDsp, Mode=OneWay}"
+                                                             Checked="ActionTypeImageDsp_Checked" />
+                                                <RadioButton Content="Stały kolor LED"
+                                                             GroupName="{Binding ProfileId}"
+                                                             Tag="{Binding}"
+                                                             IsChecked="{Binding IsActionTypeStaticColor, Mode=OneWay}"
+                                                             Checked="ActionTypeStaticColor_Checked" />
+                                                <RadioButton Content="Efekt WLED"
+                                                             GroupName="{Binding ProfileId}"
+                                                             Tag="{Binding}"
+                                                             IsChecked="{Binding IsActionTypeWledEffect, Mode=OneWay}"
+                                                             Checked="ActionTypeWledEffect_Checked" />
+                                            </StackPanel>
+
+                                            <StackPanel Spacing="8"
+                                                        Visibility="{Binding IsActionTypeStaticColor, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                <TextBlock Text="Kolor stały" FontWeight="SemiBold" />
+                                                <ColorPicker ColorChanged="ProfileStaticColorPicker_ColorChanged"
+                                                             Tag="{Binding}"
+                                                             IsAlphaEnabled="False"
+                                                             IsMoreButtonVisible="False" />
+                                            </StackPanel>
+
+                                            <StackPanel Spacing="8"
+                                                        Visibility="{Binding IsActionTypeWledEffect, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                <TextBlock Text="Numer efektu WLED (FX Id)" FontWeight="SemiBold" />
+                                                <NumberBox Minimum="0"
+                                                           Maximum="255"
+                                                           SpinButtonPlacementMode="Inline"
+                                                           Value="{Binding WledEffectId, Mode=TwoWay}" />
+
+                                                <TextBlock Text="Prędkość efektu" FontWeight="SemiBold" />
+                                                <Slider Minimum="0"
+                                                        Maximum="255"
+                                                        StepFrequency="1"
+                                                        Value="{Binding WledEffectSpeed, Mode=TwoWay}" />
+
+                                                <TextBlock Text="Intensywność efektu" FontWeight="SemiBold" />
+                                                <Slider Minimum="0"
+                                                        Maximum="255"
+                                                        StepFrequency="1"
+                                                        Value="{Binding WledEffectIntensity, Mode=TwoWay}" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+
 
                                     <!-- Parametry obrazu -->
                                     <Border Padding="16"

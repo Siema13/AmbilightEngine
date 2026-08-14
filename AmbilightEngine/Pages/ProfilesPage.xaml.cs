@@ -5,6 +5,7 @@ using AmbilightEngine.Core.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Media;
 
 namespace AmbilightEngine.Pages
 {
@@ -73,28 +74,31 @@ namespace AmbilightEngine.Pages
             ProfilesList.Visibility = hasProfiles ? Visibility.Visible : Visibility.Collapsed;
         }
 
-        private void AddProfileButton_Click(object sender, RoutedEventArgs e)
+        // NOWOŚĆ: obsługuje wszystkie pozycje menu DropDownButton (Puste / Gra / Film /
+        // Lounge / Biuro). Tag każdej MenuFlyoutItem odpowiada nazwie wartości enum
+        // ProfilePresetKind - parsujemy go, żeby uniknąć pięciu prawie identycznych handlerów.
+        private void AddPresetProfileButton_Click(object sender, RoutedEventArgs e)
         {
-            var newProfile = new AppProfile
+            if (sender is not MenuFlyoutItem menuItem || menuItem.Tag is not string tagValue)
             {
-                DisplayName = "Nowy profil",
-                ExecutableFileName = string.Empty,
-                AllowBackgroundActivation = false,
-                Priority = 0,
-                BrightnessPercent = 100,
-                SaturationBoost = 1.0,
-                SmoothingSpeedMs = 120,
-                BlackCutoffThreshold = 8,
-                ColorTemperatureKelvin = 6500,
-                GammaValue = 2.2
-            };
+                return;
+            }
+
+            if (!Enum.TryParse(tagValue, out ProfilePresetKind presetKind))
+            {
+                presetKind = ProfilePresetKind.Custom;
+            }
+
+            string displayName = ProfilePresetCatalog.GetDefaultDisplayName(presetKind);
+            AppProfile newProfile = ProfilePresetCatalog.CreateFromPreset(presetKind, displayName);
 
             profiles.Add(newProfile);
-            SaveStatusText.Text = "Dodano nowy profil. Zapisz zmiany, aby utrwalić konfigurację.";
+
+            SaveStatusText.Text = $"Dodano profil na podstawie szablonu „{displayName}”. Zapisz zmiany, aby utrwalić konfigurację.";
             ShowInfo(
                 severity: InfoBarSeverity.Informational,
                 title: "Dodano profil",
-                message: "Dodano nowy profil. Pamiętaj o zapisaniu zmian.");
+                message: $"Dodano profil „{displayName}” na podstawie szablonu. Pamiętaj o zapisaniu zmian.");
             UpdateEmptyState();
         }
 
@@ -244,7 +248,52 @@ namespace AmbilightEngine.Pages
 
             mainWindow.EngineHost.PreviewProfile(profile);
         }
+        // NOWOŚĆ: trzy niezależne handlery RadioButton, każdy odpowiada za jedną
+        // wartość ActionType. Prostsze i odporniejsze na recykling DataTemplate niż
+        // poprzednie podejście z ComboBox.SelectedIndex + VisualTreeHelper, bo nie
+        // ma tu żadnego stanu odtwarzanego przy Loaded - RadioButton.IsChecked jest
+        // bindowany na żywo do właściwości obliczanej w AppProfile (OneWay).
+        private void ActionTypeImageDsp_Checked(object sender, RoutedEventArgs e)
+        {
+            if (sender is RadioButton radioButton && radioButton.Tag is AppProfile profile)
+            {
+                profile.ActionType = ProfileActionType.ImageDsp;
+                SaveStatusText.Text = "Zmieniono typ akcji profilu na parametry obrazu. Zapisz zmiany, aby utrwalić konfigurację.";
+            }
+        }
 
+        private void ActionTypeStaticColor_Checked(object sender, RoutedEventArgs e)
+        {
+            if (sender is RadioButton radioButton && radioButton.Tag is AppProfile profile)
+            {
+                profile.ActionType = ProfileActionType.StaticColor;
+                SaveStatusText.Text = "Zmieniono typ akcji profilu na stały kolor LED. Zapisz zmiany, aby utrwalić konfigurację.";
+            }
+        }
+
+        private void ActionTypeWledEffect_Checked(object sender, RoutedEventArgs e)
+        {
+            if (sender is RadioButton radioButton && radioButton.Tag is AppProfile profile)
+            {
+                profile.ActionType = ProfileActionType.WledEffect;
+                SaveStatusText.Text = "Zmieniono typ akcji profilu na efekt WLED. Zapisz zmiany, aby utrwalić konfigurację.";
+            }
+        }
+
+        // NOWOŚĆ: obsługuje zmianę koloru w ColorPicker dla profili typu StaticColor.
+        private void ProfileStaticColorPicker_ColorChanged(ColorPicker sender, ColorChangedEventArgs args)
+        {
+            if (sender.Tag is not AppProfile profile)
+            {
+                return;
+            }
+
+            profile.StaticColorR = args.NewColor.R;
+            profile.StaticColorG = args.NewColor.G;
+            profile.StaticColorB = args.NewColor.B;
+
+            SaveStatusText.Text = "Zmieniono kolor stały profilu. Zapisz zmiany, aby utrwalić konfigurację.";
+        }
         private void ProfilesPage_Unloaded(object sender, RoutedEventArgs e)
         {
             isLivePreviewEnabled = false;

@@ -5,6 +5,18 @@ using System.Runtime.CompilerServices;
 
 namespace AmbilightEngine.Core.Models
 {
+    // Określa, co profil robi po aktywacji: standardowa zmiana parametrów obrazu
+    // (Video Sync), wymuszenie stałego koloru LED, albo wymuszenie konkretnego
+    // efektu WLED. Umożliwia scenariusze typu "gdy uruchamiam TeamSpeak, diody
+    // mają zaświecić stałym niebieskim kolorem", niezależnie od bieżącego trybu
+    // wyświetlania Video Sync.
+    public enum ProfileActionType
+    {
+        ImageDsp,
+        StaticColor,
+        WledEffect
+    }
+
     public sealed class AppProfile : INotifyPropertyChanged
     {
         private string profileId = Guid.NewGuid().ToString("N");
@@ -23,6 +35,28 @@ namespace AmbilightEngine.Core.Models
         private bool isBuiltInDefault;
         private bool isManualSnapshot;
         private DateTime createdAtUtc = DateTime.UtcNow;
+
+        // NOWOŚĆ: typ akcji profilu i parametry dla trybów innych niż ImageDsp.
+        // Wartości domyślne (ImageDsp / białe światło / efekt 0) gwarantują, że
+        // istniejące profile wczytane ze starszego pliku ustawień JSON (bez tych
+        // pól) zachowują dotychczasowe zachowanie bez żadnej migracji danych.
+        private ProfileActionType actionType = ProfileActionType.ImageDsp;
+
+        private byte staticColorR = 255;
+        private byte staticColorG = 255;
+        private byte staticColorB = 255;
+
+        private int wledEffectId;
+        private int wledPaletteId;
+        private int wledEffectSpeed = 128;
+        private int wledEffectIntensity = 128;
+        private int wledEffectBrightness = 128;
+        private byte wledPrimaryColorR = 255;
+        private byte wledPrimaryColorG = 255;
+        private byte wledPrimaryColorB = 255;
+        private byte wledSecondaryColorR;
+        private byte wledSecondaryColorG;
+        private byte wledSecondaryColorB;
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -112,6 +146,115 @@ namespace AmbilightEngine.Core.Models
             set => SetProperty(ref createdAtUtc, value);
         }
 
+        // NOWOŚĆ: typ akcji wykonywanej przy aktywacji profilu.
+        public ProfileActionType ActionType
+        {
+            get => actionType;
+            set
+            {
+                if (SetProperty(ref actionType, value))
+                {
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsActionTypeImageDsp)));
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsActionTypeStaticColor)));
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsActionTypeWledEffect)));
+
+                }
+            }
+        }
+
+        public byte StaticColorR
+        {
+            get => staticColorR;
+            set => SetProperty(ref staticColorR, value);
+        }
+
+        public byte StaticColorG
+        {
+            get => staticColorG;
+            set => SetProperty(ref staticColorG, value);
+        }
+
+        public byte StaticColorB
+        {
+            get => staticColorB;
+            set => SetProperty(ref staticColorB, value);
+        }
+
+        public int WledEffectId
+        {
+            get => wledEffectId;
+            set => SetProperty(ref wledEffectId, value);
+        }
+
+        public int WledPaletteId
+        {
+            get => wledPaletteId;
+            set => SetProperty(ref wledPaletteId, value);
+        }
+
+        public int WledEffectSpeed
+        {
+            get => wledEffectSpeed;
+            set => SetProperty(ref wledEffectSpeed, value);
+        }
+
+        public int WledEffectIntensity
+        {
+            get => wledEffectIntensity;
+            set => SetProperty(ref wledEffectIntensity, value);
+        }
+
+        public int WledEffectBrightness
+        {
+            get => wledEffectBrightness;
+            set => SetProperty(ref wledEffectBrightness, value);
+        }
+
+        public byte WledPrimaryColorR
+        {
+            get => wledPrimaryColorR;
+            set => SetProperty(ref wledPrimaryColorR, value);
+        }
+
+        public byte WledPrimaryColorG
+        {
+            get => wledPrimaryColorG;
+            set => SetProperty(ref wledPrimaryColorG, value);
+        }
+
+        public byte WledPrimaryColorB
+        {
+            get => wledPrimaryColorB;
+            set => SetProperty(ref wledPrimaryColorB, value);
+        }
+
+        public byte WledSecondaryColorR
+        {
+            get => wledSecondaryColorR;
+            set => SetProperty(ref wledSecondaryColorR, value);
+        }
+
+        public byte WledSecondaryColorG
+        {
+            get => wledSecondaryColorG;
+            set => SetProperty(ref wledSecondaryColorG, value);
+        }
+
+        public byte WledSecondaryColorB
+        {
+            get => wledSecondaryColorB;
+            set => SetProperty(ref wledSecondaryColorB, value);
+        }
+
+        // NOWOŚĆ: właściwości pomocnicze tylko do odczytu dla bindowania XAML
+        // (RadioButton.IsChecked, StackPanel.Visibility) - unikają migotania/resetu
+        // przy recyklingu DataTemplate, bo nie ma tu żadnego SelectedIndex do
+        // odtworzenia przy każdym Loaded, tylko czysty odczyt aktualnego ActionType.
+        public bool IsActionTypeImageDsp => ActionType == ProfileActionType.ImageDsp;
+        public bool IsActionTypeStaticColor => ActionType == ProfileActionType.StaticColor;
+        public bool IsActionTypeWledEffect => ActionType == ProfileActionType.WledEffect;
+
+       
         public bool MatchesProcess(string processExeName)
         {
             if (string.IsNullOrWhiteSpace(processExeName) ||
@@ -126,20 +269,21 @@ namespace AmbilightEngine.Core.Models
                 StringComparison.OrdinalIgnoreCase);
         }
 
-        private void SetProperty<T>(
-            ref T field,
-            T value,
-            [CallerMemberName] string? propertyName = null)
+        private bool SetProperty<T>(
+    ref T field,
+    T value,
+    [CallerMemberName] string? propertyName = null)
         {
             if (EqualityComparer<T>.Default.Equals(field, value))
             {
-                return;
+                return false;
             }
 
             field = value;
             PropertyChanged?.Invoke(
                 this,
                 new PropertyChangedEventArgs(propertyName));
+            return true;
         }
     }
 }
