@@ -39,7 +39,11 @@ namespace AmbilightEngine.Core.Processing
         private float channelGainR = 1.0f;
         private float channelGainG = 1.0f;
         private float channelGainB = 1.0f;
+        private byte[] channelLutR = BuildIdentityLut();
+        private byte[] channelLutG = BuildIdentityLut();
+        private byte[] channelLutB = BuildIdentityLut();
 
+        private static readonly float[] MeasuredWs2812Curve = BuildMeasuredWs2812Curve();
         // NOWOŚĆ: kalibracja per-kanał RGB - model Lift/Gamma/Gain znany z kolorystyki
         // filmowej. Offset (Lift) podnosi/opuszcza czernie danego kanału - koryguje sytuację,
         // gdy dioda "czerwona" świeci lekko pomarańczowo nawet przy zerowym sygnale wejściowym.
@@ -195,9 +199,9 @@ namespace AmbilightEngine.Core.Processing
         // dla zgodności z istniejącym UI) - ta metoda dodaje dwa kolejne stopnie swobody
         // per kanał, niezbędne, gdy sam mnożnik nie wystarcza do skorygowania koloru LED.
         public void SetChannelCalibration(
-            float gainR, float gammaR, float offsetR,
-            float gainG, float gammaG, float offsetG,
-            float gainB, float gammaB, float offsetB)
+     float gainR, float gammaR, float offsetR,
+     float gainG, float gammaG, float offsetG,
+     float gainB, float gammaB, float offsetB)
         {
             channelGainR = Math.Clamp(gainR, 0.2f, 2.0f);
             channelGainG = Math.Clamp(gainG, 0.2f, 2.0f);
@@ -210,6 +214,86 @@ namespace AmbilightEngine.Core.Processing
             channelOffsetR = Math.Clamp(offsetR, -0.2f, 0.2f);
             channelOffsetG = Math.Clamp(offsetG, -0.2f, 0.2f);
             channelOffsetB = Math.Clamp(offsetB, -0.2f, 0.2f);
+
+            channelLutR = BuildChannelLut(channelGainR, channelGammaR, channelOffsetR);
+            channelLutG = BuildChannelLut(channelGainG, channelGammaG, channelOffsetG);
+            channelLutB = BuildChannelLut(channelGainB, channelGammaB, channelOffsetB);
+        }
+
+        // NOWOŚĆ: budowa jednej tablicy LUT 256-elementowej. Dla każdego z 256 możliwych
+        // wejść liczymy docelową, POSTRZEGANĄ jasność (Lift -> Gamma -> Gain, tak jak
+        // dotychczas w ApplyChannelCalibration), a następnie znajdujemy kod wejściowy,
+        // który na ZMIERZONEJ krzywej WS2812 faktycznie produkuje tę jasność - to jest
+        // różnica względem czystej funkcji gamma, która zakłada liniowy PWM.
+        private static byte[] BuildChannelLut(float gain, float gamma, float offset)
+        {
+            var lut = new byte[256];
+
+            for (int input = 0; input < 256; input++)
+            {
+                float normalized = input / 255f;
+                float lifted = Math.Clamp(normalized + offset, 0f, 1f);
+                float gammaCorrected = MathF.Pow(lifted, 1.0f / gamma);
+                float targetPerceived = Math.Clamp(gammaCorrected * gain, 0f, 1f);
+
+                lut[input] = FindClosestWs2812Code(targetPerceived);
+            }
+
+            return lut;
+        }
+
+        private static byte FindClosestWs2812Code(float targetPerceived)
+        {
+            int low = 0, high = 255;
+
+            while (low < high)
+            {
+                int mid = (low + high) / 2;
+                if (MeasuredWs2812Curve[mid] < targetPerceived) low = mid + 1;
+                else high = mid;
+            }
+
+            if (low > 0 && MathF.Abs(MeasuredWs2812Curve[low - 1] - targetPerceived) < MathF.Abs(MeasuredWs2812Curve[low] - targetPerceived))
+            {
+                return (byte)(low - 1);
+            }
+
+            return (byte)low;
+        }
+
+        private static byte[] BuildIdentityLut()
+        {
+            var lut = new byte[256];
+            for (int i = 0; i < 256; i++) lut[i] = (byte)i;
+            return lut;
+        }
+
+        // Punkty referencyjne oparte na publikowanych pomiarach duty-cycle WS2812
+        // (profil ogólny rodziny chipów - nie pomiar konkretnego egzemplarza taśmy).
+        private static float[] BuildMeasuredWs2812Curve()
+        {
+            (int input, float output)[] referencePoints =
+            {
+                (0, 0f), (2, 0.0004f), (3, 0.001f), (5, 0.003f), (10, 0.01f),
+                (16, 0.018f), (32, 0.045f), (48, 0.075f), (64, 0.11f), (96, 0.19f),
+                (128, 0.29f), (160, 0.42f), (192, 0.58f), (224, 0.78f), (255, 1.0f)
+            };
+
+            var curve = new float[256];
+
+            for (int i = 0; i < referencePoints.Length - 1; i++)
+            {
+                var (x0, y0) = referencePoints[i];
+                var (x1, y1) = referencePoints[i + 1];
+
+                for (int x = x0; x <= x1; x++)
+                {
+                    float t = x1 == x0 ? 0f : (x - x0) / (float)(x1 - x0);
+                    curve[x] = y0 + t * (y1 - y0);
+                }
+            }
+
+            return curve;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -313,9 +397,9 @@ namespace AmbilightEngine.Core.Processing
                 // 2) Gamma per kanał koryguje nieliniowość w środkowych tonach TEGO kanału
                 //    niezależnie od pozostałych - w przeciwieństwie do globalnej gammaValue.
                 // 3) Gain skaluje wynik na końcu, tak jak dotychczas.
-                correctedR = ApplyChannelCalibration(correctedR, channelOffsetR, channelGammaR, channelGainR);
-                correctedG = ApplyChannelCalibration(correctedG, channelOffsetG, channelGammaG, channelGainG);
-                correctedB = ApplyChannelCalibration(correctedB, channelOffsetB, channelGammaB, channelGainB);
+                correctedR = channelLutR[(byte)Math.Clamp(correctedR, 0f, 255f)];
+                correctedG = channelLutG[(byte)Math.Clamp(correctedG, 0f, 255f)];
+                correctedB = channelLutB[(byte)Math.Clamp(correctedB, 0f, 255f)];
                 // ─────────────────────────────────────────────────────────────────
 
                 float denoisedR = ApplyNoiseFloor(correctedR);
@@ -394,19 +478,6 @@ namespace AmbilightEngine.Core.Processing
             hasPreviousRaw = true;
 
             return new ReadOnlySpan<RgbColor>(finalColors);
-        }
-
-        // NOWOŚĆ: implementuje model Lift/Gamma/Gain dla jednego kanału. Wejście i wyjście
-        // w skali 0..255 (zgodnie z resztą toru przetwarzania w tej klasie).
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static float ApplyChannelCalibration(float channelValue255, float offset, float gamma, float gain)
-        {
-            float normalized = channelValue255 / 255f;
-            normalized = Math.Clamp(normalized + offset, 0f, 1f);
-
-            float gammaCorrected = MathF.Pow(normalized, 1.0f / gamma);
-
-            return Math.Clamp(gammaCorrected * gain * 255f, 0f, 255f);
         }
 
         private float ApplyNoiseFloor(float channelValue)

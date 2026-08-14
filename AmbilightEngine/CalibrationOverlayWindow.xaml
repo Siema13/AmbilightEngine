@@ -1,0 +1,223 @@
+<Window
+    x:Class="AmbilightEngine.CalibrationOverlayWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid x:Name="RootGrid" Background="Black">
+
+        <!-- Treść pełnoekranowa (pod panelem) -->
+        <Border x:Name="ColorSwatch" Visibility="Visible" />
+        <Border x:Name="RainbowSwatch" Visibility="Collapsed" />
+        <MediaPlayerElement x:Name="VideoPlayer"
+                             Visibility="Collapsed"
+                             AreTransportControlsEnabled="True" />
+
+        <TextBlock x:Name="ErrorDiagnosticsText"
+                   Foreground="White"
+                   FontSize="18"
+                   TextWrapping="Wrap"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center"
+                   MaxWidth="900"
+                   Visibility="Collapsed" />
+
+        <!-- Ekran powitalny -->
+        <StackPanel x:Name="WelcomePanel"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    MaxWidth="720"
+                    Spacing="20"
+                    Visibility="Collapsed">
+            <TextBlock Text="Kalibracja obrazu i światła"
+                       Foreground="White"
+                       FontSize="34"
+                       FontWeight="SemiBold"
+                       HorizontalAlignment="Center" />
+            <TextBlock Foreground="#CCCCCC"
+                       FontSize="16"
+                       TextWrapping="Wrap"
+                       TextAlignment="Center"
+                       Text="Wybierz materiał referencyjny i dostrajaj kolory, obserwując diody LED na żywo. Panel jest półprzezroczysty i wyśrodkowany, żeby nie zakłócać oceny krawędzi ekranu." />
+            <TextBlock Foreground="#999999"
+                       FontSize="13"
+                       HorizontalAlignment="Center"
+                       Text="Sterowanie: F9 - pokaż/schowaj panel • 1-4 - źródło podglądu • Esc - zamknij i zapisz" />
+            <Button x:Name="StartButton"
+                    Content="Zacznij kalibrację"
+                    Click="StartButton_Click"
+                    Style="{StaticResource AccentButtonStyle}"
+                    HorizontalAlignment="Center"
+                    Margin="0,16,0,0"
+                    Padding="32,12" />
+        </StackPanel>
+
+        <!-- ══════ PANEL KALIBRACJI: wyśrodkowany, półprzezroczysty ══════ -->
+        <Border x:Name="MainPanel"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                MaxWidth="700"
+                MaxHeight="620"
+                CornerRadius="14"
+                Background="#D9101010"
+                BorderThickness="1"
+                BorderBrush="#33FFFFFF"
+                Visibility="Collapsed">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,8,0">
+                <StackPanel Margin="24" Spacing="18">
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Kalibracja RGB" Foreground="White" FontSize="18" FontWeight="SemiBold" />
+                        <Button Grid.Column="1" Content="Zwiń (F9)" Click="ToggleDrawer_Click" Padding="10,4" />
+                    </Grid>
+
+                    <!-- Wybór źródła podglądu - zawsze widoczny razem ze sliderami -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Materiał referencyjny (1-4):" Foreground="#AAAAAA" FontSize="12" />
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <RadioButton x:Name="SourceWhiteRadio" Content="1. Biały" GroupName="Source" IsChecked="True" Checked="SourceRadio_Checked" Foreground="White" FontSize="12" />
+                            <RadioButton x:Name="SourceDesktopRadio" Content="2. Live pulpit" GroupName="Source" Checked="SourceRadio_Checked" Foreground="White" FontSize="12" />
+                            <RadioButton x:Name="SourceVideoRadio" Content="3. Wideo" GroupName="Source" Checked="SourceRadio_Checked" Foreground="White" FontSize="12" />
+                            <RadioButton x:Name="SourceRainbowRadio" Content="4. Tęcza" GroupName="Source" Checked="SourceRadio_Checked" Foreground="White" FontSize="12" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Wybór koloru testowego - widoczny tylko dla źródła Biały (statyczny kolor) -->
+                    <StackPanel x:Name="TestColorPicker" Spacing="6" Visibility="Visible">
+                        <TextBlock Text="Kolor testowy:" Foreground="#AAAAAA" FontSize="12" />
+                        <VariableSizedWrapGrid Orientation="Horizontal" MaximumRowsOrColumns="3" ItemHeight="30" Margin="0,4,0,8">
+                            <RadioButton x:Name="RgbTestBlackRadio" Content="Czarny" GroupName="RgbTestColor" Checked="RgbTestColorRadio_Checked" Foreground="White" FontSize="11" Margin="0,0,10,4" />
+                            <RadioButton x:Name="RgbTestWhiteRadio" Content="Biały" GroupName="RgbTestColor" IsChecked="True" Checked="RgbTestColorRadio_Checked" Foreground="White" FontSize="11" Margin="0,0,10,4" />
+                            <RadioButton x:Name="RgbTestGrayRadio" Content="Szary 50%" GroupName="RgbTestColor" Checked="RgbTestColorRadio_Checked" Foreground="White" FontSize="11" Margin="0,0,10,4" />
+                            <RadioButton x:Name="RgbTestRedRadio" Content="Czerwony" GroupName="RgbTestColor" Checked="RgbTestColorRadio_Checked" Foreground="White" FontSize="11" Margin="0,0,10,4" />
+                            <RadioButton x:Name="RgbTestGreenRadio" Content="Zielony" GroupName="RgbTestColor" Checked="RgbTestColorRadio_Checked" Foreground="White" FontSize="11" Margin="0,0,10,4" />
+                            <RadioButton x:Name="RgbTestBlueRadio" Content="Niebieski" GroupName="RgbTestColor" Checked="RgbTestColorRadio_Checked" Foreground="White" FontSize="11" Margin="0,0,10,4" />
+                        </VariableSizedWrapGrid>
+                    </StackPanel>
+
+                    <!-- 9 sliderów RGB - zawsze widoczne razem z podglądem -->
+                    <Grid ColumnSpacing="20" Margin="0,4,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0" Spacing="4">
+                            <TextBlock Text="KANAŁ R" Foreground="#FF6B6B" FontWeight="Bold" FontSize="11" />
+                            <Grid ColumnSpacing="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Gain" Foreground="White" FontSize="10" />
+                                <TextBlock x:Name="GainRValueText" Grid.Column="1" Foreground="White" FontSize="10" Text="100" />
+                            </Grid>
+                            <Slider x:Name="GainRSlider" Minimum="20" Maximum="200" Value="100" ValueChanged="ChannelSlider_ValueChanged" />
+                            <Grid ColumnSpacing="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Gamma" Foreground="White" FontSize="10" />
+                                <TextBlock x:Name="GammaRValueText" Grid.Column="1" Foreground="White" FontSize="10" Text="1.0" />
+                            </Grid>
+                            <Slider x:Name="GammaRSlider" Minimum="3" Maximum="30" Value="10" ValueChanged="ChannelSlider_ValueChanged" />
+                            <Grid ColumnSpacing="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Offset" Foreground="White" FontSize="10" />
+                                <TextBlock x:Name="OffsetRValueText" Grid.Column="1" Foreground="White" FontSize="10" Text="0" />
+                            </Grid>
+                            <Slider x:Name="OffsetRSlider" Minimum="-20" Maximum="20" Value="0" ValueChanged="ChannelSlider_ValueChanged" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Spacing="4">
+                            <TextBlock Text="KANAŁ G" Foreground="#6BFF6B" FontWeight="Bold" FontSize="11" />
+                            <Grid ColumnSpacing="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Gain" Foreground="White" FontSize="10" />
+                                <TextBlock x:Name="GainGValueText" Grid.Column="1" Foreground="White" FontSize="10" Text="100" />
+                            </Grid>
+                            <Slider x:Name="GainGSlider" Minimum="20" Maximum="200" Value="100" ValueChanged="ChannelSlider_ValueChanged" />
+                            <Grid ColumnSpacing="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Gamma" Foreground="White" FontSize="10" />
+                                <TextBlock x:Name="GammaGValueText" Grid.Column="1" Foreground="White" FontSize="10" Text="1.0" />
+                            </Grid>
+                            <Slider x:Name="GammaGSlider" Minimum="3" Maximum="30" Value="10" ValueChanged="ChannelSlider_ValueChanged" />
+                            <Grid ColumnSpacing="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Offset" Foreground="White" FontSize="10" />
+                                <TextBlock x:Name="OffsetGValueText" Grid.Column="1" Foreground="White" FontSize="10" Text="0" />
+                            </Grid>
+                            <Slider x:Name="OffsetGSlider" Minimum="-20" Maximum="20" Value="0" ValueChanged="ChannelSlider_ValueChanged" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="2" Spacing="4">
+                            <TextBlock Text="KANAŁ B" Foreground="#6B6BFF" FontWeight="Bold" FontSize="11" />
+                            <Grid ColumnSpacing="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Gain" Foreground="White" FontSize="10" />
+                                <TextBlock x:Name="GainBValueText" Grid.Column="1" Foreground="White" FontSize="10" Text="100" />
+                            </Grid>
+                            <Slider x:Name="GainBSlider" Minimum="20" Maximum="200" Value="100" ValueChanged="ChannelSlider_ValueChanged" />
+                            <Grid ColumnSpacing="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Gamma" Foreground="White" FontSize="10" />
+                                <TextBlock x:Name="GammaBValueText" Grid.Column="1" Foreground="White" FontSize="10" Text="1.0" />
+                            </Grid>
+                            <Slider x:Name="GammaBSlider" Minimum="3" Maximum="30" Value="10" ValueChanged="ChannelSlider_ValueChanged" />
+                            <Grid ColumnSpacing="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Offset" Foreground="White" FontSize="10" />
+                                <TextBlock x:Name="OffsetBValueText" Grid.Column="1" Foreground="White" FontSize="10" Text="0" />
+                            </Grid>
+                            <Slider x:Name="OffsetBSlider" Minimum="-20" Maximum="20" Value="0" ValueChanged="ChannelSlider_ValueChanged" />
+                        </StackPanel>
+                    </Grid>
+
+                    <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right">
+                        <Button x:Name="ResetAllButton" Content="Reset" Click="ResetAllButton_Click" Padding="12,6" />
+                        <Button x:Name="FinishButton" Content="Zapisz i zamknij" Style="{StaticResource AccentButtonStyle}" Click="FinishButton_Click" Padding="14,6" />
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+
+        <!-- Malutki uchwyt "Rozwiń" widoczny po zwinięciu panelu (F9) -->
+        <Button x:Name="ExpandHintButton"
+                Content="F9 - pokaż panel kalibracji"
+                Click="ToggleDrawer_Click"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Bottom"
+                Margin="0,0,0,20"
+                Visibility="Collapsed" />
+    </Grid>
+</Window>

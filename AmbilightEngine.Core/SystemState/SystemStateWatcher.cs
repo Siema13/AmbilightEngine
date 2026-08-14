@@ -18,13 +18,10 @@ namespace AmbilightEngine.Core.SystemState
     // WTSQuerySessionInformation) okazały się niewiarygodne w testach na tym środowisku.
     public sealed class SystemStateWatcher : IDisposable
     {
-        // TYMCZASOWY LOG DIAGNOSTYCZNY - zapisuje do pliku na Pulpicie, niezależnie od
-        // stanu okna Visual Studio. USUNĄĆ po ostatecznym potwierdzeniu stabilności.
         private static readonly string DiagLogPath = System.IO.Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
             "ambilight_diag.log");
 
-        // AmbilightEngine.Core/SystemState/SystemStateWatcher.cs
         private static void WriteDiagLog(string message)
         {
             if (!DiagnosticsConfig.IsFileLoggingEnabled) return;
@@ -45,6 +42,13 @@ namespace AmbilightEngine.Core.SystemState
         private readonly WtsSessionMessageMonitor? messageMonitor;
         private bool isLockedOrAsleep;
         private bool isIdleTriggered;
+
+        // NOWOŚĆ: cache ostatniego wyniku sprawdzenia odtwarzania multimediów - CheckIdleState
+        // jest synchronicznym callbackiem Timera, a sprawdzenie GlobalSystemMediaTransport-
+        // ControlsSessionManager jest asynchroniczne. Odpytujemy je w tle (fire-and-forget,
+        // co 2s razem z resztą logiki) i korzystamy z ostatniego znanego wyniku - unikamy
+        // blokowania wątku Timera na oczekiwaniu na wolne, natywne WinRT API.
+        private volatile bool isMediaCurrentlyPlaying;
 
         public event Action<SystemAmbientTrigger>? AmbientModeRequested;
         public event Action? NormalModeRequested;
@@ -138,6 +142,12 @@ namespace AmbilightEngine.Core.SystemState
             // ten timer obsługuje wyłącznie logikę bezczynności.
             if (isLockedOrAsleep) return;
 
+            // NOWOŚĆ: odpytujemy stan odtwarzania multimediów w tle (fire-and-forget) -
+            // wynik trafia do isMediaCurrentlyPlaying i jest używany w TEJ konkretnej
+            // iteracji (może być o jeden cykl "spóźniony", co jest akceptowalne przy 2s
+            // interwale). Nie blokujemy wątku Timera oczekiwaniem na wolne WinRT API.
+            _ = RefreshMediaPlaybackStateAsync();
+
             // FIX: watcher wcześniej ignorował flagę IsEnabled trybu bezczynności - nawet z wyłączonym
             // przełącznikiem "Bezczynność" w Ustawieniach, po przekroczeniu IdleTimeoutMinutes i tak
             // wywoływał AmbientModeRequested, co skutkowało cyklicznym, krótkim mrugnięciem efektu WLED
@@ -146,11 +156,24 @@ namespace AmbilightEngine.Core.SystemState
 
             if (!isIdleAmbientEnabled)
             {
-                // Funkcja wyłączona - jeśli byliśmy w trakcie "wyzwolonego" stanu bezczynności
-                // z poprzedniej konfiguracji, czyścimy go i wracamy do normalnego trybu.
                 if (isIdleTriggered)
                 {
                     isIdleTriggered = false;
+                    NormalModeRequested?.Invoke();
+                }
+                return;
+            }
+
+            // NOWOŚĆ: jeśli jakakolwiek aplikacja w systemie aktywnie odtwarza multimedia
+            // (film, muzyka), NIE przechodzimy w tryb bezczynności niezależnie od tego, jak
+            // długo użytkownik nie rusza myszką/klawiaturą - typowa sytuacja przy oglądaniu
+            // filmu na fullscreenie. Jeśli byliśmy już w trybie Idle, wychodzimy z niego.
+            if (isMediaCurrentlyPlaying)
+            {
+                if (isIdleTriggered)
+                {
+                    isIdleTriggered = false;
+                    WriteDiagLog("CheckIdleState: wychodzę z trybu Idle (wykryto aktywne odtwarzanie multimediów).");
                     NormalModeRequested?.Invoke();
                 }
                 return;
@@ -171,6 +194,11 @@ namespace AmbilightEngine.Core.SystemState
                 WriteDiagLog("CheckIdleState: wychodzę z trybu Idle (wykryto aktywność).");
                 NormalModeRequested?.Invoke();
             }
+        }
+
+        private async System.Threading.Tasks.Task RefreshMediaPlaybackStateAsync()
+        {
+            isMediaCurrentlyPlaying = await MediaPlaybackDetector.IsAnyMediaCurrentlyPlayingAsync();
         }
 
         public void Dispose()

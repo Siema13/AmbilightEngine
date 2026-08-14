@@ -201,17 +201,8 @@ namespace AmbilightEngine
         // w którym miejscu listy dodałeś NavigationViewItem z Tag="calibration_wizard".
         public void NavigateToCalibrationWizard()
         {
-            foreach (var menuItem in NavView.MenuItems)
-            {
-                if (menuItem is NavigationViewItem navItem &&
-                    string.Equals(navItem.Tag?.ToString(), "calibration_wizard", StringComparison.Ordinal))
-                {
-                    NavView.SelectedItem = navItem;
-                    break;
-                }
-            }
-
-            ContentFrame.Navigate(typeof(CalibrationWizardPage));
+            var overlay = new CalibrationOverlayWindow(this);
+            overlay.Activate();
         }
 
         public void StartHiddenToTray()
@@ -520,7 +511,10 @@ namespace AmbilightEngine
             }
             else if (tag == "calibration_wizard")
             {
-                ContentFrame.Navigate(typeof(CalibrationWizardPage));
+                var overlay = new CalibrationOverlayWindow(this);
+                overlay.Activate();
+                NavView.SelectedItem = NavView.MenuItems[0];
+                ContentFrame.Navigate(typeof(DashboardPage));
             }
         }
 

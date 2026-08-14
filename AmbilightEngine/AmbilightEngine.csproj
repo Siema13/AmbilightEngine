@@ -15,6 +15,7 @@
 		<Nullable>enable</Nullable>
 	</PropertyGroup>
 	<ItemGroup>
+	  <None Remove="DesktopPeekWindow.xaml" />
 	  <None Remove="Pages\SettingsGeneralPage.xaml" />
 	  <None Remove="Pages\SettingsImagePage.xaml" />
 	  <None Remove="Pages\SettingsMqttPage.xaml" />
@@ -104,6 +105,18 @@
 
 	<ItemGroup>
 	  <Folder Include="Controls\" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Page Update="DesktopPeekWindow.xaml">
+	    <Generator>MSBuild:Compile</Generator>
+	  </Page>
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Page Update="CalibrationOverlayWindow.xaml">
+	    <Generator>MSBuild:Compile</Generator>
+	  </Page>
 	</ItemGroup>
 
 	<ItemGroup>

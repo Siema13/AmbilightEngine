@@ -56,6 +56,11 @@
                     <TextBlock Text="• Usuń folię ochronną lub przeszkody z diod LED." Style="{StaticResource SectionSubTextStyle}" />
                     <TextBlock Text="• Usiądź w miejscu, z którego normalnie patrzysz na ekran." Style="{StaticResource SectionSubTextStyle}" />
                 </StackPanel>
+                <Button Content="Otwórz kalibrator pełnoekranowy (9 sliderów RGB)"
+                        Click="OpenFullscreenCalibrator_Click"
+                        Style="{StaticResource AccentButtonStyle}"
+                        HorizontalAlignment="Left"
+                        Margin="0,8,0,0" />
             </StackPanel>
 
             <!-- KROK 1-3: Pełnoekranowy blok koloru + slider kanału RGB -->

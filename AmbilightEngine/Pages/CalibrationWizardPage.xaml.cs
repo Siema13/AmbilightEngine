@@ -549,7 +549,12 @@ public sealed partial class CalibrationWizardPage : Page
 
         settingsApplyService.SaveAndApplyImage(settings);
     }
-
+        private void OpenFullscreenCalibrator_Click(object sender, RoutedEventArgs e)
+    {
+        if (mainWindow is null) return;
+        var overlay = new CalibrationOverlayWindow(mainWindow);
+        overlay.Activate();
+    }
     private void BackButton_Click(object sender, RoutedEventArgs e)
     {
         if (currentStep == WizardStep.Welcome)
