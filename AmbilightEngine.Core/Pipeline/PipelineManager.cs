@@ -150,7 +150,7 @@ namespace AmbilightEngine.Core.Pipeline
             // NOWOŚĆ: włączamy trwałą sesję "live" WLED od razu, jeśli aktywny tryb korzysta
             // z ciągłego strumienia DDP (Video Sync / Static Color). W trybie WLED Effects
             // sesja live pozostaje wyłączona, żeby nie blokować natywnej animacji urządzenia.
-            UpdateRealtimeSession(settings.ActiveDisplayMode != DisplayMode.WledEffects);
+            //UpdateRealtimeSession(settings.ActiveDisplayMode != DisplayMode.WledEffects);
 
             captureSource.OnFrameCaptured += OnFrameCapturedFromCaptureThread;
             consumerTask = Task.Run(() => ConsumerLoopAsync(cts.Token));
@@ -201,7 +201,7 @@ namespace AmbilightEngine.Core.Pipeline
                 return;
             }
 
-            UpdateRealtimeSession(settings.ActiveDisplayMode != DisplayMode.WledEffects);
+            //UpdateRealtimeSession(settings.ActiveDisplayMode != DisplayMode.WledEffects);
         }
 
         // Wchodzi w tryb ambientowy: zapisuje snapshot aktualnego stanu wyświetlania,

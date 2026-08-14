@@ -13,10 +13,10 @@
 		<WinUISDKReferences>false</WinUISDKReferences>
 		<EnableMsixTooling>false</EnableMsixTooling>
 		<Nullable>enable</Nullable>
-		<WindowsPackageType>None</WindowsPackageType>
-		<SelfContained>true</SelfContained>
-		<WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
-		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
+	
+
+		
+		
 			</PropertyGroup>
 	<ItemGroup>
 	  <None Remove="DesktopPeekWindow.xaml" />
@@ -134,7 +134,9 @@
 	</PropertyGroup>
 
 	<PropertyGroup>
-		<PublishReadyToRun>false</PublishReadyToRun>
-		<PublishTrimmed>false</PublishTrimmed>
+		<PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>
+		<PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">True</PublishReadyToRun>
+		<PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
+		<PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
 	</PropertyGroup>
 </Project>
