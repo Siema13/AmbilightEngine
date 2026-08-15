@@ -90,13 +90,13 @@
         </Grid>
 
         <NavigationView x:Name="NavView"
-                Background="{ThemeResource M3NavigationPanelBrush}"
-                Grid.Row="1"
-                IsBackButtonVisible="Collapsed"
-                IsSettingsVisible="False"
-                PaneDisplayMode="Left"
-                IsPaneOpen="True"
-                SelectionChanged="NavView_SelectionChanged">
+                        Grid.Row="1"
+                        Background="{ThemeResource M3NavigationPanelBrush}"
+                        IsBackButtonVisible="Collapsed"
+                        IsSettingsVisible="False"
+                        PaneDisplayMode="Left"
+                        IsPaneOpen="True"
+                        SelectionChanged="NavView_SelectionChanged">
 
             <NavigationView.MenuItems>
                 <NavigationViewItem Content="Panel główny"
@@ -120,12 +120,12 @@
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
 
-                <NavigationViewItem Content="Kalibracja (Wizard)" Tag="calibration_wizard">
+                <NavigationViewItem Content="Kalibracja (Wizard)"
+                                    Tag="calibration_wizard">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE790;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-
             </NavigationView.MenuItems>
 
             <Frame x:Name="ContentFrame"

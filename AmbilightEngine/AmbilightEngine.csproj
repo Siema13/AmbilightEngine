@@ -1,30 +1,30 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
+
 	<PropertyGroup>
 		<OutputType>WinExe</OutputType>
 		<TargetFramework>net8.0-windows10.0.22621.0</TargetFramework>
-		<LangVersion>13.0</LangVersion>
 		<TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+		<LangVersion>13.0</LangVersion>
 		<RootNamespace>AmbilightEngine</RootNamespace>
 		<ApplicationManifest>app.manifest</ApplicationManifest>
+
 		<Platforms>x86;x64;ARM64</Platforms>
 		<RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
 		<PublishProfile>win-$(Platform).pubxml</PublishProfile>
+
 		<UseWinUI>true</UseWinUI>
 		<WinUISDKReferences>false</WinUISDKReferences>
 		<EnableMsixTooling>false</EnableMsixTooling>
 		<Nullable>enable</Nullable>
-	
 
-		
-		
-			</PropertyGroup>
+		<PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>
+		<PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">True</PublishReadyToRun>
+		<PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
+		<PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
+	</PropertyGroup>
+
 	<ItemGroup>
-	  <None Remove="DesktopPeekWindow.xaml" />
-	  <None Remove="Pages\SettingsGeneralPage.xaml" />
-	  <None Remove="Pages\SettingsImagePage.xaml" />
-	  <None Remove="Pages\SettingsMqttPage.xaml" />
-	  <None Remove="Pages\SettingsStartupPage.xaml" />
-	  <None Remove="Pages\SettingsWledPage.xaml" />
+		<Content Remove="Assets\AppIcon.ico" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -41,7 +41,7 @@
 		<Manifest Include="$(ApplicationManifest)" />
 	</ItemGroup>
 
-	<ItemGroup Condition="'$(DisableMsixProjectCapabilityAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
+	<ItemGroup Condition="'$(DisableMsixProjectCapabilityAddedByProject)' != 'true' and '$(EnableMsixTooling)' == 'true'">
 		<ProjectCapability Include="Msix" />
 	</ItemGroup>
 
@@ -59,84 +59,76 @@
 		<ProjectReference Include="..\AmbilightEngine.Core\AmbilightEngine.Core.csproj" />
 	</ItemGroup>
 
+	<!-- Wszystkie pliki .xaml są automatycznie Page przez SDK.
+       Poniżej wymuszamy generator dla plików z code-behind. -->
 	<ItemGroup>
-		<Content Update="Assets\AppIcon.ico">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</Content>
+		<ApplicationDefinition Update="App.xaml">
+			<Generator>MSBuild:Compile</Generator>
+		</ApplicationDefinition>
+
+		<Page Update="MainWindow.xaml">
+			<Generator>MSBuild:Compile</Generator>
+		</Page>
+
+		<Page Update="DesktopPeekWindow.xaml">
+			<Generator>MSBuild:Compile</Generator>
+		</Page>
+
+		<Page Update="CalibrationOverlayWindow.xaml">
+			<Generator>MSBuild:Compile</Generator>
+		</Page>
+
+		<Page Update="Controls\LedStripPreviewControl.xaml">
+			<Generator>MSBuild:Compile</Generator>
+		</Page>
+
+		<Page Update="LedStripPreviewControl.xaml">
+			<Generator>MSBuild:Compile</Generator>
+		</Page>
+
+		<Page Update="Pages\CalibrationWizardPage.xaml">
+			<Generator>MSBuild:Compile</Generator>
+		</Page>
+
+		<Page Update="Pages\DashboardPage.xaml">
+			<Generator>MSBuild:Compile</Generator>
+		</Page>
+
+		<Page Update="Pages\GeometryPage.xaml">
+			<Generator>MSBuild:Compile</Generator>
+		</Page>
+
+		<Page Update="Pages\ProfilesPage.xaml">
+			<Generator>MSBuild:Compile</Generator>
+		</Page>
+
+		<Page Update="Pages\SettingsPage.xaml">
+			<Generator>MSBuild:Compile</Generator>
+		</Page>
+
+		<Page Update="Pages\SettingsGeneralPage.xaml">
+			<Generator>MSBuild:Compile</Generator>
+		</Page>
+
+		<Page Update="Pages\SettingsImagePage.xaml">
+			<Generator>MSBuild:Compile</Generator>
+		</Page>
+
+		<Page Update="Pages\SettingsMqttPage.xaml">
+			<Generator>MSBuild:Compile</Generator>
+		</Page>
+
+		<Page Update="Pages\SettingsStartupPage.xaml">
+			<Generator>MSBuild:Compile</Generator>
+		</Page>
+
+		<Page Update="Pages\SettingsWledPage.xaml">
+			<Generator>MSBuild:Compile</Generator>
+		</Page>
+
+		<Page Update="Resources\ThemeResources.xaml">
+			<Generator>MSBuild:Compile</Generator>
+		</Page>
 	</ItemGroup>
 
-	<ItemGroup>
-	  <Page Update="LedStripPreviewControl.xaml">
-	    <Generator>MSBuild:Compile</Generator>
-	  </Page>
-	</ItemGroup>
-
-	<ItemGroup>
-	  <Page Update="Pages\SettingsGeneralPage.xaml">
-	    <Generator>MSBuild:Compile</Generator>
-	  </Page>
-	</ItemGroup>
-
-	<ItemGroup>
-	  <Page Update="Pages\SettingsMqttPage.xaml">
-	    <Generator>MSBuild:Compile</Generator>
-	  </Page>
-	</ItemGroup>
-
-	<ItemGroup>
-	  <Page Update="Pages\SettingsStartupPage.xaml">
-	    <Generator>MSBuild:Compile</Generator>
-	  </Page>
-	</ItemGroup>
-
-	<ItemGroup>
-	  <Page Update="Pages\SettingsImagePage.xaml">
-	    <Generator>MSBuild:Compile</Generator>
-	  </Page>
-	</ItemGroup>
-
-	<ItemGroup>
-	  <Page Update="Pages\SettingsWledPage.xaml">
-	    <Generator>MSBuild:Compile</Generator>
-	  </Page>
-	</ItemGroup>
-
-	<ItemGroup>
-	  <Page Update="Resources\ThemeResources.xaml">
-	    <Generator>MSBuild:Compile</Generator>
-	  </Page>
-	</ItemGroup>
-
-	<ItemGroup>
-	  <Folder Include="Controls\" />
-	</ItemGroup>
-
-	<ItemGroup>
-	  <Page Update="DesktopPeekWindow.xaml">
-	    <Generator>MSBuild:Compile</Generator>
-	  </Page>
-	</ItemGroup>
-
-	<ItemGroup>
-	  <Page Update="CalibrationOverlayWindow.xaml">
-	    <Generator>MSBuild:Compile</Generator>
-	  </Page>
-	</ItemGroup>
-
-	<ItemGroup>
-	  <Page Update="Pages\CalibrationWizardPage.xaml">
-	    <Generator>MSBuild:Compile</Generator>
-	  </Page>
-	</ItemGroup>
-
-	<PropertyGroup Condition="'$(DisableHasPackageAndPublishMenuAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
-		<HasPackageAndPublishMenu>true</HasPackageAndPublishMenu>
-	</PropertyGroup>
-
-	<PropertyGroup>
-		<PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>
-		<PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">True</PublishReadyToRun>
-		<PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
-		<PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
-	</PropertyGroup>
 </Project>

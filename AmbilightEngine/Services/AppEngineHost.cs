@@ -18,6 +18,45 @@ namespace AmbilightEngine
 {
     public sealed class AppEngineHost : IDisposable
     {
+        private readonly struct AmbientDisplaySnapshot
+        {
+            public AmbientDisplaySnapshot(
+                DisplayMode mode,
+                int wledEffectId,
+                int wledPaletteId,
+                int wledSpeed,
+                int wledIntensity,
+                int wledBrightness,
+                (byte R, byte G, byte B) wledPrimaryColor,
+                (byte R, byte G, byte B) wledSecondaryColor)
+            {
+                Mode = mode;
+                WledEffectId = wledEffectId;
+                WledPaletteId = wledPaletteId;
+                WledSpeed = wledSpeed;
+                WledIntensity = wledIntensity;
+                WledBrightness = wledBrightness;
+                WledPrimaryColor = wledPrimaryColor;
+                WledSecondaryColor = wledSecondaryColor;
+            }
+
+            public DisplayMode Mode { get; }
+
+            public int WledEffectId { get; }
+
+            public int WledPaletteId { get; }
+
+            public int WledSpeed { get; }
+
+            public int WledIntensity { get; }
+
+            public int WledBrightness { get; }
+
+            public (byte R, byte G, byte B) WledPrimaryColor { get; }
+
+            public (byte R, byte G, byte B) WledSecondaryColor { get; }
+        }
+
         private readonly AmbilightSettings settings;
 
         private WgcCaptureEngine? captureEngine;
@@ -36,7 +75,7 @@ namespace AmbilightEngine
         // w trybie ambientowym - po powrocie z idle użytkownik widział losowy profil
         // zamiast tego, który był aktywny przed wejściem w ambient.
         private volatile bool isAmbientModeActive;
-
+        private AmbientDisplaySnapshot? preAmbientSnapshot;
         private int lastCapturedWidth;
         private int lastCapturedHeight;
         private CaptureZone[]? currentZones;
@@ -124,15 +163,12 @@ namespace AmbilightEngine
                 stateWatcher = new SystemStateWatcher(settings, windowHandle);
                 stateWatcher.AmbientModeRequested += trigger =>
                 {
-                    // FIX: musi być ustawione PRZED EnterAmbientMode, żeby
-                    // OnProfileActivationRequested (mogące odpalić się na wątku
-                    // ProcessProfileWatcher w dowolnym momencie) od razu widziało
-                    // aktywny tryb ambientowy i nie nadpisało imageProcessor.
                     isAmbientModeActive = true;
+                    SaveAmbientDisplaySnapshot();
 
                     var config = trigger == SystemAmbientTrigger.LockOrSleep
-                        ? settings.LockScreenAmbient
-                        : settings.IdleAmbient;
+                    ? settings.LockScreenAmbient
+                    : settings.IdleAmbient;
 
                     pipelineManager?.EnterAmbientMode(config);
                     SetStatus(EngineStatusInfo.Ambient($"Tryb ambientowy: {trigger} (efekt WLED #{config.EffectId}, włączony: {config.IsEnabled})"));
@@ -149,9 +185,16 @@ namespace AmbilightEngine
                     // a nie do stanu, który mógł "wisieć" z czasu przed wejściem w ambient.
                     profileWatcher?.ResetActiveProfile();
 
+                    // NOWOŚĆ: przywraca tryb wyświetlania WLED zapisany przy wejściu w ambient,
+                    // niezależnie od tego, czy pipelineManager istnieje - jeśli Video Sync nigdy
+                    // nie było uruchomione (czysty tryb WLED Effects/Static Color), powyższe
+                    // ExitAmbientMode() na pipelineManager jest no-opem (pipelineManager == null),
+                    // więc to JEDYNA ścieżka realnie przywracająca efekt na urządzeniu ESP.
+                    _ = RestorePreviousDisplayModeAsync();
+
                     SetStatus(IsCapturing
-                        ? EngineStatusInfo.Running("Przechwytywanie aktywne.")
-                        : EngineStatusInfo.Running("Połączono z WLED, przechwytywanie wyłączone."));
+                    ? EngineStatusInfo.Running("Przechwytywanie aktywne.")
+                    : EngineStatusInfo.Running("Połączono z WLED, przechwytywanie wyłączone."));
                 };
 
                 InitializeProfileWatcher();
@@ -360,12 +403,7 @@ namespace AmbilightEngine
                 ProfileChanged?.Invoke(CurrentProfileName);
                 return;
             }
-            if (profile.ActionType == ProfileActionType.WledEffect)
-            {
-                // ... (bez zmian, to co już masz)
-                return;
-            }
-
+            
             // NOWOŚĆ / FIX: profil typu ImageDsp musi jawnie przywrócić Video Sync, jeśli
             // poprzedni aktywny profil ustawił StaticColor/WledEffect - inaczej ConsumerLoopAsync
             // w PipelineManager nadal ignorował imageProcessor (bo settings.ActiveDisplayMode
@@ -378,7 +416,40 @@ namespace AmbilightEngine
 
             var newImageProcessor = new ImageProcessor(currentZones);
 
-                    }
+            if (imageProcessor != null)
+            {
+                newImageProcessor.SeedState(imageProcessor);
+            }
+
+            ConfigureProcessorDynamics(newImageProcessor);
+
+            newImageProcessor.ApplyDspParameters(
+                profile.BrightnessPercent,
+                profile.SaturationBoost,
+                profile.SmoothingSpeedMs,
+                profile.BlackCutoffThreshold,
+                profile.ColorTemperatureKelvin,
+                profile.GammaValue);
+
+            newImageProcessor.SetWallColorFromHex(
+                settings.WallColorHex,
+                settings.WallColorStrength);
+
+            pipelineManager.ReplaceImageProcessor(newImageProcessor);
+            imageProcessor = newImageProcessor;
+
+            CurrentProfileName = string.IsNullOrWhiteSpace(profile.DisplayName)
+                ? "Domyślny"
+                : profile.DisplayName;
+
+            currentProfileId = profile.ProfileId;
+
+            SetStatus(EngineStatusInfo.Running(
+                $"Profil aktywny: {CurrentProfileName} (źródło: {triggerSource})"));
+
+            ProfileChanged?.Invoke(CurrentProfileName);
+        }
+
         public void PreviewProfile(AppProfile profile)
         {
             if (profile == null)
@@ -715,7 +786,68 @@ namespace AmbilightEngine
                 ProfileChanged?.Invoke(CurrentProfileName);
             }
         }
+        private void SaveAmbientDisplaySnapshot()
+{
+    preAmbientSnapshot = new AmbientDisplaySnapshot(
+        settings.ActiveDisplayMode,
+        settings.LastWledEffectId,
+        settings.LastWledPaletteId,
+        settings.LastWledSpeed,
+        settings.LastWledIntensity,
+        settings.LastWledBrightness,
+        (settings.LastWledPrimaryColorR, settings.LastWledPrimaryColorG, settings.LastWledPrimaryColorB),
+        (settings.LastWledSecondaryColorR, settings.LastWledSecondaryColorG, settings.LastWledSecondaryColorB));
+}
 
+public async Task<bool> RestorePreviousDisplayModeAsync()
+{
+    if (preAmbientSnapshot is not AmbientDisplaySnapshot snapshot)
+    {
+        return false;
+    }
+
+    try
+    {
+        switch (snapshot.Mode)
+        {
+            case DisplayMode.StaticColor:
+                await ActivateStaticColorAsync(
+                    snapshot.WledPrimaryColor.R,
+                    snapshot.WledPrimaryColor.G,
+                    snapshot.WledPrimaryColor.B);
+                break;
+
+            case DisplayMode.WledEffects:
+                await ActivateWledEffectAsync(
+                    snapshot.WledEffectId,
+                    snapshot.WledSpeed,
+                    snapshot.WledIntensity,
+                    snapshot.WledPaletteId,
+                    snapshot.WledPrimaryColor,
+                    snapshot.WledSecondaryColor,
+                    snapshot.WledBrightness);
+                break;
+
+            case DisplayMode.VideoSync:
+            default:
+                // Video Sync jest już obsłużony przez pipelineManager.ExitAmbientMode(),
+                // jeśli przechwytywanie było aktywne w momencie wejścia w ambient.
+                break;
+        }
+
+        Debug.WriteLine($"[DIAG] AppEngineHost: przywrócono tryb '{snapshot.Mode}' po wybudzeniu/odblokowaniu.");
+        return true;
+    }
+    catch (Exception ex)
+    {
+        Debug.WriteLine($"[DIAG] AppEngineHost: błąd podczas przywracania trybu po wybudzeniu: {ex.Message}");
+        return false;
+    }
+    finally
+    {
+        preAmbientSnapshot = null;
+    }
+}
         public async Task<bool> ActivateWledEffectAsync(
             int fxId,
             int speed,
@@ -761,6 +893,7 @@ namespace AmbilightEngine
                 settings.LastWledSecondaryColorG = secondaryColor.Value.G;
                 settings.LastWledSecondaryColorB = secondaryColor.Value.B;
             }
+            await ledSender.DisableRealtimeOverrideAsync(cancellationToken);
 
             return await ledSender.SetEffectAsync(
                 fxId, speed, intensity, paletteId, primaryColor, secondaryColor, brightness,

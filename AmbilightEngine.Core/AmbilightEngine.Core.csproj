@@ -9,6 +9,10 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+	  <Compile Remove="SystemState\AmbientDisplaySnapshot.cs" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<PackageReference Include="Microsoft.Win32.SystemEvents" Version="8.0.0" />
 		<PackageReference Include="Vortice.Direct3D11" Version="*" />
 		<PackageReference Include="Vortice.DXGI" Version="*" />

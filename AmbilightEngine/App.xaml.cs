@@ -1,29 +1,45 @@
-﻿using Microsoft.UI.Xaml;
-using System;
+﻿using System;
+using System.Runtime.InteropServices;
 using AmbilightEngine.Core.SystemState;
+using AmbilightEngine.Models;
+using AmbilightEngine.Services;
+using Microsoft.UI.Xaml;
 
 namespace AmbilightEngine
 {
     public partial class App : Application
     {
+        private const uint MbOk = 0x00000000;
+        private const uint MbIconInformation = 0x00000040;
+
+        private readonly SingleInstanceManager singleInstanceManager = new();
         private Window? m_window;
+
+        private SettingsStorageService? settingsStorageService;
+        private GlobalHotkeyService? globalHotkeyService;
 
         public MainWindow? MainAppWindow { get; private set; }
 
         public App()
         {
-            // KLUCZOWE: musi być wywołane jak najwcześniej, zanim Windows zdąży
-            // zastosować Efficiency Mode / EcoQoS throttling do tego procesu.
-            // Bez tego System.Threading.Timer w SystemStateWatcher (i inne timery)
-            // są drastycznie spowalniane lub zamrażane po zablokowaniu ekranu,
-            // co uniemożliwia wykrycie blokady i aktywację trybu ambientowego.
             ProcessPowerThrottling.DisableThrottling();
-
             InitializeComponent();
         }
 
         protected override void OnLaunched(LaunchActivatedEventArgs args)
         {
+            if (!singleInstanceManager.TryAcquire())
+            {
+                MessageBox(
+                    IntPtr.Zero,
+                    "AmbilightEngine jest już uruchomiony.\n\nSprawdź ikonę w zasobniku systemowym.",
+                    "AmbilightEngine",
+                    MbOk | MbIconInformation);
+
+                Environment.Exit(0);
+                return;
+            }
+
             var mainWindow = new MainWindow();
             MainAppWindow = mainWindow;
             m_window = mainWindow;
@@ -37,6 +53,66 @@ namespace AmbilightEngine
             {
                 mainWindow.StartHiddenToTray();
             }
+
+            try
+            {
+                settingsStorageService = new SettingsStorageService();
+                globalHotkeyService = new GlobalHotkeyService(mainWindow);
+                globalHotkeyService.HotkeyPressed += OnGlobalHotkeyPressed;
+
+                var hotkeySettings = settingsStorageService.LoadHotkeySettings();
+                globalHotkeyService.LoadFromSettings(hotkeySettings);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"Nie udało się zainicjalizować GlobalHotkeyService: {ex.Message}");
+            }
+
+            m_window.Closed += OnMainWindowClosed;
         }
+
+        private void OnMainWindowClosed(object sender, WindowEventArgs args)
+        {
+            globalHotkeyService?.Dispose();
+            globalHotkeyService = null;
+        }
+
+        private void OnGlobalHotkeyPressed(string actionId)
+        {
+            if (MainAppWindow is null)
+            {
+                return;
+            }
+
+            switch (actionId)
+            {
+                case HotkeyActionIds.ToggleEngine:
+                    MainAppWindow.ToggleCommand.Execute(null);
+                    break;
+
+                case HotkeyActionIds.Blackout:
+                    _ = MainAppWindow.EngineHost.ActivateStaticColorAsync(0, 0, 0);
+                    break;
+
+                // CycleMode, BrightnessUp/Down i CycleWhitePreset wymagają dodatkowych
+                // metod w AppEngineHost/AmbilightSettings, których jeszcze nie mamy —
+                // patrz sekcja "Do doprecyzowania" w odpowiedzi.
+                case HotkeyActionIds.CycleMode:
+                case HotkeyActionIds.BrightnessUp:
+                case HotkeyActionIds.BrightnessDown:
+                case HotkeyActionIds.CycleWhitePreset:
+                    System.Diagnostics.Debug.WriteLine(
+                        $"DIAG: Akcja skrótu '{actionId}' nie jest jeszcze zaimplementowana w EngineHost.");
+                    break;
+            }
+        }
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern int MessageBox(
+            IntPtr hWnd,
+            string text,
+            string caption,
+            uint type);
     }
 }
