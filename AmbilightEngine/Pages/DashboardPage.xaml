@@ -223,7 +223,37 @@
                             </StackPanel>
                         </StackPanel>
                     </Border>
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel Spacing="10">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
 
+                                <TextBlock Text="Jasność główna"
+                       Style="{StaticResource SectionHeaderTextStyle}"
+                       VerticalAlignment="Center" />
+
+                                <TextBlock x:Name="MasterBrightnessValueText"
+                       Grid.Column="1"
+                       FontSize="16"
+                       FontWeight="SemiBold"
+                       VerticalAlignment="Center"
+                       Text="100%" />
+                            </Grid>
+
+                            <TextBlock Text="Globalny poziom światła dla Video Sync, Static Color i WLED Effects. Nie zmienia jasności zapisanej w profilu ani w wybranym efekcie."
+                   Style="{StaticResource SectionSubTextStyle}"
+                   TextWrapping="Wrap" />
+
+                            <Slider x:Name="MasterBrightnessSlider"
+                Minimum="0"
+                Maximum="100"
+                StepFrequency="1"
+                ValueChanged="MasterBrightnessSlider_ValueChanged" />
+                        </StackPanel>
+                    </Border>
                     <Grid
                         ColumnSpacing="16"
                         RowSpacing="16">

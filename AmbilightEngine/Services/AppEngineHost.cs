@@ -67,7 +67,21 @@ namespace AmbilightEngine
         private ProcessProfileWatcher? profileWatcher;
         private volatile bool isProfilePreviewActive;
         private int videoSyncTransitionInProgress;
-        
+        private readonly object whitePresetTransitionLock = new();
+        private CancellationTokenSource? whitePresetTransitionCts;
+        private float currentWhitePresetTransitionKelvin = 6500f;
+
+        private static readonly int[] WhitePresetKelvinCycle =
+        {
+    2700,
+    4000,
+    5000,
+    6500,
+    9300
+};
+
+        private const int WhitePresetTransitionDurationMs = 450;
+        private const int WhitePresetTransitionFrameIntervalMs = 25;
         // NOWOŚĆ: chroni automatyczne przełączanie profili (ProcessProfileWatcher) przed
         // nadpisaniem imageProcessor w trakcie trwania trybu ambientowego (blokada/idle).
         // Bez tej flagi watcher (działający na własnym timerze 500ms, niezależnie od
@@ -86,7 +100,7 @@ namespace AmbilightEngine
 
         public bool IsRunning { get; private set; }
         public bool IsCapturing { get; private set; }
-
+        public int MasterBrightnessPercent => settings.MasterBrightnessPercent;
         public string CurrentProfileName { get; private set; } = "Domyślny";
         private string? currentProfileId;
         public EngineStatusInfo CurrentStatus { get; private set; } = EngineStatusInfo.Stopped("Gotowy do startu.");
@@ -1010,9 +1024,27 @@ namespace AmbilightEngine
             }
             await ledSender.DisableRealtimeOverrideAsync(cancellationToken);
 
+            int baseBrightness = brightness ?? settings.LastWledBrightness;
+
+            int effectiveBrightness = ScaleWledBrightness(
+                baseBrightness,
+                settings.MasterBrightnessPercent);
+
             return await ledSender.SetEffectAsync(
-                fxId, speed, intensity, paletteId, primaryColor, secondaryColor, brightness,
-                custom1, custom2, custom3, check1, check2, check3, cancellationToken);
+                fxId,
+                speed,
+                intensity,
+                paletteId,
+                primaryColor,
+                secondaryColor,
+                effectiveBrightness,
+                custom1,
+                custom2,
+                custom3,
+                check1,
+                check2,
+                check3,
+                cancellationToken);
         }
         public async Task<bool> ActivateStaticColorAsync(
     byte red,
@@ -1343,10 +1375,147 @@ namespace AmbilightEngine
 
             return false;
         }
+        /// <summary>
+        /// Ustawia globalny końcowy mnożnik jasności 0–100%.
+        /// Nie zmienia jasności profilu, statycznego koloru ani bazowej jasności efektu WLED.
+        /// </summary>
+        public async Task<bool> SetMasterBrightnessPercentAsync(
+            int brightnessPercent,
+            CancellationToken cancellationToken = default)
+        {
+            int normalizedBrightness = Math.Clamp(brightnessPercent, 0, 100);
+
+            if (settings.MasterBrightnessPercent == normalizedBrightness)
+            {
+                return true;
+            }
+
+            settings.MasterBrightnessPercent = normalizedBrightness;
+
+            try
+            {
+                switch (settings.ActiveDisplayMode)
+                {
+                    case DisplayMode.WledEffects:
+                        if (ledSender is null)
+                        {
+                            return false;
+                        }
+
+                        int baseBrightness = settings.LastWledBrightness;
+                        int effectiveBrightness = ScaleWledBrightness(
+                            baseBrightness,
+                            normalizedBrightness);
+
+                        bool effectApplied = await ledSender.SetEffectAsync(
+                            settings.LastWledEffectId,
+                            settings.LastWledSpeed,
+                            settings.LastWledIntensity,
+                            settings.LastWledPaletteId,
+                            (settings.LastWledPrimaryColorR,
+                             settings.LastWledPrimaryColorG,
+                             settings.LastWledPrimaryColorB),
+                            (settings.LastWledSecondaryColorR,
+                             settings.LastWledSecondaryColorG,
+                             settings.LastWledSecondaryColorB),
+                            effectiveBrightness,
+                            settings.LastWledCustom1,
+                            settings.LastWledCustom2,
+                            settings.LastWledCustom3,
+                            settings.LastWledCheck1,
+                            settings.LastWledCheck2,
+                            settings.LastWledCheck3,
+                            cancellationToken);
+
+                        if (!effectApplied)
+                        {
+                            Debug.WriteLine(
+                                "[DIAG] Master Brightness: nie udało się zastosować jasności efektu WLED.");
+
+                            return false;
+                        }
+
+                        break;
+
+                    case DisplayMode.StaticColor:
+                    case DisplayMode.VideoSync:
+                        pipelineManager?.RefreshMasterBrightness();
+                        break;
+                }
+
+                SetStatus(EngineStatusInfo.Running(
+                    $"Jasność główna: {normalizedBrightness}%."));
+
+                Debug.WriteLine(
+                    $"[DIAG] Master Brightness: ustawiono {normalizedBrightness}%.");
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine(
+                    $"[DIAG] Master Brightness: błąd ustawiania {normalizedBrightness}%: {ex}");
+
+                SetStatus(EngineStatusInfo.Error(
+                    $"Nie udało się ustawić jasności głównej: {ex.Message}"));
+
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Zwiększa Master Brightness o 5%. Z 0% przechodzi od razu na 5%.
+        /// </summary>
+        public Task<bool> IncreaseMasterBrightnessAsync(
+            CancellationToken cancellationToken = default)
+        {
+            int current = settings.MasterBrightnessPercent;
+
+            int target = current <= 0
+                ? 5
+                : Math.Min(100, current + 5);
+
+            return SetMasterBrightnessPercentAsync(target, cancellationToken);
+        }
+
+/// <summary>
+/// Zmniejsza Master Brightness o 5%, ale skrót nigdy nie schodzi poniżej 1%.
+/// Wartość 0% pozostaje dostępna tylko przez świadome ustawienie suwakiem.
+/// </summary>
+public Task<bool> DecreaseMasterBrightnessAsync(
+    CancellationToken cancellationToken = default)
+        {
+            int current = settings.MasterBrightnessPercent;
+
+            int target = current <= 1
+                ? 1
+                : Math.Max(1, current - 5);
+
+            return SetMasterBrightnessPercentAsync(target, cancellationToken);
+        }
+
+        private static int ScaleWledBrightness(
+            int baseBrightness,
+            int masterBrightnessPercent)
+        {
+            int normalizedBase = Math.Clamp(baseBrightness, 0, 255);
+            int normalizedMaster = Math.Clamp(masterBrightnessPercent, 0, 100);
+
+            return (int)Math.Clamp(
+                Math.Round(normalizedBase * normalizedMaster / 100.0),
+                0,
+                255);
+        }
         public void Stop()
         {
             try
             {
+                lock (whitePresetTransitionLock)
+                {
+                    whitePresetTransitionCts?.Cancel();
+                    whitePresetTransitionCts?.Dispose();
+                    whitePresetTransitionCts = null;
+                }
                 isProfilePreviewActive = false;
                 isAmbientModeActive = false;
 
@@ -1380,6 +1549,349 @@ namespace AmbilightEngine
             }
         }
 
+        private AmbientDisplaySnapshot? preBlackoutSnapshot;
+        private bool isBlackoutActive;
+
+        /// <summary>
+        /// Przełącza tryb wyświetlania w kolejności Video Sync -> Static Color -> WLED Effects -> Video Sync.
+        /// Używane przez skrót globalny "mode.cycle". Reużywa istniejących ścieżek przejścia
+        /// (ApplyVideoSyncWithTransitionAsync / SetStaticColorWithTransitionAsync / ActivateWledEffectAsync),
+        /// żeby zachować tę samą płynność i logikę realtime override, co przy zmianie z UI.
+        /// </summary>
+        public async Task<bool> CycleDisplayModeAsync(CancellationToken cancellationToken = default)
+        {
+            if (!IsRunning)
+            {
+                Debug.WriteLine("[DIAG] CycleDisplayModeAsync: pominięto, brak połączenia z WLED.");
+                return false;
+            }
+
+            try
+            {
+                switch (settings.ActiveDisplayMode)
+                {
+                    case DisplayMode.VideoSync:
+                        bool switchedToStatic = await SetStaticColorWithTransitionAsync(
+                            settings.StaticColorR,
+                            settings.StaticColorG,
+                            settings.StaticColorB,
+                            cancellationToken);
+
+                        Debug.WriteLine($"[DIAG] CycleDisplayModeAsync: VideoSync -> StaticColor ({switchedToStatic}).");
+                        return switchedToStatic;
+
+                    case DisplayMode.StaticColor:
+                        var primaryColor = (settings.LastWledPrimaryColorR, settings.LastWledPrimaryColorG, settings.LastWledPrimaryColorB);
+                        var secondaryColor = (settings.LastWledSecondaryColorR, settings.LastWledSecondaryColorG, settings.LastWledSecondaryColorB);
+
+                        bool switchedToWled = await ActivateWledEffectAsync(
+                            settings.LastWledEffectId,
+                            settings.LastWledSpeed,
+                            settings.LastWledIntensity,
+                            settings.LastWledPaletteId,
+                            primaryColor,
+                            secondaryColor,
+                            settings.LastWledBrightness,
+                            settings.LastWledCustom1,
+                            settings.LastWledCustom2,
+                            settings.LastWledCustom3,
+                            settings.LastWledCheck1,
+                            settings.LastWledCheck2,
+                            settings.LastWledCheck3,
+                            cancellationToken);
+
+                        pipelineManager?.NotifyDisplayModeChanged();
+
+                        Debug.WriteLine($"[DIAG] CycleDisplayModeAsync: StaticColor -> WledEffects ({switchedToWled}).");
+                        return switchedToWled;
+
+                    case DisplayMode.WledEffects:
+                    default:
+                        if (!IsCapturing || pipelineManager is null)
+                        {
+                            Debug.WriteLine("[DIAG] CycleDisplayModeAsync: WledEffects -> VideoSync pominięte (capture nieaktywny).");
+                            return false;
+                        }
+
+                        bool switchedToVideoSync = await ApplyVideoSyncWithTransitionAsync(cancellationToken);
+
+                        Debug.WriteLine($"[DIAG] CycleDisplayModeAsync: WledEffects -> VideoSync ({switchedToVideoSync}).");
+                        return switchedToVideoSync;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[DIAG] CycleDisplayModeAsync: błąd przełączania trybu: {ex}");
+                SetStatus(EngineStatusInfo.Error($"Nie udało się przełączyć trybu: {ex.Message}"));
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Przełącza (toggle) tymczasowe wygaszenie LED do czerni, zachowując pełny stan poprzedniego
+        /// trybu (Video Sync / Static Color / WLED Effects wraz z parametrami). Drugie wywołanie tego
+        /// samego skrótu przywraca dokładnie ten stan - reużywa mechanizmu snapshotu z trybu ambientowego
+        /// (SaveAmbientDisplaySnapshot / RestorePreviousDisplayModeAsync), zamiast trwale nadpisywać
+        /// ActiveDisplayMode, żeby użytkownik nie musiał ręcznie przywracać trybu po Blackout.
+        /// </summary>
+        public async Task<bool> ToggleBlackoutAsync(CancellationToken cancellationToken = default)
+        {
+            if (!IsRunning || ledSender is null)
+            {
+                Debug.WriteLine("[DIAG] ToggleBlackoutAsync: pominięto, brak połączenia z WLED.");
+                return false;
+            }
+
+            try
+            {
+                if (isBlackoutActive)
+                {
+                    if (preBlackoutSnapshot is not AmbientDisplaySnapshot snapshot)
+                    {
+                        isBlackoutActive = false;
+                        Debug.WriteLine("[DIAG] ToggleBlackoutAsync: brak snapshotu, nie mogę przywrócić stanu.");
+                        return false;
+                    }
+
+                    switch (snapshot.Mode)
+                    {
+                        case DisplayMode.StaticColor:
+                            await ActivateStaticColorAsync(
+                                snapshot.WledPrimaryColor.R,
+                                snapshot.WledPrimaryColor.G,
+                                snapshot.WledPrimaryColor.B,
+                                cancellationToken);
+                            break;
+
+                        case DisplayMode.WledEffects:
+                            await ActivateWledEffectAsync(
+                                snapshot.WledEffectId,
+                                snapshot.WledSpeed,
+                                snapshot.WledIntensity,
+                                snapshot.WledPaletteId,
+                                snapshot.WledPrimaryColor,
+                                snapshot.WledSecondaryColor,
+                                snapshot.WledBrightness,
+                                cancellationToken: cancellationToken);
+
+                            pipelineManager?.NotifyDisplayModeChanged();
+                            break;
+
+                        case DisplayMode.VideoSync:
+                        default:
+                            if (IsCapturing && pipelineManager is not null)
+                            {
+                                await ApplyVideoSyncWithTransitionAsync(cancellationToken);
+                            }
+                            break;
+                    }
+
+                    isBlackoutActive = false;
+                    preBlackoutSnapshot = null;
+
+                    SetStatus(EngineStatusInfo.Running("Blackout wyłączony, przywrócono poprzedni tryb."));
+                    Debug.WriteLine("[DIAG] ToggleBlackoutAsync: przywrócono stan sprzed wygaszenia.");
+                    return true;
+                }
+
+                preBlackoutSnapshot = new AmbientDisplaySnapshot(
+                    settings.ActiveDisplayMode,
+                    settings.LastWledEffectId,
+                    settings.LastWledPaletteId,
+                    settings.LastWledSpeed,
+                    settings.LastWledIntensity,
+                    settings.LastWledBrightness,
+                    (settings.LastWledPrimaryColorR, settings.LastWledPrimaryColorG, settings.LastWledPrimaryColorB),
+                    (settings.LastWledSecondaryColorR, settings.LastWledSecondaryColorG, settings.LastWledSecondaryColorB));
+
+                if (pipelineManager is not null && IsCapturing)
+                {
+                    pipelineManager.TransitionToStaticColor(0, 0, 0);
+                }
+                else
+                {
+                    await ledSender.SetEffectAsync(
+                        fxId: 0,
+                        speed: 0,
+                        intensity: 0,
+                        paletteId: 0,
+                        primaryColor: (0, 0, 0),
+                        secondaryColor: (0, 0, 0),
+                        brightness: 0,
+                        cancellationToken: cancellationToken);
+                }
+
+                isBlackoutActive = true;
+
+                SetStatus(EngineStatusInfo.Running("Blackout aktywny — światło wygaszone."));
+                Debug.WriteLine("[DIAG] ToggleBlackoutAsync: wygaszono LED, zapisano snapshot poprzedniego stanu.");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[DIAG] ToggleBlackoutAsync: błąd: {ex}");
+                SetStatus(EngineStatusInfo.Error($"Blackout nie powiódł się: {ex.Message}"));
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Przełącza temperaturę światła białego (ColorTemperatureKelvin) aktywnego profilu w ustalonym
+        /// cyklu: 2700K -> 4000K -> 5000K -> 6500K -> 9300K -> z powrotem do 2700K. Modyfikuje profil
+        /// wskazywany przez currentProfileId (albo DefaultProfile, jeśli żaden nie jest aktywny) i od razu
+        /// re-aplikuje go przez ActivateProfile, żeby zmiana była widoczna na żywo na diodach LED.
+        /// </summary>
+        public int CycleWhitePreset()
+        {
+            try
+            {
+                AppProfile? targetProfile = null;
+
+                if (!string.IsNullOrWhiteSpace(currentProfileId))
+                {
+                    targetProfile = settings.Profiles?.Find(profile =>
+                        string.Equals(
+                            profile.ProfileId,
+                            currentProfileId,
+                            StringComparison.Ordinal));
+                }
+
+                targetProfile ??= settings.DefaultProfile;
+
+                if (targetProfile is null)
+                {
+                    Debug.WriteLine(
+                        "[DIAG] CycleWhitePreset: brak aktywnego profilu do modyfikacji.");
+
+                    return 0;
+                }
+
+                int currentIndex = Array.IndexOf(
+                    WhitePresetKelvinCycle,
+                    targetProfile.ColorTemperatureKelvin);
+
+                int nextIndex = currentIndex >= 0
+                    ? (currentIndex + 1) % WhitePresetKelvinCycle.Length
+                    : 0;
+
+                int targetKelvin = WhitePresetKelvinCycle[nextIndex];
+
+                // Zapisujemy docelowy preset od razu, aby kolejny skrót poprawnie wybrał
+                // następny punkt cyklu nawet wtedy, gdy bieżące przejście jeszcze trwa.
+                targetProfile.ColorTemperatureKelvin = targetKelvin;
+
+                StartWhitePresetTransition(targetKelvin);
+
+                SetStatus(
+                    EngineStatusInfo.Running(
+                        $"Temperatura bieli: {targetKelvin}K."));
+
+                Debug.WriteLine(
+                    $"[DIAG] CycleWhitePreset: profil '{targetProfile.DisplayName}' " +
+                    $"-> {targetKelvin}K (płynne przejście).");
+
+                return targetKelvin;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine(
+                    $"[DIAG] CycleWhitePreset: błąd: {ex}");
+
+                return 0;
+            }
+        }
+        private void StartWhitePresetTransition(int targetKelvin)
+        {
+            ImageProcessor? processor = imageProcessor;
+
+            if (processor is null)
+            {
+                Debug.WriteLine(
+                    "[DIAG] WhitePresetTransition: brak aktywnego ImageProcessor; " +
+                    "preset zostanie zastosowany przy następnym uruchomieniu Video Sync.");
+
+                currentWhitePresetTransitionKelvin = targetKelvin;
+                return;
+            }
+
+            CancellationToken token;
+            float startKelvin;
+
+            lock (whitePresetTransitionLock)
+            {
+                whitePresetTransitionCts?.Cancel();
+                whitePresetTransitionCts?.Dispose();
+
+                whitePresetTransitionCts = new CancellationTokenSource();
+                token = whitePresetTransitionCts.Token;
+
+                // Odczytujemy faktyczną wartość z procesora, a nie tylko ustawienie profilu.
+                // To pozwala płynnie przestawić kierunek nawet w środku poprzedniej animacji.
+                startKelvin = processor.GetColorTemperatureKelvin();
+                currentWhitePresetTransitionKelvin = startKelvin;
+            }
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    const int frameCount =
+                        WhitePresetTransitionDurationMs /
+                        WhitePresetTransitionFrameIntervalMs;
+
+                    for (int step = 1; step <= frameCount; step++)
+                    {
+                        token.ThrowIfCancellationRequested();
+
+                        float linearProgress = step / (float)frameCount;
+
+                        // Smoothstep: łagodne wejście i wyjście, bez mechanicznego skoku.
+                        float progress = linearProgress * linearProgress *
+                            (3f - 2f * linearProgress);
+
+                        float interpolatedKelvin =
+                            startKelvin +
+                            (targetKelvin - startKelvin) * progress;
+
+                        ImageProcessor? liveProcessor = imageProcessor;
+
+                        if (liveProcessor is not null)
+                        {
+                            liveProcessor.SetColorTemperatureKelvin(
+                                interpolatedKelvin);
+                        }
+
+                        currentWhitePresetTransitionKelvin =
+                            interpolatedKelvin;
+
+                        await Task.Delay(
+                            WhitePresetTransitionFrameIntervalMs,
+                            token).ConfigureAwait(false);
+                    }
+
+                    ImageProcessor? finalProcessor = imageProcessor;
+
+                    if (finalProcessor is not null)
+                    {
+                        finalProcessor.SetColorTemperatureKelvin(targetKelvin);
+                    }
+
+                    currentWhitePresetTransitionKelvin = targetKelvin;
+
+                    Debug.WriteLine(
+                        $"[DIAG] WhitePresetTransition: zakończono przejście do {targetKelvin}K.");
+                }
+                catch (OperationCanceledException)
+                {
+                    // Użytkownik wybrał następny preset przed końcem poprzedniego przejścia.
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine(
+                        $"[DIAG] WhitePresetTransition: błąd: {ex}");
+                }
+            }, CancellationToken.None);
+        }
         public void Dispose()
         {
             Stop();

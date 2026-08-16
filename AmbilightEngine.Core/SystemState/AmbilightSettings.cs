@@ -1,7 +1,7 @@
 ﻿using System.Collections.Generic;
 using AmbilightEngine.Core.Models;
 using AmbilightEngine.Core.Processing;
-
+using AmbilightEngine.Models;
 namespace AmbilightEngine.Core.SystemState
 {
     public enum AmbientLightMode
@@ -26,6 +26,7 @@ namespace AmbilightEngine.Core.SystemState
         public byte SecondaryColorB { get; set; } = 0;
     }
 
+    
     public sealed class AmbilightSettings
     {
         public string? WallColorHex { get; set; } = null;
@@ -260,7 +261,16 @@ namespace AmbilightEngine.Core.SystemState
         public byte NoiseFloor { get; set; } = 4;
 
         public bool HasCompletedCalibrationOnboarding { get; set; } = false;
+        // --- Master Brightness ---
+        // Globalny mnożnik końcowej jasności dla Video Sync, Static Color i efektów WLED.
+        // Nie zmienia BrightnessPercent profili ani LastWledBrightness efektu.
+        private int masterBrightnessPercent = 100;
 
+        public int MasterBrightnessPercent
+        {
+            get => masterBrightnessPercent;
+            set => masterBrightnessPercent = value < 0 ? 0 : (value > 100 ? 100 : value);
+        }
         // --- Zachowanie aplikacji ---
         public bool StartWithWindows { get; set; } = false;
         public bool StartMinimizedToTray { get; set; } = false;
@@ -268,6 +278,9 @@ namespace AmbilightEngine.Core.SystemState
 
         public bool AutoStartAmbilight { get; set; } = false;
         public DisplayMode AutoStartDisplayMode { get; set; } = DisplayMode.VideoSync;
+
+        // --- Shortcuts ---
+        public HotkeySettings Hotkeys { get; set; } = HotkeySettings.CreateDefault();
 
         // --- Profile ---
         public List<AppProfile> Profiles { get; set; } = new();

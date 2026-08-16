@@ -1,3 +1,4 @@
+using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -7,26 +8,29 @@ namespace AmbilightEngine.Pages
     {
         public SettingsPage()
         {
-            this.InitializeComponent();
-            this.Loaded += SettingsPage_Loaded;
+            InitializeComponent();
+            Loaded += SettingsPage_Loaded;
         }
 
         private void SettingsPage_Loaded(object sender, RoutedEventArgs e)
         {
-            if (SettingsSectionList.SelectedItem is null && SettingsSectionList.Items.Count > 0)
+            if (SettingsSectionList.SelectedItem is null &&
+                SettingsSectionList.Items.Count > 0)
             {
                 SettingsSectionList.SelectedIndex = 0;
             }
         }
 
-        private void SettingsSectionList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private void SettingsSectionList_SelectionChanged(
+            object sender,
+            SelectionChangedEventArgs e)
         {
             if (SettingsSectionList.SelectedItem is not ListViewItem selectedItem)
             {
                 return;
             }
 
-            var tag = selectedItem.Tag?.ToString();
+            string? tag = selectedItem.Tag?.ToString();
 
             switch (tag)
             {
@@ -54,13 +58,17 @@ namespace AmbilightEngine.Pages
                     NavigateTo(typeof(GeometryPage));
                     break;
 
+                case "hotkeys":
+                    NavigateTo(typeof(HotkeysSettingsPage));
+                    break;
+
                 default:
                     NavigateTo(typeof(SettingsGeneralPage));
                     break;
             }
         }
 
-        private void NavigateTo(System.Type pageType)
+        private void NavigateTo(Type pageType)
         {
             if (SettingsContentFrame.CurrentSourcePageType != pageType)
             {

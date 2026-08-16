@@ -557,7 +557,25 @@ namespace AmbilightEngine.Core.Processing
 
             RecalculateTemperatureFactors();
         }
+        /// <summary>
+        /// Aktualizuje tylko temperaturę barwową na żywym procesorze obrazu.
+        /// Nie zmienia parametrów DSP, kalibracji ani stanu wygładzania EMA, dzięki czemu
+        /// może być wywoływana wielokrotnie podczas płynnej animacji pomiędzy presetami bieli.
+        /// </summary>
+        public void SetColorTemperatureKelvin(float kelvin)
+        {
+            colorTemperatureKelvin = Math.Clamp(kelvin, 1000f, 12000f);
+            RecalculateTemperatureFactors();
+        }
 
+        /// <summary>
+        /// Zwraca aktualną, także pośrednią, temperaturę barwową procesora.
+        /// Używane jako punkt startowy nowej animacji, gdy użytkownik szybko przełącza presety.
+        /// </summary>
+        public float GetColorTemperatureKelvin()
+        {
+            return colorTemperatureKelvin;
+        }
         private void RecalculateTemperatureFactors()
         {
             (float rNeutral, float gNeutral, float bNeutral) = KelvinToRgb(6500f);

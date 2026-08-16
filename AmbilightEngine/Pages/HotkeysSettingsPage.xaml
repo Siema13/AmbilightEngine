@@ -1,0 +1,252 @@
+<Page
+    x:Class="AmbilightEngine.Pages.HotkeysSettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid Background="{ThemeResource M3SurfaceContainerBrush}">
+        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Padding="24,24,24,32"
+                        Spacing="20"
+                        MaxWidth="920"
+                        HorizontalAlignment="Left">
+
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Skróty klawiszowe"
+                               Style="{StaticResource PageTitleTextStyle}" />
+                    <TextBlock Text="Przypisz skróty działające globalnie, także gdy okno aplikacji nie ma fokusu. Domyślnie żadna akcja nie ma przypisanego skrótu."
+                               Style="{StaticResource SectionSubTextStyle}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+
+                <InfoBar x:Name="ConflictInfoBar"
+                         IsOpen="False"
+                         IsClosable="True"
+                         Severity="Warning"
+                         Title="Nie można przypisać skrótu"
+                         Margin="0,0,0,4" />
+
+                <Border Style="{StaticResource CardStyle}">
+                    <StackPanel Spacing="14">
+                        <TextBlock Text="Sterowanie Ambilight"
+                                   FontSize="20"
+                                   FontWeight="SemiBold" />
+
+                        <TextBlock Text="Kliknij pole skrótu, a następnie naciśnij kombinację z Ctrl, Alt, Shift lub Win. Escape anuluje edycję. Backspace albo Delete usuwa przypisanie."
+                                   Style="{StaticResource SectionSubTextStyle}"
+                                   TextWrapping="Wrap" />
+
+                        <Grid ColumnSpacing="16"
+                              RowSpacing="16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="220" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <StackPanel Grid.Row="0"
+                                        Grid.Column="0"
+                                        VerticalAlignment="Center"
+                                        Spacing="2">
+                                <TextBlock Text="Włącz / wyłącz Video Sync"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Text="Rozpoczyna albo zatrzymuje przechwytywanie ekranu."
+                                           Style="{StaticResource SectionSubTextStyle}" />
+                            </StackPanel>
+
+                            <Button x:Name="ToggleEngineHotkeyButton"
+                                    Grid.Row="0"
+                                    Grid.Column="1"
+                                    Tag="engine.toggle"
+                                    HorizontalAlignment="Stretch"
+                                    Content="Brak"
+                                    Click="HotkeyCaptureButton_Click" />
+
+                            <Button Grid.Row="0"
+                                    Grid.Column="2"
+                                    Tag="engine.toggle"
+                                    Content="Wyczyść"
+                                    Click="ClearHotkeyButton_Click" />
+
+                            <StackPanel Grid.Row="1"
+                                        Grid.Column="0"
+                                        VerticalAlignment="Center"
+                                        Spacing="2">
+                                <TextBlock Text="Przełącz tryb wyświetlania"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Text="Kolejność: Video Sync → Static Color → WLED Effects."
+                                           Style="{StaticResource SectionSubTextStyle}" />
+                            </StackPanel>
+
+                            <Button x:Name="CycleModeHotkeyButton"
+                                    Grid.Row="1"
+                                    Grid.Column="1"
+                                    Tag="mode.cycle"
+                                    HorizontalAlignment="Stretch"
+                                    Content="Brak"
+                                    Click="HotkeyCaptureButton_Click" />
+
+                            <Button Grid.Row="1"
+                                    Grid.Column="2"
+                                    Tag="mode.cycle"
+                                    Content="Wyczyść"
+                                    Click="ClearHotkeyButton_Click" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource CardStyle}">
+                    <StackPanel Spacing="14">
+                        <TextBlock Text="Światło"
+                                   FontSize="20"
+                                   FontWeight="SemiBold" />
+
+                        <Grid ColumnSpacing="16"
+                              RowSpacing="16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="220" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <StackPanel Grid.Row="0"
+                                        Grid.Column="0"
+                                        VerticalAlignment="Center"
+                                        Spacing="2">
+                                <TextBlock Text="Blackout"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Text="Wygasza diody; ponowne użycie skrótu przywraca poprzedni stan."
+                                           Style="{StaticResource SectionSubTextStyle}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <Button x:Name="BlackoutHotkeyButton"
+                                    Grid.Row="0"
+                                    Grid.Column="1"
+                                    Tag="engine.blackout"
+                                    HorizontalAlignment="Stretch"
+                                    Content="Brak"
+                                    Click="HotkeyCaptureButton_Click" />
+
+                            <Button Grid.Row="0"
+                                    Grid.Column="2"
+                                    Tag="engine.blackout"
+                                    Content="Wyczyść"
+                                    Click="ClearHotkeyButton_Click" />
+
+                            <StackPanel Grid.Row="1"
+                                        Grid.Column="0"
+                                        VerticalAlignment="Center"
+                                        Spacing="2">
+                                <TextBlock Text="Temperatura światła białego"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Text="Cykl presetów: 2700K → 4000K → 5000K → 6500K → 9300K."
+                                           Style="{StaticResource SectionSubTextStyle}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <Button x:Name="CycleWhitePresetHotkeyButton"
+                                    Grid.Row="1"
+                                    Grid.Column="1"
+                                    Tag="whitepoint.cycle"
+                                    HorizontalAlignment="Stretch"
+                                    Content="Brak"
+                                    Click="HotkeyCaptureButton_Click" />
+
+                            <Button Grid.Row="1"
+                                    Grid.Column="2"
+                                    Tag="whitepoint.cycle"
+                                    Content="Wyczyść"
+                                    Click="ClearHotkeyButton_Click" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource CardStyle}">
+                    <StackPanel Spacing="14">
+                        <TextBlock Text="Jasność główna"
+                   FontSize="20"
+                   FontWeight="SemiBold" />
+
+                        <TextBlock Text="Skróty zmieniają globalną jasność o 5%. Skrót zmniejszania nie schodzi niżej niż 1%; 0% można ustawić suwakiem na Panelu głównym."
+                   Style="{StaticResource SectionSubTextStyle}"
+                   TextWrapping="Wrap" />
+
+                        <Grid ColumnSpacing="16"
+              RowSpacing="16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="220" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <StackPanel Grid.Row="0"
+                        Grid.Column="0"
+                        VerticalAlignment="Center"
+                        Spacing="2">
+                                <TextBlock Text="Zwiększ jasność o 5%"
+                           FontWeight="SemiBold" />
+                                <TextBlock Text="Przy 0% skrót ustawia 5%."
+                           Style="{StaticResource SectionSubTextStyle}" />
+                            </StackPanel>
+
+                            <Button x:Name="BrightnessUpHotkeyButton"
+                    Grid.Row="0"
+                    Grid.Column="1"
+                    Tag="brightness.up"
+                    HorizontalAlignment="Stretch"
+                    Content="Brak"
+                    Click="HotkeyCaptureButton_Click" />
+
+                            <Button Grid.Row="0"
+                    Grid.Column="2"
+                    Tag="brightness.up"
+                    Content="Wyczyść"
+                    Click="ClearHotkeyButton_Click" />
+
+                            <StackPanel Grid.Row="1"
+                        Grid.Column="0"
+                        VerticalAlignment="Center"
+                        Spacing="2">
+                                <TextBlock Text="Zmniejsz jasność o 5%"
+                           FontWeight="SemiBold" />
+                                <TextBlock Text="Skrót zatrzymuje się na 1%; 0% ustaw suwakiem."
+                           Style="{StaticResource SectionSubTextStyle}" />
+                            </StackPanel>
+
+                            <Button x:Name="BrightnessDownHotkeyButton"
+                    Grid.Row="1"
+                    Grid.Column="1"
+                    Tag="brightness.down"
+                    HorizontalAlignment="Stretch"
+                    Content="Brak"
+                    Click="HotkeyCaptureButton_Click" />
+
+                            <Button Grid.Row="1"
+                    Grid.Column="2"
+                    Tag="brightness.down"
+                    Content="Wyczyść"
+                    Click="ClearHotkeyButton_Click" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>

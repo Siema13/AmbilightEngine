@@ -104,6 +104,7 @@ namespace AmbilightEngine.Core.Pipeline
         private readonly object transitionLock = new();
         private CancellationTokenSource? transitionCts;
         private RgbColor[]? lastSentFrame;
+        private RgbColor[]? masterBrightnessFrame;
         private RgbColor[]? pendingVideoSyncStartFrame;
         private volatile bool isTransitionActive;
         private volatile bool isWaitingForVideoSyncFrame;
@@ -219,7 +220,39 @@ namespace AmbilightEngine.Core.Pipeline
 
             UpdateRealtimeSession(settings.ActiveDisplayMode != DisplayMode.WledEffects);
         }
+        /// <summary>
+        /// Wymusza natychmiastowe przesłanie ostatniej znanej ramki po zmianie Master Brightness.
+        /// Dzięki temu zmiana suwaka jest widoczna od razu także przy statycznym obrazie,
+        /// gdy Windows Graphics Capture nie dostarcza właśnie nowej klatki.
+        /// </summary>
+        public void RefreshMasterBrightness()
+        {
+            if (!isRunning || isAmbientModeActive)
+            {
+                return;
+            }
 
+            try
+            {
+                if (settings.ActiveDisplayMode == DisplayMode.StaticColor)
+                {
+                    SendStaticColorFrame();
+                    return;
+                }
+
+                if (settings.ActiveDisplayMode == DisplayMode.VideoSync &&
+                    lastSentFrame is { Length: var frameLength } &&
+                    frameLength == ledCount)
+                {
+                    outputDevice.SendFrame(lastSentFrame);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine(
+                    $"[DIAG] PipelineManager: błąd odświeżenia Master Brightness: {ex.Message}");
+            }
+        }
         // Wchodzi w tryb ambientowy: zapisuje snapshot aktualnego stanu wyświetlania,
         // a następnie jednorazowo wywołuje skonfigurowany efekt WLED (JSON API) - bez
         // ciągłego wysyłania DDP. Jeśli config.IsEnabled == false, diody są gaszone.
@@ -691,17 +724,60 @@ namespace AmbilightEngine.Core.Pipeline
 
             return new RgbColor[ledCount];
         }
+        private ReadOnlySpan<RgbColor> ApplyMasterBrightness(
+    ReadOnlySpan<RgbColor> sourceFrame)
+        {
+            int brightnessPercent = settings.MasterBrightnessPercent;
 
+            if (brightnessPercent >= 100)
+            {
+                return sourceFrame;
+            }
+
+            if (masterBrightnessFrame is null ||
+                masterBrightnessFrame.Length != sourceFrame.Length)
+            {
+                masterBrightnessFrame = new RgbColor[sourceFrame.Length];
+            }
+
+            float multiplier = brightnessPercent / 100f;
+
+            for (int index = 0; index < sourceFrame.Length; index++)
+            {
+                RgbColor color = sourceFrame[index];
+
+                masterBrightnessFrame[index] = new RgbColor(
+                    (byte)Math.Clamp(
+                        MathF.Round(color.R * multiplier),
+                        0f,
+                        255f),
+                    (byte)Math.Clamp(
+                        MathF.Round(color.G * multiplier),
+                        0f,
+                        255f),
+                    (byte)Math.Clamp(
+                        MathF.Round(color.B * multiplier),
+                        0f,
+                        255f));
+            }
+
+            return masterBrightnessFrame;
+        }
         private void SendAndRememberFrame(ReadOnlySpan<RgbColor> frame)
         {
-            outputDevice.SendFrame(frame);
+            ReadOnlySpan<RgbColor> masterBrightnessAdjustedFrame =
+                ApplyMasterBrightness(frame);
+
+            outputDevice.SendFrame(masterBrightnessAdjustedFrame);
 
             if (lastSentFrame is null || lastSentFrame.Length != ledCount)
             {
                 lastSentFrame = new RgbColor[ledCount];
             }
 
-            frame.CopyTo(lastSentFrame);
+            // Zapamiętujemy realnie wysłaną ramkę, aby kolejne fade'y zaczynały się
+            // z faktycznego koloru widocznego na LED, także przy Master Brightness < 100%.
+            masterBrightnessAdjustedFrame.CopyTo(lastSentFrame);
         }
 
         private static void InterpolateFrames(

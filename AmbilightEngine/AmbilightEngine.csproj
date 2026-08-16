@@ -68,6 +68,9 @@
 		<Content Update="Assets\AppIcon.ico">
 		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>
+		<Page Update="Pages\HotkeysSettingsPage.xaml">
+		  <Generator>MSBuild:Compile</Generator>
+		</Page>
 
 		<Page Update="MainWindow.xaml">
 			<Generator>MSBuild:Compile</Generator>

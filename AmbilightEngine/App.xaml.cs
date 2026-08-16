@@ -16,7 +16,7 @@ namespace AmbilightEngine
         private Window? m_window;
 
         private SettingsStorageService? settingsStorageService;
-        private GlobalHotkeyService? globalHotkeyService;
+        private GlobalHotkeyService? GlobalHotkeyService;
 
         public MainWindow? MainAppWindow { get; private set; }
 
@@ -57,11 +57,11 @@ namespace AmbilightEngine
             try
             {
                 settingsStorageService = new SettingsStorageService();
-                globalHotkeyService = new GlobalHotkeyService(mainWindow);
-                globalHotkeyService.HotkeyPressed += OnGlobalHotkeyPressed;
+                GlobalHotkeyService = new GlobalHotkeyService(mainWindow);
+                GlobalHotkeyService.HotkeyPressed += OnGlobalHotkeyPressed;
 
                 var hotkeySettings = settingsStorageService.LoadHotkeySettings();
-                globalHotkeyService.LoadFromSettings(hotkeySettings);
+                GlobalHotkeyService.LoadFromSettings(hotkeySettings);
             }
             catch (Exception ex)
             {
@@ -74,8 +74,8 @@ namespace AmbilightEngine
 
         private void OnMainWindowClosed(object sender, WindowEventArgs args)
         {
-            globalHotkeyService?.Dispose();
-            globalHotkeyService = null;
+            GlobalHotkeyService?.Dispose();
+            GlobalHotkeyService = null;
         }
 
         private void OnGlobalHotkeyPressed(string actionId)

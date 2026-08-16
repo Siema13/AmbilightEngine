@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 
 namespace AmbilightEngine.Models
 {
@@ -8,6 +9,11 @@ namespace AmbilightEngine.Models
     /// </summary>
     public sealed class HotkeyBinding
     {
+        public const uint MOD_ALT = 0x0001;
+        public const uint MOD_CONTROL = 0x0002;
+        public const uint MOD_SHIFT = 0x0004;
+        public const uint MOD_WIN = 0x0008;
+
         public string ActionId { get; set; } = string.Empty;
 
         public uint Modifiers { get; set; }
@@ -28,6 +34,14 @@ namespace AmbilightEngine.Models
         }
 
         /// <summary>
+        /// Porównuje samą kombinację klawiszy (bez ActionId) — używane do wykrywania konfliktów.
+        /// </summary>
+        public bool HasSameCombination(uint modifiers, uint virtualKey)
+        {
+            return IsAssigned && Modifiers == modifiers && VirtualKey == virtualKey;
+        }
+
+        /// <summary>
         /// Generuje czytelny opis skrótu do wyświetlenia w UI, np. "Ctrl+Shift+B".
         /// </summary>
         public string ToDisplayString()
@@ -37,12 +51,7 @@ namespace AmbilightEngine.Models
                 return "Brak";
             }
 
-            var parts = new System.Collections.Generic.List<string>();
-
-            const uint MOD_ALT = 0x0001;
-            const uint MOD_CONTROL = 0x0002;
-            const uint MOD_SHIFT = 0x0004;
-            const uint MOD_WIN = 0x0008;
+            var parts = new List<string>();
 
             if ((Modifiers & MOD_CONTROL) != 0) parts.Add("Ctrl");
             if ((Modifiers & MOD_ALT) != 0) parts.Add("Alt");
@@ -68,7 +77,18 @@ namespace AmbilightEngine.Models
                 return $"F{vk - 0x6F}";
             }
 
-            return $"VK_{vk:X2}";
+            return vk switch
+            {
+                0x20 => "Spacja",
+                0x1B => "Esc",
+                0x2E => "Delete",
+                0x2D => "Insert",
+                0x24 => "Home",
+                0x23 => "End",
+                0x21 => "Page Up",
+                0x22 => "Page Down",
+                _ => $"VK_{vk:X2}"
+            };
         }
     }
 }

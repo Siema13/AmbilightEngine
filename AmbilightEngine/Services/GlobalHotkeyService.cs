@@ -8,37 +8,78 @@ using WinRT.Interop;
 namespace AmbilightEngine.Services
 {
     /// <summary>
-    /// Rejestruje globalne skróty klawiszowe (działające niezależnie od stanu okna i fokusu)
-    /// przez natywne API RegisterHotKey/UnregisterHotKey oraz przechwytuje komunikat WM_HOTKEY
-    /// poprzez podklasowanie procedury okna (window subclassing).
+    /// Rejestruje skróty globalne Win32 przez RegisterHotKey oraz odbiera WM_HOTKEY
+    /// bezpiecznie przez SetWindowSubclass. Może współistnieć na tym samym HWND
+    /// z WtsSessionMessageMonitor, ponieważ każdy subclass ma własny identyfikator.
     /// </summary>
     public sealed class GlobalHotkeyService : IDisposable
     {
-        private const int WM_HOTKEY = 0x0312;
-        private const int GWLP_WNDPROC = -4;
+        private const uint WmHotkey = 0x0312;
+
+        // "HKEY" — identyfikator inny niż "AMBI" użyty przez WtsSessionMessageMonitor.
+        private static readonly IntPtr SubclassId = new IntPtr(0x484B4559);
+
+        private delegate IntPtr SubclassProcDelegate(
+            IntPtr hWnd,
+            uint uMsg,
+            IntPtr wParam,
+            IntPtr lParam,
+            IntPtr uIdSubclass,
+            IntPtr dwRefData);
+
+        [DllImport("comctl32.dll", SetLastError = true)]
+        private static extern bool SetWindowSubclass(
+            IntPtr hWnd,
+            SubclassProcDelegate pfnSubclass,
+            IntPtr uIdSubclass,
+            IntPtr dwRefData);
+
+        [DllImport("comctl32.dll", SetLastError = true)]
+        private static extern bool RemoveWindowSubclass(
+            IntPtr hWnd,
+            SubclassProcDelegate pfnSubclass,
+            IntPtr uIdSubclass);
+
+        [DllImport("comctl32.dll")]
+        private static extern IntPtr DefSubclassProc(
+            IntPtr hWnd,
+            uint uMsg,
+            IntPtr wParam,
+            IntPtr lParam);
 
         [DllImport("user32.dll", SetLastError = true)]
-        private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+        private static extern bool RegisterHotKey(
+            IntPtr hWnd,
+            int id,
+            uint fsModifiers,
+            uint vk);
 
         [DllImport("user32.dll", SetLastError = true)]
-        private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+        private static extern bool UnregisterHotKey(
+            IntPtr hWnd,
+            int id);
 
-        [DllImport("user32.dll")]
-        private static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+        private sealed class RegisteredHotkey
+        {
+            public int HotkeyId { get; init; }
 
-        [DllImport("user32.dll")]
-        private static extern IntPtr CallWindowProc(IntPtr lpPrevWndFunc, IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+            public uint Modifiers { get; init; }
 
-        private delegate IntPtr WndProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+            public uint VirtualKey { get; init; }
+        }
 
         private readonly IntPtr windowHandle;
         private readonly Dictionary<int, string> hotkeyIdToActionId = new();
-        private readonly Dictionary<string, int> actionIdToHotkeyId = new();
-        private readonly WndProcDelegate wndProcDelegate;
-        private IntPtr originalWndProc = IntPtr.Zero;
+        private readonly Dictionary<string, RegisteredHotkey> actionIdToHotkey = new();
+        private readonly SubclassProcDelegate subclassProcDelegate;
+
         private int nextHotkeyId = 1;
+        private bool isSubclassed;
         private bool disposed;
 
+        /// <summary>
+        /// Zgłaszane po odebraniu WM_HOTKEY. Parametr to ActionId ze słownika HotkeyActionIds.
+        /// </summary>
         public event Action<string>? HotkeyPressed;
 
         public GlobalHotkeyService(Window window)
@@ -47,97 +88,240 @@ namespace AmbilightEngine.Services
 
             if (windowHandle == IntPtr.Zero)
             {
-                throw new InvalidOperationException("Nie udało się pobrać uchwytu HWND okna.");
+                throw new InvalidOperationException(
+                    "Nie udało się pobrać uchwytu HWND głównego okna.");
             }
 
-            wndProcDelegate = WindowProcHook;
-            HookWindowProc();
+            subclassProcDelegate = SubclassWndProc;
+
+            isSubclassed = SetWindowSubclass(
+                windowHandle,
+                subclassProcDelegate,
+                SubclassId,
+                IntPtr.Zero);
+
+            if (!isSubclassed)
+            {
+                int error = Marshal.GetLastWin32Error();
+
+                throw new InvalidOperationException(
+                    $"Nie udało się podłączyć obsługi skrótów globalnych. Win32 error: {error}.");
+            }
+
+            System.Diagnostics.Debug.WriteLine(
+                "[DIAG] GlobalHotkeyService: SetWindowSubclass zakończone powodzeniem.");
         }
 
         /// <summary>
-        /// Rejestruje lub aktualizuje skrót dla podanej akcji. Jeśli akcja miała już przypisany
-        /// skrót, stary zostaje wyrejestrowany przed próbą rejestracji nowego.
+        /// Rejestruje albo aktualizuje skrót akcji. virtualKey == 0 oznacza usunięcie
+        /// przypisania; w takiej sytuacji stary skrót jest zawsze wyrejestrowywany.
         /// </summary>
-        /// <returns>True, jeśli rejestracja się powiodła (skrót nie był zajęty przez system/inną aplikację).</returns>
-        public bool RegisterOrUpdate(string actionId, uint modifiers, uint virtualKey)
+        public bool RegisterOrUpdate(
+            string actionId,
+            uint modifiers,
+            uint virtualKey)
         {
+            if (disposed)
+            {
+                throw new ObjectDisposedException(nameof(GlobalHotkeyService));
+            }
+
+            if (string.IsNullOrWhiteSpace(actionId))
+            {
+                throw new ArgumentException(
+                    "Identyfikator akcji nie może być pusty.",
+                    nameof(actionId));
+            }
+
+            // Najpierw wyrejestrowujemy wcześniejszy skrót tej samej akcji.
             UnregisterAction(actionId);
 
             if (virtualKey == 0)
             {
-                // Brak przypisanego klawisza — traktujemy jako wyczyszczenie skrótu, sukces.
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DIAG] GlobalHotkeyService: wyczyszczono skrót akcji '{actionId}'.");
+
                 return true;
             }
 
-            var hotkeyId = nextHotkeyId++;
+            int hotkeyId = nextHotkeyId++;
 
-            var registered = RegisterHotKey(windowHandle, hotkeyId, modifiers, virtualKey);
+            bool registered = RegisterHotKey(
+                windowHandle,
+                hotkeyId,
+                modifiers,
+                virtualKey);
 
             if (!registered)
             {
+                int error = Marshal.GetLastWin32Error();
+
                 System.Diagnostics.Debug.WriteLine(
-                    $"Skrót jest zajęty: modifiers={modifiers}, vk={virtualKey} dla akcji {actionId}");
+                    $"[DIAG] GlobalHotkeyService: RegisterHotKey nieudane. " +
+                    $"Akcja='{actionId}', modifiers={modifiers}, vk={virtualKey}, error={error}.");
+
                 return false;
             }
 
             hotkeyIdToActionId[hotkeyId] = actionId;
-            actionIdToHotkeyId[actionId] = hotkeyId;
+
+            actionIdToHotkey[actionId] = new RegisteredHotkey
+            {
+                HotkeyId = hotkeyId,
+                Modifiers = modifiers,
+                VirtualKey = virtualKey
+            };
+
+            System.Diagnostics.Debug.WriteLine(
+                $"[DIAG] GlobalHotkeyService: zarejestrowano '{actionId}', " +
+                $"id={hotkeyId}, modifiers={modifiers}, vk={virtualKey}.");
+
             return true;
         }
 
+        /// <summary>
+        /// Usuwa systemową rejestrację skrótu oraz wpisy z lokalnych słowników.
+        /// Wywołanie dla akcji bez przypisania jest bezpieczne.
+        /// </summary>
         public void UnregisterAction(string actionId)
         {
-            if (!actionIdToHotkeyId.TryGetValue(actionId, out var hotkeyId))
+            if (!actionIdToHotkey.TryGetValue(actionId, out RegisteredHotkey? existing))
             {
                 return;
             }
 
-            UnregisterHotKey(windowHandle, hotkeyId);
-            hotkeyIdToActionId.Remove(hotkeyId);
-            actionIdToHotkeyId.Remove(actionId);
+            bool unregistered = UnregisterHotKey(
+                windowHandle,
+                existing.HotkeyId);
+
+            if (!unregistered)
+            {
+                int error = Marshal.GetLastWin32Error();
+
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DIAG] GlobalHotkeyService: UnregisterHotKey zwróciło false. " +
+                    $"Akcja='{actionId}', id={existing.HotkeyId}, error={error}.");
+            }
+
+            hotkeyIdToActionId.Remove(existing.HotkeyId);
+            actionIdToHotkey.Remove(actionId);
+
+            System.Diagnostics.Debug.WriteLine(
+                $"[DIAG] GlobalHotkeyService: wyrejestrowano '{actionId}'.");
         }
 
         /// <summary>
-        /// Sprawdza, czy dana kombinacja modyfikatorów i klawisza jest już przypisana do innej akcji.
-        /// Używane przez UI ustawień do walidacji konfliktów przed zapisem.
+        /// Zwraca true, gdy dokładnie taka kombinacja jest przypisana do innej akcji
+        /// wewnątrz aplikacji. Ta metoda jest używana przez UI jeszcze przed wywołaniem
+        /// RegisterHotKey, dzięki czemu można wskazać użytkownikowi nazwę konfliktującej akcji.
         /// </summary>
-        public bool IsCombinationInUseByOtherAction(string excludeActionId, uint modifiers, uint virtualKey)
+        public bool IsCombinationInUseByOtherAction(
+            string excludeActionId,
+            uint modifiers,
+            uint virtualKey)
         {
-            foreach (var actionId in actionIdToHotkeyId.Keys)
+            if (virtualKey == 0)
             {
-                if (actionId == excludeActionId)
+                return false;
+            }
+
+            foreach (KeyValuePair<string, RegisteredHotkey> entry in actionIdToHotkey)
+            {
+                if (string.Equals(
+                        entry.Key,
+                        excludeActionId,
+                        StringComparison.Ordinal))
                 {
                     continue;
+                }
+
+                RegisteredHotkey hotkey = entry.Value;
+
+                if (hotkey.Modifiers == modifiers &&
+                    hotkey.VirtualKey == virtualKey)
+                {
+                    return true;
                 }
             }
 
             return false;
         }
 
+        /// <summary>
+        /// Zwraca ActionId, które używa podanej kombinacji, lub null gdy kombinacja
+        /// nie jest zarejestrowana przez tę aplikację.
+        /// </summary>
+        public string? FindActionIdByCombination(
+            uint modifiers,
+            uint virtualKey)
+        {
+            if (virtualKey == 0)
+            {
+                return null;
+            }
+
+            foreach (KeyValuePair<string, RegisteredHotkey> entry in actionIdToHotkey)
+            {
+                RegisteredHotkey hotkey = entry.Value;
+
+                if (hotkey.Modifiers == modifiers &&
+                    hotkey.VirtualKey == virtualKey)
+                {
+                    return entry.Key;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Rejestruje przypisania zapisane w ustawieniach. Błędy pojedynczych wpisów
+        /// nie przerywają wczytywania pozostałych skrótów.
+        /// </summary>
         public void LoadFromSettings(HotkeySettings settings)
         {
-            foreach (var binding in settings.Bindings)
+            if (settings?.Bindings is null)
             {
-                if (binding.IsAssigned)
+                return;
+            }
+
+            foreach (HotkeyBinding binding in settings.Bindings)
+            {
+                if (string.IsNullOrWhiteSpace(binding.ActionId) ||
+                    !binding.IsAssigned)
                 {
-                    RegisterOrUpdate(binding.ActionId, binding.Modifiers, binding.VirtualKey);
+                    continue;
+                }
+
+                bool registered = RegisterOrUpdate(
+                    binding.ActionId,
+                    binding.Modifiers,
+                    binding.VirtualKey);
+
+                if (!registered)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[DIAG] GlobalHotkeyService: nie wczytano skrótu " +
+                        $"'{binding.ToDisplayString()}' dla '{binding.ActionId}'.");
                 }
             }
         }
 
-        private void HookWindowProc()
+        private IntPtr SubclassWndProc(
+            IntPtr hWnd,
+            uint uMsg,
+            IntPtr wParam,
+            IntPtr lParam,
+            IntPtr uIdSubclass,
+            IntPtr dwRefData)
         {
-            var newWndProcPtr = Marshal.GetFunctionPointerForDelegate(wndProcDelegate);
-            originalWndProc = SetWindowLongPtr(windowHandle, GWLP_WNDPROC, newWndProcPtr);
-        }
-
-        private IntPtr WindowProcHook(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
-        {
-            if (msg == WM_HOTKEY)
+            if (uMsg == WmHotkey)
             {
-                var hotkeyId = wParam.ToInt32();
+                int hotkeyId = wParam.ToInt32();
 
-                if (hotkeyIdToActionId.TryGetValue(hotkeyId, out var actionId))
+                if (hotkeyIdToActionId.TryGetValue(
+                        hotkeyId,
+                        out string? actionId))
                 {
                     try
                     {
@@ -145,13 +329,17 @@ namespace AmbilightEngine.Services
                     }
                     catch (Exception ex)
                     {
-                        // Handler akcji nie może wywalić procedury okna — logujemy i kontynuujemy.
-                        System.Diagnostics.Debug.WriteLine($"Błąd obsługi skrótu {actionId}: {ex.Message}");
+                        System.Diagnostics.Debug.WriteLine(
+                            $"[DIAG] Błąd obsługi skrótu '{actionId}': {ex}");
                     }
                 }
             }
 
-            return CallWindowProc(originalWndProc, hWnd, msg, wParam, lParam);
+            return DefSubclassProc(
+                hWnd,
+                uMsg,
+                wParam,
+                lParam);
         }
 
         public void Dispose()
@@ -161,17 +349,34 @@ namespace AmbilightEngine.Services
                 return;
             }
 
-            foreach (var hotkeyId in hotkeyIdToActionId.Keys)
+            // Tworzymy kopię, ponieważ UnregisterAction usuwa elementy ze słownika.
+            string[] actionIds = new string[actionIdToHotkey.Count];
+            actionIdToHotkey.Keys.CopyTo(actionIds, 0);
+
+            foreach (string actionId in actionIds)
             {
-                UnregisterHotKey(windowHandle, hotkeyId);
+                UnregisterAction(actionId);
             }
 
             hotkeyIdToActionId.Clear();
-            actionIdToHotkeyId.Clear();
+            actionIdToHotkey.Clear();
 
-            if (originalWndProc != IntPtr.Zero)
+            if (isSubclassed)
             {
-                SetWindowLongPtr(windowHandle, GWLP_WNDPROC, originalWndProc);
+                bool removed = RemoveWindowSubclass(
+                    windowHandle,
+                    subclassProcDelegate,
+                    SubclassId);
+
+                if (!removed)
+                {
+                    int error = Marshal.GetLastWin32Error();
+
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[DIAG] GlobalHotkeyService: RemoveWindowSubclass zwróciło false, error={error}.");
+                }
+
+                isSubclassed = false;
             }
 
             disposed = true;

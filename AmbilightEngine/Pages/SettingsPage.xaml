@@ -10,11 +10,11 @@
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
-        <!-- Lokalna nawigacja sekcji -->
         <StackPanel Grid.Column="0"
-            Padding="24,24,12,24"
-            Spacing="12"
-            Background="{ThemeResource M3NavigationPanelBrush}">
+                    Padding="24,24,12,24"
+                    Spacing="12"
+                    Background="{ThemeResource M3NavigationPanelBrush}">
+
             <TextBlock Text="Ustawienia"
                        Style="{StaticResource PageTitleTextStyle}" />
 
@@ -23,16 +23,30 @@
 
             <ListView x:Name="SettingsSectionList"
                       SelectionChanged="SettingsSectionList_SelectionChanged">
-                <ListViewItem Content="Ogólne" Tag="general" />
-                <ListViewItem Content="Obraz" Tag="image" />
-                <ListViewItem Content="Geometria LED" Tag="geometry" />
-                <ListViewItem Content="WLED" Tag="wled" />
-                <ListViewItem Content="Uruchamianie" Tag="startup" />
-                <ListViewItem Content="MQTT" Tag="mqtt" />
+
+                <ListViewItem Content="Ogólne"
+                              Tag="general" />
+
+                <ListViewItem Content="Obraz"
+                              Tag="image" />
+
+                <ListViewItem Content="Geometria LED"
+                              Tag="geometry" />
+
+                <ListViewItem Content="WLED"
+                              Tag="wled" />
+
+                <ListViewItem Content="Uruchamianie"
+                              Tag="startup" />
+
+                <ListViewItem Content="Skróty klawiszowe"
+                              Tag="hotkeys" />
+
+                <ListViewItem Content="MQTT"
+                              Tag="mqtt" />
             </ListView>
         </StackPanel>
 
-        <!-- Obszar treści sekcji -->
         <Frame x:Name="SettingsContentFrame"
                Grid.Column="1"
                Margin="0"

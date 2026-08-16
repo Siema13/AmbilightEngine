@@ -28,6 +28,7 @@ public sealed partial class DashboardPage : Page
 
     private bool isLoadingUi;
     private bool isApplyingDisplayMode;
+    private bool isApplyingMasterBrightness;
 
     private DispatcherQueueTimer? effectDebounceTimer;
     private CancellationTokenSource? effectApplyCts;
@@ -76,6 +77,11 @@ public sealed partial class DashboardPage : Page
 
         try
         {
+            MasterBrightnessSlider.Value =
+    mainWindow.Settings.MasterBrightnessPercent;
+
+            MasterBrightnessValueText.Text =
+                $"{mainWindow.Settings.MasterBrightnessPercent}%";
             ApplyDisplayModeToUi(mainWindow.Settings.ActiveDisplayMode);
 
             if (mainWindow.Settings.ActiveDisplayMode == DisplayMode.WledEffects)
@@ -1001,6 +1007,43 @@ public sealed partial class DashboardPage : Page
                 $"Błąd przełączania silnika: {ex.Message}"));
 
             UpdateFps();
+        }
+    }
+    private async void MasterBrightnessSlider_ValueChanged(
+    object sender,
+    RangeBaseValueChangedEventArgs e)
+    {
+        int brightnessPercent = (int)Math.Round(e.NewValue);
+
+        MasterBrightnessValueText.Text = $"{brightnessPercent}%";
+
+        if (mainWindow is null ||
+            isLoadingUi ||
+            isApplyingMasterBrightness)
+        {
+            return;
+        }
+
+        isApplyingMasterBrightness = true;
+
+        try
+        {
+            bool applied = await mainWindow.EngineHost
+                .SetMasterBrightnessPercentAsync(brightnessPercent);
+
+            if (applied)
+            {
+                mainWindow.SettingsService.Save(mainWindow.Settings);
+            }
+        }
+        catch (Exception ex)
+        {
+            ApplyStatus(EngineStatusInfo.Error(
+                $"Nie udało się zmienić jasności głównej: {ex.Message}"));
+        }
+        finally
+        {
+            isApplyingMasterBrightness = false;
         }
     }
 }

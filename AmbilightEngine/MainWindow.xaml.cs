@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Windows.Input;
 using AmbilightEngine.Core.SystemState;
+using AmbilightEngine.Models;
 using AmbilightEngine.Pages;
 using AmbilightEngine.Services;
 using Microsoft.UI.Composition.SystemBackdrops;
@@ -16,6 +17,7 @@ namespace AmbilightEngine
     public sealed partial class MainWindow : Window
     {
         private readonly StartupRegistrationService startupRegistrationService = new();
+        public GlobalHotkeyService? GlobalHotkeyService { get; private set; }
         private MicaController? micaController;
         private SystemBackdropConfiguration? backdropConfiguration;
         private bool isExitRequested;
@@ -89,6 +91,10 @@ namespace AmbilightEngine
             // Dzięki temu podgląd na żywo (WLED Peek) w Dashboard i Ustawieniach działa
             // od razu po otwarciu aplikacji, bez konieczności klikania "Start" na Dashboard.
             IntPtr hwnd = WindowNative.GetWindowHandle(this);
+            // Skróty globalne: rejestrowane niezależnie od stanu połączenia z WLED, bo hwnd
+            // jest już prawidłowy w tym miejscu. SetWindowSubclass (comctl32) współistnieje
+            // bezpiecznie z WtsSessionMessageMonitor na tym samym HWND (różne SubclassId).
+            InitializeGlobalHotkeys();
             _ = InitializeWledConnectionOnStartupAsync(hwnd);
 
             // NOWOŚĆ: przy pierwszym uruchomieniu aplikacji (flaga HasCompletedCalibrationOnboarding
@@ -531,6 +537,64 @@ namespace AmbilightEngine
             startupRegistrationService.Apply(Settings.StartWithWindows, Settings.StartMinimizedToTray);
             EngineHost.Dispose();
             micaController?.Dispose();
+        }
+
+        private void InitializeGlobalHotkeys()
+        {
+            try
+            {
+                GlobalHotkeyService = new GlobalHotkeyService(this);
+                GlobalHotkeyService.LoadFromSettings(Settings.Hotkeys ?? HotkeySettings.CreateDefault());
+                GlobalHotkeyService.HotkeyPressed += OnGlobalHotkeyPressed;
+
+                System.Diagnostics.Debug.WriteLine("[DIAG] GlobalHotkeyService zainicjalizowany.");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DIAG] Nie udało się zainicjalizować GlobalHotkeyService: {ex.Message}");
+            }
+        }
+
+        private void OnGlobalHotkeyPressed(string actionId)
+        {
+            DispatcherQueue.TryEnqueue(async () =>
+            {
+                try
+                {
+                    switch (actionId)
+                    {
+                        case HotkeyActionIds.ToggleEngine:
+                            await ToggleAmbilightAsync();
+                            break;
+
+                        case HotkeyActionIds.CycleMode:
+                            await EngineHost.CycleDisplayModeAsync();
+                            break;
+
+                        case HotkeyActionIds.Blackout:
+                            await EngineHost.ToggleBlackoutAsync();
+                            break;
+
+                        case HotkeyActionIds.CycleWhitePreset:
+                            EngineHost.CycleWhitePreset();
+                            break;
+                        case HotkeyActionIds.BrightnessUp:
+                            await EngineHost.IncreaseMasterBrightnessAsync();
+                            break;
+
+                        case HotkeyActionIds.BrightnessDown:
+                            await EngineHost.DecreaseMasterBrightnessAsync();
+                            break;
+                        default:
+                            System.Diagnostics.Debug.WriteLine($"[DIAG] Nieobsłużona akcja skrótu: {actionId}");
+                            break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[DIAG] Błąd obsługi skrótu {actionId}: {ex.Message}");
+                }
+            });
         }
 
         private void RestoreWindow()
