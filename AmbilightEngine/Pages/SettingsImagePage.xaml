@@ -619,6 +619,30 @@
                             HorizontalAlignment="Left"
                             CornerRadius="6" />
 
+                    <Border Margin="0,24,0,0"
+        Padding="16"
+        CornerRadius="12"
+        Background="{ThemeResource M3SurfaceContainerHighBrush}">
+                        <StackPanel Spacing="10">
+                            <TextBlock Text="Profil domyślny"
+                   FontSize="16"
+                   FontWeight="SemiBold" />
+
+                            <TextBlock Text="Zapisz bieżące ustawienia obrazu jako profil używany po zamknięciu aplikacji z własnym profilem lub gdy nie ma pasującego profilu."
+                   Style="{StaticResource SectionSubTextStyle}"
+                   TextWrapping="Wrap" />
+
+                            <Button Content="Zapisz bieżące ustawienia jako domyślne"
+                HorizontalAlignment="Left"
+                Style="{StaticResource AccentButtonStyle}"
+                Click="SaveCurrentImageSettingsAsDefaultButton_Click" />
+
+                            <TextBlock x:Name="DefaultProfileSaveStatusText"
+                   Style="{StaticResource SectionSubTextStyle}"
+                   TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+
                     <Button x:Name="ResetImageDefaultsButton"
                             Content="Przywróć domyślne"
                             Click="ResetImageDefaultsButton_Click"

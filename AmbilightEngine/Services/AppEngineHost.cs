@@ -66,7 +66,8 @@ namespace AmbilightEngine
         private SystemStateWatcher? stateWatcher;
         private ProcessProfileWatcher? profileWatcher;
         private volatile bool isProfilePreviewActive;
-
+        private int videoSyncTransitionInProgress;
+        
         // NOWOŚĆ: chroni automatyczne przełączanie profili (ProcessProfileWatcher) przed
         // nadpisaniem imageProcessor w trakcie trwania trybu ambientowego (blokada/idle).
         // Bez tej flagi watcher (działający na własnym timerze 500ms, niezależnie od
@@ -140,6 +141,7 @@ namespace AmbilightEngine
 
         public async Task<bool> EnsureWledConnectionAsync(IntPtr windowHandle)
         {
+
             if (ledSender != null)
             {
                 return true;
@@ -175,28 +177,9 @@ namespace AmbilightEngine
                 };
                 stateWatcher.NormalModeRequested += () =>
                 {
-                    pipelineManager?.ExitAmbientMode();
-                    isAmbientModeActive = false;
-
-                    // NOWOŚĆ: wymuszamy natychmiastową, świeżą ocenę aktywnego procesu
-                    // po wyjściu z trybu ambientowego, zamiast czekać na przypadkową
-                    // zmianę fokusu okna - to zapewnia powrót do profilu odpowiadającego
-                    // faktycznie aktywnej aplikacji w momencie powrotu z idle/blokady,
-                    // a nie do stanu, który mógł "wisieć" z czasu przed wejściem w ambient.
-                    profileWatcher?.ResetActiveProfile();
-
-                    // NOWOŚĆ: przywraca tryb wyświetlania WLED zapisany przy wejściu w ambient,
-                    // niezależnie od tego, czy pipelineManager istnieje - jeśli Video Sync nigdy
-                    // nie było uruchomione (czysty tryb WLED Effects/Static Color), powyższe
-                    // ExitAmbientMode() na pipelineManager jest no-opem (pipelineManager == null),
-                    // więc to JEDYNA ścieżka realnie przywracająca efekt na urządzeniu ESP.
-                    _ = RestorePreviousDisplayModeAsync();
-
-                    SetStatus(IsCapturing
-                    ? EngineStatusInfo.Running("Przechwytywanie aktywne.")
-                    : EngineStatusInfo.Running("Połączono z WLED, przechwytywanie wyłączone."));
+                    _ = RestoreAfterSystemWakeAsync();
                 };
-
+                
                 InitializeProfileWatcher();
                 ActivateDefaultProfile("połączenie z WLED");
 
@@ -355,99 +338,149 @@ namespace AmbilightEngine
 
         public void ActivateProfile(AppProfile profile, string triggerSource)
         {
-            if (profile == null || currentZones == null || pipelineManager == null)
+            if (profile is null)
             {
                 return;
             }
 
-            // NOWOŚĆ: profile mogą teraz wymuszać stały kolor albo efekt WLED zamiast
-            // zwykłej zmiany parametrów obrazu Video Sync (np. "gdy uruchamiam TeamSpeak,
-            // zaświeć diody na stały niebieski"). Rozwidlamy logikę na samym wejściu -
-            // te dwa tryby nie dotykają imageProcessor/pipelineManager w ogóle, tylko
-            // wysyłają komendę do WLED przez już istniejące ActivateStaticColorAsync /
-            // ActivateWledEffectAsync i aktualizują CurrentProfileName/ProfileChanged
-            // identycznie jak zwykły profil DSP.
-            if (profile.ActionType == ProfileActionType.StaticColor)
+            if (!IsRunning || ledSender is null)
             {
-                _ = ActivateStaticColorAsync(profile.StaticColorR, profile.StaticColorG, profile.StaticColorB);
-                pipelineManager.NotifyDisplayModeChanged();
+                Debug.WriteLine(
+                    $"[DIAG] ActivateProfile pominięte dla '{profile.DisplayName}': brak połączenia z WLED.");
 
-                CurrentProfileName = string.IsNullOrWhiteSpace(profile.DisplayName)
-                    ? "Domyślny"
-                    : profile.DisplayName;
-
-                currentProfileId = profile.ProfileId;
-                SetStatus(EngineStatusInfo.Running($"Profil aktywny: {CurrentProfileName} (stały kolor, źródło: {triggerSource})"));
-                ProfileChanged?.Invoke(CurrentProfileName);
                 return;
             }
 
-            if (profile.ActionType == ProfileActionType.WledEffect)
-            {
-                _ = ActivateWledEffectAsync(
-                    profile.WledEffectId,
-                    profile.WledEffectSpeed,
-                    profile.WledEffectIntensity,
-                    profile.WledPaletteId,
-                    (profile.WledPrimaryColorR, profile.WledPrimaryColorG, profile.WledPrimaryColorB),
-                    (profile.WledSecondaryColorR, profile.WledSecondaryColorG, profile.WledSecondaryColorB),
-                    profile.WledEffectBrightness);
-                pipelineManager.NotifyDisplayModeChanged();
-
-                CurrentProfileName = string.IsNullOrWhiteSpace(profile.DisplayName)
-                    ? "Domyślny"
-                    : profile.DisplayName;
-
-                currentProfileId = profile.ProfileId;
-                SetStatus(EngineStatusInfo.Running($"Profil aktywny: {CurrentProfileName} (efekt WLED, źródło: {triggerSource})"));
-                ProfileChanged?.Invoke(CurrentProfileName);
-                return;
-            }
-            
-            // NOWOŚĆ / FIX: profil typu ImageDsp musi jawnie przywrócić Video Sync, jeśli
-            // poprzedni aktywny profil ustawił StaticColor/WledEffect - inaczej ConsumerLoopAsync
-            // w PipelineManager nadal ignorował imageProcessor (bo settings.ActiveDisplayMode
-            // zostawał na StaticColor/WledEffect), co wymagało ręcznej zmiany trybu w UI silnika.
-            if (settings.ActiveDisplayMode != DisplayMode.VideoSync)
-            {
-                settings.ActiveDisplayMode = DisplayMode.VideoSync;
-                pipelineManager.NotifyDisplayModeChanged();
-            }
-
-            var newImageProcessor = new ImageProcessor(currentZones);
-
-            if (imageProcessor != null)
-            {
-                newImageProcessor.SeedState(imageProcessor);
-            }
-
-            ConfigureProcessorDynamics(newImageProcessor);
-
-            newImageProcessor.ApplyDspParameters(
-                profile.BrightnessPercent,
-                profile.SaturationBoost,
-                profile.SmoothingSpeedMs,
-                profile.BlackCutoffThreshold,
-                profile.ColorTemperatureKelvin,
-                profile.GammaValue);
-
-            newImageProcessor.SetWallColorFromHex(
-                settings.WallColorHex,
-                settings.WallColorStrength);
-
-            pipelineManager.ReplaceImageProcessor(newImageProcessor);
-            imageProcessor = newImageProcessor;
-
-            CurrentProfileName = string.IsNullOrWhiteSpace(profile.DisplayName)
+            string profileName = string.IsNullOrWhiteSpace(profile.DisplayName)
                 ? "Domyślny"
                 : profile.DisplayName;
 
-            currentProfileId = profile.ProfileId;
+            try
+            {
+                if (profile.ActionType == ProfileActionType.StaticColor)
+                {
+                    _ = ApplyStaticColorAsync(
+    profile.StaticColorR,
+    profile.StaticColorG,
+    profile.StaticColorB);
 
-            SetStatus(EngineStatusInfo.Running(
-                $"Profil aktywny: {CurrentProfileName} (źródło: {triggerSource})"));
+                    CurrentProfileName = profileName;
+                    currentProfileId = profile.ProfileId;
 
-            ProfileChanged?.Invoke(CurrentProfileName);
+                    SetStatus(EngineStatusInfo.Running(
+                        $"Profil aktywny: {profileName} — stały kolor, źródło: {triggerSource}."));
+
+                    ProfileChanged?.Invoke(CurrentProfileName);
+
+                    Debug.WriteLine(
+                        $"[DIAG] Aktywowano profil StaticColor '{profileName}', źródło: {triggerSource}.");
+
+                    return;
+                }
+
+                if (profile.ActionType == ProfileActionType.WledEffect)
+                {
+                    _ = ActivateWledEffectAsync(
+                        profile.WledEffectId,
+                        profile.WledEffectSpeed,
+                        profile.WledEffectIntensity,
+                        profile.WledPaletteId,
+                        (profile.WledPrimaryColorR,
+                         profile.WledPrimaryColorG,
+                         profile.WledPrimaryColorB),
+                        (profile.WledSecondaryColorR,
+                         profile.WledSecondaryColorG,
+                         profile.WledSecondaryColorB),
+                        profile.WledEffectBrightness);
+
+                    pipelineManager?.NotifyDisplayModeChanged();
+
+                    CurrentProfileName = profileName;
+                    currentProfileId = profile.ProfileId;
+
+                    SetStatus(EngineStatusInfo.Running(
+                        $"Profil aktywny: {profileName} — efekt WLED, źródło: {triggerSource}."));
+
+                    ProfileChanged?.Invoke(CurrentProfileName);
+
+                    Debug.WriteLine(
+                        $"[DIAG] Aktywowano profil WledEffect '{profileName}', źródło: {triggerSource}.");
+
+                    return;
+                }
+
+                // ImageDsp: przywraca analizę obrazu tylko w już działającej sesji Video Sync.
+                // Nie uruchamiamy tu StartCaptureAsync(), bo automatyczne profile nie mogą
+                // wywoływać systemowego selektora monitora.
+                if (!IsCapturing || currentZones is null || pipelineManager is null)
+                {
+                    CurrentProfileName = profileName;
+                    currentProfileId = profile.ProfileId;
+
+                    SetStatus(EngineStatusInfo.Running(
+                        $"Profil „{profileName}” oczekuje na uruchomienie Video Sync."));
+
+                    ProfileChanged?.Invoke(CurrentProfileName);
+
+                    Debug.WriteLine(
+                        $"[DIAG] Profil ImageDsp '{profileName}' oczekuje: Video Sync nie działa.");
+
+                    return;
+                }
+
+                if (settings.ActiveDisplayMode != DisplayMode.VideoSync)
+                {
+                    _ = RestoreVideoSyncAfterProfileAsync(
+                        pipelineManager,
+                        profileName,
+                        transitionToVideoSync: true);
+
+                    Debug.WriteLine(
+                        $"[DIAG] Profil ImageDsp '{profileName}' przywraca Video Sync.");
+                }
+
+                var newImageProcessor = new ImageProcessor(currentZones);
+
+                if (imageProcessor is not null)
+                {
+                    newImageProcessor.SeedState(imageProcessor);
+                }
+                ConfigureProcessorDynamics(newImageProcessor);
+
+                newImageProcessor.ApplyDspParameters(
+                    profile.BrightnessPercent,
+                    profile.SaturationBoost,
+                    profile.SmoothingSpeedMs,
+                    profile.BlackCutoffThreshold,
+                    profile.ColorTemperatureKelvin,
+                    profile.GammaValue);
+
+                newImageProcessor.SetWallColorFromHex(
+                    settings.WallColorHex,
+                    settings.WallColorStrength);
+
+                pipelineManager.ReplaceImageProcessor(newImageProcessor);
+                imageProcessor = newImageProcessor;
+
+                CurrentProfileName = profileName;
+                currentProfileId = profile.ProfileId;
+
+                SetStatus(EngineStatusInfo.Running(
+                    $"Profil aktywny: {profileName}, źródło: {triggerSource}."));
+
+                ProfileChanged?.Invoke(CurrentProfileName);
+
+                Debug.WriteLine(
+                    $"[DIAG] Aktywowano profil ImageDsp '{profileName}', źródło: {triggerSource}.");
+            }
+            catch (Exception ex)
+            {
+                SetStatus(EngineStatusInfo.Error(
+                    $"Nie udało się zastosować profilu „{profileName}”: {ex.Message}"));
+
+                Debug.WriteLine(
+                    $"[DIAG] Błąd ActivateProfile dla '{profileName}': {ex}");
+            }
         }
 
         public void PreviewProfile(AppProfile profile)
@@ -713,45 +746,65 @@ namespace AmbilightEngine
 
         public void RefreshProfileList()
         {
-            profileWatcher?.SetProfiles(settings.Profiles);
-
-            if (IsCapturing && !isProfilePreviewActive)
+            try
             {
-                ActivateDefaultProfile("odświeżenie listy profili");
+                // ProcessProfileWatcher dostaje DefaultProfile w konstruktorze.
+                // Samo SetProfiles() odświeża tylko profile przypisane do aplikacji,
+                // ale nie aktualizuje fallbackProfile. Tworzymy watcher od nowa,
+                // aby przejął aktualny settings.DefaultProfile.
+                profileWatcher?.Dispose();
+                profileWatcher = null;
+
+                InitializeProfileWatcher();
+
+                // Nie wymuszamy tu od razu profilu domyślnego na WLED.
+                // Watcher oceni aktywne okno po swoim cyklu 500 ms + debounce.
+                profileWatcher?.ResetActiveProfile();
+
+                Debug.WriteLine(
+                    "[DIAG] AppEngineHost: odświeżono profile oraz domyślny profil watchera.");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine(
+                    $"[DIAG] AppEngineHost: błąd odświeżania profili: {ex}");
             }
         }
 
-        private void OnProfileActivationRequested(object? sender, ProfileActivatedEventArgs e)
+        private void OnProfileActivationRequested(
+    object? sender,
+    ProfileActivatedEventArgs e)
         {
+            if (e?.Profile is null)
+            {
+                return;
+            }
+
             if (isProfilePreviewActive)
             {
                 Debug.WriteLine(
-                    "[DIAG] AppEngineHost: automatyczna aktywacja profilu pominięta — trwa podgląd na żywo.");
+                    "[DIAG] Automatyczna zmiana profilu pominięta: trwa podgląd na żywo.");
 
                 return;
             }
 
-            // NOWOŚĆ: blokuje automatyczne przełączanie profili w trakcie trybu
-            // ambientowego (blokada ekranu / bezczynność) - ProcessProfileWatcher działa
-            // niezależnie na własnym timerze i bez tej ochrony mógł nadpisać imageProcessor
-            // mimo że PipelineManager renderuje w tym czasie efekt ambientowy, co po powrocie
-            // z idle prowadziło do przywrócenia złego profilu.
             if (isAmbientModeActive)
             {
                 Debug.WriteLine(
-                    "[DIAG] AppEngineHost: automatyczna aktywacja profilu pominięta — trwa tryb ambientowy.");
+                    "[DIAG] Automatyczna zmiana profilu pominięta: trwa tryb ambientowy.");
 
                 return;
             }
-
-            if (currentZones == null || pipelineManager == null)
+           
+            if (!IsRunning || ledSender is null)
             {
-                Debug.WriteLine("[DIAG] AppEngineHost: profil zignorowany - potok przechwytywania nie jest aktywny.");
+                Debug.WriteLine(
+                    $"[DIAG] Automatyczna zmiana profilu '{e.Profile.DisplayName}' pominięta: brak WLED.");
+
                 return;
             }
 
             ActivateProfile(e.Profile, e.TriggeringProcessName);
-            Debug.WriteLine($"[DIAG] AppEngineHost: zastosowano profil '{e.Profile.DisplayName}' wyzwolony przez {e.TriggeringProcessName}.");
         }
 
         private void ApplyColorCalibrationToProcessor(ImageProcessor processor)
@@ -799,55 +852,117 @@ namespace AmbilightEngine
         (settings.LastWledSecondaryColorR, settings.LastWledSecondaryColorG, settings.LastWledSecondaryColorB));
 }
 
-public async Task<bool> RestorePreviousDisplayModeAsync()
-{
-    if (preAmbientSnapshot is not AmbientDisplaySnapshot snapshot)
-    {
-        return false;
-    }
-
-    try
-    {
-        switch (snapshot.Mode)
+        public async Task<bool> RestorePreviousDisplayModeAsync()
         {
-            case DisplayMode.StaticColor:
-                await ActivateStaticColorAsync(
-                    snapshot.WledPrimaryColor.R,
-                    snapshot.WledPrimaryColor.G,
-                    snapshot.WledPrimaryColor.B);
-                break;
+            if (preAmbientSnapshot is not AmbientDisplaySnapshot snapshot)
+            {
+                Debug.WriteLine(
+                    "[DIAG] AppEngineHost: brak snapshotu trybu sprzed uśpienia/ambientu.");
 
-            case DisplayMode.WledEffects:
-                await ActivateWledEffectAsync(
-                    snapshot.WledEffectId,
-                    snapshot.WledSpeed,
-                    snapshot.WledIntensity,
-                    snapshot.WledPaletteId,
-                    snapshot.WledPrimaryColor,
-                    snapshot.WledSecondaryColor,
-                    snapshot.WledBrightness);
-                break;
+                return false;
+            }
 
-            case DisplayMode.VideoSync:
-            default:
-                // Video Sync jest już obsłużony przez pipelineManager.ExitAmbientMode(),
-                // jeśli przechwytywanie było aktywne w momencie wejścia w ambient.
-                break;
+            try
+            {
+                switch (snapshot.Mode)
+                {
+                    case DisplayMode.StaticColor:
+                        await ActivateStaticColorAsync(
+                            snapshot.WledPrimaryColor.R,
+                            snapshot.WledPrimaryColor.G,
+                            snapshot.WledPrimaryColor.B);
+
+                        break;
+
+                    case DisplayMode.WledEffects:
+                        await ActivateWledEffectAsync(
+                            snapshot.WledEffectId,
+                            snapshot.WledSpeed,
+                            snapshot.WledIntensity,
+                            snapshot.WledPaletteId,
+                            snapshot.WledPrimaryColor,
+                            snapshot.WledSecondaryColor,
+                            snapshot.WledBrightness);
+
+                        break;
+
+                    case DisplayMode.VideoSync:
+                    default:
+                        if (!IsCapturing || pipelineManager is null)
+                        {
+                            Debug.WriteLine(
+                                "[DIAG] Resume: Video Sync nie może zostać przywrócony, " +
+                                "ponieważ capture lub pipeline nie są aktywne.");
+
+                            return false;
+                        }
+
+                        bool restored = await RestoreVideoSyncAfterWakeWithRetryAsync();
+
+                        if (!restored)
+                        {
+                            return false;
+                        }
+
+                        break;
+                }
+
+                Debug.WriteLine(
+                    $"[DIAG] AppEngineHost: przywrócono tryb '{snapshot.Mode}' po wybudzeniu/odblokowaniu.");
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine(
+                    $"[DIAG] AppEngineHost: błąd podczas przywracania trybu po wybudzeniu: {ex}");
+
+                return false;
+            }
+            finally
+            {
+                preAmbientSnapshot = null;
+            }
         }
+        private async Task RestoreAfterSystemWakeAsync()
+        {
+            try
+            {
+                // 1. Odblokowuje przetwarzanie ramek WGC, ale nie steruje WLED.
+                pipelineManager?.ExitAmbientMode();
 
-        Debug.WriteLine($"[DIAG] AppEngineHost: przywrócono tryb '{snapshot.Mode}' po wybudzeniu/odblokowaniu.");
-        return true;
-    }
-    catch (Exception ex)
-    {
-        Debug.WriteLine($"[DIAG] AppEngineHost: błąd podczas przywracania trybu po wybudzeniu: {ex.Message}");
-        return false;
-    }
-    finally
-    {
-        preAmbientSnapshot = null;
-    }
-}
+                // 2. To jedyna ścieżka przywracająca stan WLED i tryb.
+                bool restored = await RestorePreviousDisplayModeAsync();
+
+                if (!restored)
+                {
+                    Debug.WriteLine(
+                        "[DIAG] AppEngineHost: nie przywrócono trybu po wybudzeniu/odblokowaniu.");
+
+                    return;
+                }
+
+                // 3. Dopiero po końcu restore dopuszczamy watcher profili.
+                isAmbientModeActive = false;
+
+                if (IsCapturing && settings.ActiveDisplayMode == DisplayMode.VideoSync)
+                {
+                    profileWatcher?.ResetActiveProfile();
+                }
+
+                SetStatus(IsCapturing
+                    ? EngineStatusInfo.Running("Przechwytywanie aktywne.")
+                    : EngineStatusInfo.Running("Połączono z WLED, przechwytywanie wyłączone."));
+
+                Debug.WriteLine(
+                    "[DIAG] AppEngineHost: zakończono przywracanie po wybudzeniu/odblokowaniu.");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine(
+                    $"[DIAG] AppEngineHost: błąd odtwarzania po wybudzeniu/odblokowaniu: {ex}");
+            }
+        }
         public async Task<bool> ActivateWledEffectAsync(
             int fxId,
             int speed,
@@ -925,10 +1040,164 @@ public async Task<bool> RestorePreviousDisplayModeAsync()
                 brightness: 255,
                 cancellationToken: cancellationToken);
         }
+        public async Task<bool> ApplyStaticColorWithTransitionAsync(
+    byte red,
+    byte green,
+    byte blue,
+    CancellationToken cancellationToken = default)
+        {
+            settings.StaticColorR = red;
+            settings.StaticColorG = green;
+            settings.StaticColorB = blue;
+
+            bool realtimeOverrideDisabled =
+                await DisableWledRealtimeOverrideAsync(cancellationToken);
+
+            if (!realtimeOverrideDisabled)
+            {
+                Debug.WriteLine(
+                    "[DIAG] Static Color: nie udało się wyłączyć realtime override.");
+            }
+            
+            if (pipelineManager is not null && IsCapturing)
+            {
+                pipelineManager.TransitionToStaticColor(red, green, blue);
+
+                Debug.WriteLine(
+                    $"[DIAG] Static Color transition: RGB({red}, {green}, {blue}).");
+
+                return true;
+            }
+
+            return await ActivateStaticColorAsync(red, green, blue, cancellationToken);
+        }
+
+        public async Task<bool> ApplyVideoSyncWithTransitionAsync(
+    CancellationToken cancellationToken = default)
+        {
+            if (!IsCapturing || pipelineManager is null)
+            {
+                SetStatus(EngineStatusInfo.Running(
+                    "Video Sync wymaga aktywnego przechwytywania ekranu."));
+
+                return false;
+            }
+
+            if (Interlocked.Exchange(ref videoSyncTransitionInProgress, 1) != 0)
+            {
+                Debug.WriteLine(
+                    "[DIAG] Video Sync: pominięto zduplikowane żądanie z interfejsu.");
+
+                return true;
+            }
+
+            try
+            {
+                bool overrideDisabled =
+                    await DisableWledRealtimeOverrideAsync(cancellationToken);
+
+                if (!overrideDisabled)
+                {
+                    Debug.WriteLine(
+                        "[DIAG] Video Sync: nie udało się wyłączyć realtime override.");
+                }
+
+                pipelineManager.TransitionToVideoSync();
+
+                return true;
+            }
+            finally
+            {
+                Volatile.Write(ref videoSyncTransitionInProgress, 0);
+            }
+        }
+        public Task<bool> ApplyStaticColorAsync(
+    byte red,
+    byte green,
+    byte blue,
+    CancellationToken cancellationToken = default)
+        {
+            settings.ActiveDisplayMode = DisplayMode.StaticColor;
+            settings.StaticColorR = red;
+            settings.StaticColorG = green;
+            settings.StaticColorB = blue;
+
+            if (pipelineManager is not null && IsCapturing)
+            {
+                pipelineManager.TransitionToStaticColor(red, green, blue);
+
+                Debug.WriteLine(
+                    $"[DIAG] Static Color: przejście pipeline do RGB({red}, {green}, {blue}).");
+
+                return Task.FromResult(true);
+            }
+
+            return ActivateStaticColorAsync(red, green, blue, cancellationToken);
+        }
+        public Task<bool> SetStaticColorWithTransitionAsync(
+    byte red,
+    byte green,
+    byte blue,
+    CancellationToken cancellationToken = default)
+        {
+            if (pipelineManager is not null && IsCapturing)
+            {
+                settings.ActiveDisplayMode = DisplayMode.StaticColor;
+                settings.StaticColorR = red;
+                settings.StaticColorG = green;
+                settings.StaticColorB = blue;
+
+                pipelineManager.TransitionToStaticColor(red, green, blue);
+
+                Debug.WriteLine(
+                    $"[DIAG] Static Color: płynne przejście do RGB({red}, {green}, {blue}).");
+
+                return Task.FromResult(true);
+            }
+
+            return ActivateStaticColorAsync(red, green, blue, cancellationToken);
+        }
         public async Task<bool> DisableWledRealtimeOverrideAsync(CancellationToken cancellationToken = default)
         {
             if (ledSender == null) return false;
             return await ledSender.DisableRealtimeOverrideAsync(cancellationToken);
+        }
+        private async Task RestoreVideoSyncAfterProfileAsync(
+    PipelineManager pipeline,
+    string profileName,
+    bool transitionToVideoSync = false)
+        {
+            try
+            {
+                bool realtimeOverrideDisabled =
+                    await DisableWledRealtimeOverrideAsync();
+
+                if (!realtimeOverrideDisabled)
+                {
+                    Debug.WriteLine(
+                        $"[DIAG] Nie udało się wyłączyć realtime override przed powrotem do Video Sync: {profileName}.");
+                }
+
+                settings.ActiveDisplayMode = DisplayMode.VideoSync;
+
+                if (transitionToVideoSync)
+                {
+                    pipeline.TransitionToVideoSync();
+                }
+                else
+                {
+                    pipeline.NotifyDisplayModeChanged();
+                }
+
+                Debug.WriteLine(
+                    $"[DIAG] Video Sync przywrócony po profilu '{profileName}', " +
+                    $"realtime override wyłączony={realtimeOverrideDisabled}.");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine(
+                    $"[DIAG] Błąd przywracania Video Sync po profilu '{profileName}': {ex}");
+            }
         }
         public async Task<bool> PreviewWledEffectAsync(
             int fxId,
@@ -1030,7 +1299,50 @@ public async Task<bool> RestorePreviousDisplayModeAsync()
         {
             pipelineManager?.NotifyDisplayModeChanged();
         }
+        private void SetStatus(EngineStatusInfo status)
+        {
+            CurrentStatus = status;
+            StatusChanged?.Invoke(status);
+        }
+        private async Task<bool> RestoreVideoSyncAfterWakeWithRetryAsync()
+        {
+            const int maxAttempts = 6;
+            TimeSpan retryDelay = TimeSpan.FromSeconds(1);
 
+            for (int attempt = 1; attempt <= maxAttempts; attempt++)
+            {
+                try
+                {
+                    Debug.WriteLine(
+                        $"[DIAG] Resume: próba {attempt}/{maxAttempts} przywrócenia Video Sync.");
+
+                    bool restored = await ApplyVideoSyncWithTransitionAsync();
+
+                    if (restored)
+                    {
+                        Debug.WriteLine(
+                            $"[DIAG] Resume: Video Sync przywrócony w próbie {attempt}/{maxAttempts}.");
+
+                        return true;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine(
+                        $"[DIAG] Resume: próba {attempt}/{maxAttempts} nieudana: {ex.Message}");
+                }
+
+                if (attempt < maxAttempts)
+                {
+                    await Task.Delay(retryDelay);
+                }
+            }
+
+            Debug.WriteLine(
+                "[DIAG] Resume: nie udało się przywrócić Video Sync po wszystkich próbach.");
+
+            return false;
+        }
         public void Stop()
         {
             try
@@ -1063,7 +1375,8 @@ public async Task<bool> RestorePreviousDisplayModeAsync()
             catch (Exception ex)
             {
                 IsRunning = false;
-                SetStatus(EngineStatusInfo.Error($"Wystąpił błąd podczas zatrzymywania: {ex.Message}"));
+                SetStatus(EngineStatusInfo.Error(
+                    $"Wystąpił błąd podczas zatrzymywania: {ex.Message}"));
             }
         }
 
@@ -1072,10 +1385,7 @@ public async Task<bool> RestorePreviousDisplayModeAsync()
             Stop();
         }
 
-        private void SetStatus(EngineStatusInfo status)
-        {
-            CurrentStatus = status;
-            StatusChanged?.Invoke(status);
-        }
+       
     }
+
 }

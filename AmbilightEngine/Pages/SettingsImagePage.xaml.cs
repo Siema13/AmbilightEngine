@@ -6,7 +6,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
 using Windows.UI;
-
+using AmbilightEngine.Core.Models;
 namespace AmbilightEngine.Pages;
 
 public sealed partial class SettingsImagePage : Page
@@ -23,6 +23,73 @@ public sealed partial class SettingsImagePage : Page
         Loaded += SettingsImagePage_Loaded;
     }
 
+    private void SaveCurrentImageSettingsAsDefaultButton_Click(
+    object sender,
+    RoutedEventArgs e)
+    {
+        if (settings is null || mainWindow is null)
+        {
+            DefaultProfileSaveStatusText.Text =
+                "Ustawienia nie są jeszcze gotowe. Otwórz stronę ponownie i spróbuj ponownie.";
+
+            return;
+        }
+
+        try
+        {
+            AppProfile defaultProfile = settings.DefaultProfile ?? new AppProfile();
+
+            defaultProfile.DisplayName = "Domyślny";
+            defaultProfile.ExecutableFileName = string.Empty;
+            defaultProfile.AllowBackgroundActivation = false;
+            defaultProfile.Priority = 0;
+            defaultProfile.IsBuiltInDefault = true;
+
+            // To jest profil „Parametry obrazu”, czyli zachowanie Video Sync.
+            defaultProfile.ActionType = ProfileActionType.ImageDsp;
+
+            // Suwaki mają różne skale niż właściwości AppProfile:
+            // Saturation: 0–300% -> 0.0–3.0.
+            // Gamma: wartość suwaka jest mnożona x10.
+            defaultProfile.BrightnessPercent =
+                (int)Math.Round(BrightnessSlider.Value);
+
+            defaultProfile.SaturationBoost =
+                Math.Round(SaturationSlider.Value / 100.0, 2);
+
+            defaultProfile.ColorTemperatureKelvin =
+                (int)Math.Round(KelvinSlider.Value);
+
+            defaultProfile.BlackCutoffThreshold =
+                (int)Math.Round(BlackCutoffSlider.Value);
+
+            defaultProfile.GammaValue =
+                Math.Round(GammaSlider.Value / 10.0, 1);
+
+            // W tej stronie nie ma osobnego suwaka „SmoothingSlider”.
+            // Ustawiamy wartość z aktualnego profilu domyślnego, ponieważ to jest
+            // parametr profilu, a Attack/Decay są globalnymi parametrami silnika.
+            defaultProfile.SmoothingSpeedMs =
+                settings.DefaultProfile.SmoothingSpeedMs;
+
+            settings.DefaultProfile = defaultProfile;
+
+            // Zapis na dysk + przekazanie bieżących ustawień do silnika.
+            settingsApplyService?.SaveAndApplyImage(settings);
+
+            // Przebudowuje listę obserwowaną przez ProcessProfileWatcher i powoduje,
+            // że nowy profil domyślny będzie używany jako fallback.
+            mainWindow.EngineHost.RefreshProfileList();
+
+            DefaultProfileSaveStatusText.Text =
+                "Zapisano bieżące parametry obrazu jako profil domyślny Video Sync.";
+        }
+        catch (Exception ex)
+        {
+            DefaultProfileSaveStatusText.Text =
+                $"Nie udało się zapisać profilu domyślnego: {ex.Message}";
+        }
+    }
     private void SettingsImagePage_Loaded(object sender, RoutedEventArgs e)
     {
         mainWindow = (Application.Current as App)?.MainAppWindow;
@@ -745,5 +812,7 @@ public sealed partial class SettingsImagePage : Page
         }
 
         return Color.FromArgb(255, 128, 128, 128);
+ 
     }
+
 }

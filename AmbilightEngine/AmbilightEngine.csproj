@@ -24,7 +24,7 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<Content Remove="Assets\AppIcon.ico" />
+	  <None Remove="Assets\AppIcon.ico" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -65,6 +65,9 @@
 		<ApplicationDefinition Update="App.xaml">
 			<Generator>MSBuild:Compile</Generator>
 		</ApplicationDefinition>
+		<Content Update="Assets\AppIcon.ico">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
 
 		<Page Update="MainWindow.xaml">
 			<Generator>MSBuild:Compile</Generator>

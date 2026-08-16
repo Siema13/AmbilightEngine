@@ -52,7 +52,7 @@ namespace AmbilightEngine.Core.SystemState
 
         public event Action<SystemAmbientTrigger>? AmbientModeRequested;
         public event Action? NormalModeRequested;
-
+        public event Action? SystemResumeRequested;
         // hwnd MUSI być realnym uchwytem głównego okna aplikacji (WindowNative.GetWindowHandle) -
         // jest niezbędny do podczepienia się pod komunikat WM_WTSSESSION_CHANGE.
         public SystemStateWatcher(AmbilightSettings settings, IntPtr windowHandle)
@@ -104,16 +104,52 @@ namespace AmbilightEngine.Core.SystemState
         private void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
         {
             WriteDiagLog($"OnPowerModeChanged wywołane, tryb: {e.Mode}");
+
             if (e.Mode == PowerModes.Suspend)
             {
                 TriggerLockMode();
+                return;
             }
-            else if (e.Mode == PowerModes.Resume)
+
+            if (e.Mode == PowerModes.Resume)
             {
                 TriggerUnlockMode();
             }
         }
+        private void TriggerSystemResume()
+        {
+            isLockedOrAsleep = false;
 
+            WriteDiagLog(
+                $"TriggerSystemResume: wykryto wybudzenie systemu o {DateTime.Now:HH:mm:ss.fff}. " +
+                "Oczekuję 3 s na gotowość monitora, sieci i WLED.");
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(3));
+
+                    if (isLockedOrAsleep)
+                    {
+                        WriteDiagLog(
+                            "TriggerSystemResume: system ponownie wszedł w blokadę/uśpienie; recovery anulowane.");
+
+                        return;
+                    }
+
+                    WriteDiagLog(
+                        "TriggerSystemResume: zgłaszam dedykowane odtworzenie po wybudzeniu.");
+
+                    SystemResumeRequested?.Invoke();
+                }
+                catch (Exception ex)
+                {
+                    WriteDiagLog(
+                        $"TriggerSystemResume: błąd opóźnionego recovery: {ex.Message}");
+                }
+            });
+        }
         private void TriggerLockMode()
         {
             if (isLockedOrAsleep) return;
@@ -125,15 +161,40 @@ namespace AmbilightEngine.Core.SystemState
 
         private void TriggerUnlockMode()
         {
-            if (!isLockedOrAsleep) return;
+            if (!isLockedOrAsleep)
+            {
+                return;
+            }
 
             isLockedOrAsleep = false;
-            WriteDiagLog($"TriggerUnlockMode: wychodzę z trybu ambientowego o {DateTime.Now:HH:mm:ss.fff}");
+            WriteDiagLog(
+                $"TriggerUnlockMode: wykryto wybudzenie/odblokowanie o {DateTime.Now:HH:mm:ss.fff}. " +
+                "Oczekuję 3 s na gotowość sieci i WLED.");
 
-            if (!isIdleTriggered)
+            if (isIdleTriggered)
             {
-                NormalModeRequested?.Invoke();
+                return;
             }
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(3));
+
+                    if (isLockedOrAsleep || isIdleTriggered)
+                    {
+                        return;
+                    }
+
+                    WriteDiagLog("TriggerUnlockMode: zgłaszam powrót do normalnego trybu.");
+                    NormalModeRequested?.Invoke();
+                }
+                catch (Exception ex)
+                {
+                    WriteDiagLog($"TriggerUnlockMode: błąd opóźnionego powrotu: {ex.Message}");
+                }
+            });
         }
 
         private void CheckIdleState(object? state)

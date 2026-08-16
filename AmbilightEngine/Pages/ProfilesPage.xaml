@@ -21,10 +21,10 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <!-- Nagłówek -->
             <StackPanel Grid.Row="0"
                         Spacing="4"
                         MaxWidth="860"
@@ -32,12 +32,11 @@
                 <TextBlock Text="Profile aplikacji"
                            FontSize="24"
                            FontWeight="Bold" />
-                <TextBlock Text="Twórz osobne profile obrazu i przypisuj je do konkretnych aplikacji. Po wykryciu procesu odpowiednie ustawienia zostaną aktywowane automatycznie."
+                <TextBlock Text="Twórz osobne profile i przypisuj je do konkretnych aplikacji. Możesz zmieniać parametry Video Sync, ustawić stały kolor albo wybrany efekt WLED."
                            Style="{StaticResource SectionSubTextStyle}"
                            TextWrapping="Wrap" />
             </StackPanel>
 
-            <!-- Status -->
             <controls:InfoBar x:Name="ProfilesInfoBar"
                               Grid.Row="1"
                               Margin="0,20,0,0"
@@ -49,25 +48,21 @@
                               Title="Status"
                               Message="" />
 
-            <!-- Akcje -->
             <Border Grid.Row="2"
-        Margin="0,20,0,0"
-        MaxWidth="860"
-        HorizontalAlignment="Left"
-        Style="{StaticResource CardStyle}">
+                    Margin="0,20,0,0"
+                    MaxWidth="860"
+                    HorizontalAlignment="Left"
+                    Style="{StaticResource CardStyle}">
                 <StackPanel Spacing="12">
                     <TextBlock Text="Zarządzanie profilami"
-                   Style="{StaticResource SectionHeaderTextStyle}" />
+                               Style="{StaticResource SectionHeaderTextStyle}" />
 
-                    <TextBlock Text="Dodawaj nowe profile, przypisuj pliki .exe i zapisuj zmiany do konfiguracji aplikacji."
-                   Style="{StaticResource SectionSubTextStyle}"
-                   TextWrapping="Wrap" />
+                    <TextBlock Text="Dodawaj profile, przypisuj pliki .exe i zapisuj zmiany do konfiguracji aplikacji."
+                               Style="{StaticResource SectionSubTextStyle}"
+                               TextWrapping="Wrap" />
 
                     <StackPanel Orientation="Horizontal"
-                    Spacing="12">
-                        <!-- NOWOŚĆ: DropDownButton zamiast prostego przycisku - pozwala wybrać
-                             gotowy szablon (Gra/Film/Lounge/Biuro) albo zacząć od pustego profilu,
-                             zamiast zawsze startować z jednego, neutralnego zestawu wartości. -->
+                                Spacing="12">
                         <DropDownButton Content="Dodaj profil"
                                         Style="{StaticResource AccentButtonStyle}">
                             <DropDownButton.Flyout>
@@ -93,44 +88,276 @@
                         </DropDownButton>
 
                         <Button Content="Zapisz zmiany"
-                    Click="SaveChangesButton_Click" />
+                                Click="SaveChangesButton_Click" />
                     </StackPanel>
 
                     <TextBlock x:Name="SaveStatusText"
-                   Text=""
-                   Style="{StaticResource SectionSubTextStyle}"
-                   TextWrapping="Wrap" />
+                               Text=""
+                               Style="{StaticResource SectionSubTextStyle}"
+                               TextWrapping="Wrap" />
 
                     <Border Padding="12"
-                CornerRadius="10"
-                Background="{ThemeResource M3SurfaceContainerHighBrush}">
+                            CornerRadius="10"
+                            Background="{ThemeResource M3SurfaceContainerHighBrush}">
                         <StackPanel Spacing="8">
                             <TextBlock Text="Podgląd profilu na żywo"
-                           FontWeight="SemiBold" />
-
+                                       FontWeight="SemiBold" />
                             <TextBlock Text="Włącz podgląd, a zmiana parametrów obrazu suwakiem będzie od razu widoczna na LED-ach. Zapis ustawień nadal wymaga kliknięcia „Zapisz zmiany”."
-                           Style="{StaticResource SectionSubTextStyle}"
-                           TextWrapping="Wrap" />
-
+                                       Style="{StaticResource SectionSubTextStyle}"
+                                       TextWrapping="Wrap" />
                             <StackPanel Orientation="Horizontal"
-                            Spacing="12">
+                                        Spacing="12">
                                 <Button Content="Włącz podgląd"
-                            Click="EnableLivePreviewButton_Click"
-                            Style="{StaticResource AccentButtonStyle}" />
-
+                                        Click="EnableLivePreviewButton_Click"
+                                        Style="{StaticResource AccentButtonStyle}" />
                                 <Button Content="Zakończ podgląd"
-                            Click="DisableLivePreviewButton_Click" />
+                                        Click="DisableLivePreviewButton_Click" />
                             </StackPanel>
                         </StackPanel>
                     </Border>
                 </StackPanel>
             </Border>
 
-            <!-- Pusty stan + lista -->
-            <Grid Grid.Row="3"
-                  Margin="0,24,0,0">
+            <Border Grid.Row="3"
+                    Margin="0,24,0,0"
+                    MaxWidth="860"
+                    HorizontalAlignment="Left"
+                    Style="{StaticResource CardStyle}">
+                <StackPanel Spacing="18">
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
 
-                <!-- Pusty stan -->
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Profil domyślny"
+                                       FontSize="20"
+                                       FontWeight="SemiBold" />
+                            <TextBlock Text="Ten profil uruchamia się automatycznie, gdy nie ma aktywnej aplikacji z przypisanym profilem — np. po zamknięciu Chrome, na pulpicie lub po przejściu do nieprzypisanej aplikacji."
+                                       Style="{StaticResource SectionSubTextStyle}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <Border Grid.Column="1"
+                                Padding="10,4"
+                                CornerRadius="12"
+                                VerticalAlignment="Top"
+                                Background="{ThemeResource M3SurfaceContainerHighBrush}">
+                            <TextBlock Text="Fallback"
+                                       FontWeight="SemiBold"
+                                       Opacity="0.8" />
+                        </Border>
+                    </Grid>
+
+                    <Border Padding="16"
+                            CornerRadius="12"
+                            Background="{ThemeResource M3SurfaceContainerHighBrush}">
+                        <StackPanel Spacing="14">
+                            <TextBlock Text="Nazwa"
+                                       FontWeight="SemiBold"
+                                       FontSize="14" />
+                            <TextBox Header="Nazwa profilu domyślnego"
+                                     HorizontalAlignment="Stretch"
+                                     Text="{Binding DefaultProfile.DisplayName, Mode=TwoWay}" />
+                            <TextBlock Text="Profil domyślny nie jest powiązany z plikiem .exe i nie może zostać usunięty."
+                                       Style="{StaticResource SectionSubTextStyle}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Padding="16"
+                            CornerRadius="12"
+                            Background="{ThemeResource M3SurfaceContainerHighBrush}">
+                        <StackPanel Spacing="14">
+                            <TextBlock Text="Co ma się dziać po powrocie"
+                                       FontWeight="SemiBold"
+                                       FontSize="14" />
+                            <TextBlock Text="Wybierz działanie wykonywane po zamknięciu aplikacji z własnym profilem albo gdy aktywne okno nie ma przypisania."
+                                       Style="{StaticResource SectionSubTextStyle}"
+                                       TextWrapping="Wrap" />
+
+                            <StackPanel Orientation="Horizontal"
+                                        Spacing="16">
+                                <RadioButton Content="Parametry obrazu"
+                                             GroupName="DefaultProfileAction"
+                                             IsChecked="{Binding DefaultProfile.IsActionTypeImageDsp, Mode=OneWay}"
+                                             Checked="DefaultActionTypeImageDsp_Checked" />
+                                <RadioButton Content="Stały kolor LED"
+                                             GroupName="DefaultProfileAction"
+                                             IsChecked="{Binding DefaultProfile.IsActionTypeStaticColor, Mode=OneWay}"
+                                             Checked="DefaultActionTypeStaticColor_Checked" />
+                                <RadioButton Content="Efekt WLED"
+                                             GroupName="DefaultProfileAction"
+                                             IsChecked="{Binding DefaultProfile.IsActionTypeWledEffect, Mode=OneWay}"
+                                             Checked="DefaultActionTypeWledEffect_Checked" />
+                            </StackPanel>
+
+                            <StackPanel Spacing="8"
+                                        Visibility="{Binding DefaultProfile.IsActionTypeStaticColor, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock Text="Kolor stały"
+                                           FontWeight="SemiBold" />
+                                <ColorPicker x:Name="DefaultStaticColorPicker"
+                                             ColorChanged="DefaultStaticColorPicker_ColorChanged"
+                                             IsAlphaEnabled="False"
+                                             IsMoreButtonVisible="False" />
+                            </StackPanel>
+
+                            <StackPanel Spacing="8"
+                                        Visibility="{Binding DefaultProfile.IsActionTypeWledEffect, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock Text="Numer efektu WLED (FX Id)"
+                                           FontWeight="SemiBold" />
+                                <NumberBox Minimum="0"
+                                           Maximum="255"
+                                           SpinButtonPlacementMode="Inline"
+                                           Value="{Binding DefaultProfile.WledEffectId, Mode=TwoWay}" />
+
+                                <TextBlock Text="Prędkość efektu"
+                                           FontWeight="SemiBold" />
+                                <Slider Minimum="0"
+                                        Maximum="255"
+                                        StepFrequency="1"
+                                        Value="{Binding DefaultProfile.WledEffectSpeed, Mode=TwoWay}" />
+
+                                <TextBlock Text="Intensywność efektu"
+                                           FontWeight="SemiBold" />
+                                <Slider Minimum="0"
+                                        Maximum="255"
+                                        StepFrequency="1"
+                                        Value="{Binding DefaultProfile.WledEffectIntensity, Mode=TwoWay}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Padding="16"
+                            CornerRadius="12"
+                            Background="{ThemeResource M3SurfaceContainerHighBrush}">
+                        <StackPanel Spacing="14">
+                            <TextBlock Text="Parametry obrazu domyślnego"
+                                       FontWeight="SemiBold"
+                                       FontSize="14" />
+                            <TextBlock Text="Te parametry są używane tylko wtedy, gdy akcją profilu domyślnego są „Parametry obrazu”, czyli gdy ma wrócić Video Sync."
+                                       Style="{StaticResource SectionSubTextStyle}"
+                                       TextWrapping="Wrap" />
+
+                            <StackPanel Spacing="6">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Jasność (%)"
+                                               FontWeight="SemiBold" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding DefaultProfile.BrightnessPercent, Mode=OneWay}" />
+                                </Grid>
+                                <Slider Minimum="1"
+                                        Maximum="100"
+                                        StepFrequency="1"
+                                        Value="{Binding DefaultProfile.BrightnessPercent, Mode=TwoWay}"
+                                        ValueChanged="DefaultProfileImageSlider_ValueChanged" />
+                            </StackPanel>
+
+                            <StackPanel Spacing="6">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Wygładzanie (ms)"
+                                               FontWeight="SemiBold" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding DefaultProfile.SmoothingSpeedMs, Mode=OneWay}" />
+                                </Grid>
+                                <Slider Minimum="0"
+                                        Maximum="2000"
+                                        StepFrequency="10"
+                                        Value="{Binding DefaultProfile.SmoothingSpeedMs, Mode=TwoWay}"
+                                        ValueChanged="DefaultProfileImageSlider_ValueChanged" />
+                            </StackPanel>
+
+                            <StackPanel Spacing="6">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Próg czerni"
+                                               FontWeight="SemiBold" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding DefaultProfile.BlackCutoffThreshold, Mode=OneWay}" />
+                                </Grid>
+                                <Slider Minimum="0"
+                                        Maximum="255"
+                                        StepFrequency="1"
+                                        Value="{Binding DefaultProfile.BlackCutoffThreshold, Mode=TwoWay}"
+                                        ValueChanged="DefaultProfileImageSlider_ValueChanged" />
+                            </StackPanel>
+
+                            <StackPanel Spacing="6">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Temperatura barwowa (K)"
+                                               FontWeight="SemiBold" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding DefaultProfile.ColorTemperatureKelvin, Mode=OneWay}" />
+                                </Grid>
+                                <Slider Minimum="1000"
+                                        Maximum="12000"
+                                        StepFrequency="100"
+                                        Value="{Binding DefaultProfile.ColorTemperatureKelvin, Mode=TwoWay}"
+                                        ValueChanged="DefaultProfileImageSlider_ValueChanged" />
+                            </StackPanel>
+
+                            <StackPanel Spacing="6">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Gamma"
+                                               FontWeight="SemiBold" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding DefaultProfile.GammaValue, Mode=OneWay}" />
+                                </Grid>
+                                <Slider Minimum="1"
+                                        Maximum="4"
+                                        StepFrequency="0.1"
+                                        Value="{Binding DefaultProfile.GammaValue, Mode=TwoWay}"
+                                        ValueChanged="DefaultProfileImageSlider_ValueChanged" />
+                            </StackPanel>
+
+                            <StackPanel Spacing="6">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Wzmocnienie nasycenia"
+                                               FontWeight="SemiBold" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding DefaultProfile.SaturationBoost, Mode=OneWay}" />
+                                </Grid>
+                                <Slider Minimum="0"
+                                        Maximum="3"
+                                        StepFrequency="0.1"
+                                        Value="{Binding DefaultProfile.SaturationBoost, Mode=TwoWay}"
+                                        ValueChanged="DefaultProfileImageSlider_ValueChanged" />
+                            </StackPanel>
+
+                            <Button Content="Przywróć neutralne parametry profilu domyślnego"
+                                    HorizontalAlignment="Left"
+                                    Click="ResetDefaultProfileImageDefaultsButton_Click" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Border>
+
+            <Grid Grid.Row="4"
+                  Margin="0,24,0,0">
                 <StackPanel x:Name="ProfilesEmptyStatePanel"
                             Spacing="10"
                             MaxWidth="860"
@@ -138,10 +365,10 @@
                             Visibility="Collapsed">
                     <Border Style="{StaticResource CardStyle}">
                         <StackPanel Spacing="10">
-                            <TextBlock Text="Nie masz jeszcze żadnych profili."
+                            <TextBlock Text="Nie masz jeszcze żadnych profili aplikacji."
                                        FontSize="18"
                                        FontWeight="SemiBold" />
-                            <TextBlock Text="Profil pozwala przypisać osobne ustawienia obrazu do konkretnej aplikacji (.exe). To wygodny sposób na inne parametry dla gier, filmów i zwykłej pracy."
+                            <TextBlock Text="Dodaj profil i przypisz do niego plik .exe, aby automatycznie zastosować ustawienia po wykryciu aktywnej aplikacji."
                                        Style="{StaticResource SectionSubTextStyle}"
                                        TextWrapping="Wrap" />
                             <DropDownButton Content="Dodaj pierwszy profil"
@@ -172,7 +399,6 @@
                     </Border>
                 </StackPanel>
 
-                <!-- Lista profili -->
                 <ItemsControl x:Name="ProfilesList">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
@@ -180,15 +406,12 @@
                                     MaxWidth="860"
                                     HorizontalAlignment="Left"
                                     Style="{StaticResource CardStyle}">
-
                                 <StackPanel Spacing="18">
-                                    <!-- Nagłówek karty -->
                                     <Grid ColumnSpacing="12">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
-
                                         <StackPanel Spacing="4">
                                             <TextBlock Text="{Binding DisplayName}"
                                                        FontSize="18"
@@ -198,7 +421,6 @@
                                                        Style="{StaticResource SectionSubTextStyle}"
                                                        TextWrapping="Wrap" />
                                         </StackPanel>
-
                                         <Button Grid.Column="1"
                                                 Content="Usuń"
                                                 Tag="{Binding}"
@@ -206,7 +428,6 @@
                                                 Click="RemoveProfileButton_Click" />
                                     </Grid>
 
-                                    <!-- Dane podstawowe -->
                                     <Border Padding="16"
                                             CornerRadius="12"
                                             Background="{ThemeResource M3SurfaceContainerHighBrush}">
@@ -214,26 +435,20 @@
                                             <TextBlock Text="Powiązanie z aplikacją"
                                                        FontWeight="SemiBold"
                                                        FontSize="14" />
-
                                             <TextBox Header="Nazwa profilu"
-                                                     HorizontalAlignment="Stretch"
                                                      Text="{Binding DisplayName, Mode=TwoWay}" />
-
                                             <TextBox Header="Przypisana aplikacja (.exe)"
-                                                     HorizontalAlignment="Stretch"
                                                      Text="{Binding ExecutableFileName, Mode=TwoWay}" />
-
                                             <Button Content="Wybierz aplikację"
                                                     HorizontalAlignment="Left"
                                                     Tag="{Binding}"
                                                     Click="PickApplicationButton_Click" />
                                             <StackPanel Spacing="4">
                                                 <CheckBox Content="Aktywuj także, gdy aplikacja działa w tle"
-              IsChecked="{Binding AllowBackgroundActivation, Mode=TwoWay}" />
-
-                                                <TextBlock Text="Wyłącz dla zwykłych aplikacji, np. przeglądarki lub Notatnika. Włącz tylko dla gier, odtwarzaczy lub aplikacji, których profil ma pozostać aktywny po utracie fokusu."
-               Style="{StaticResource SectionSubTextStyle}"
-               TextWrapping="Wrap" />
+                                                          IsChecked="{Binding AllowBackgroundActivation, Mode=TwoWay}" />
+                                                <TextBlock Text="Wyłącz dla zwykłych aplikacji, np. przeglądarki lub Notatnika. Włącz tylko dla aplikacji, których profil ma pozostać aktywny po utracie fokusu."
+                                                           Style="{StaticResource SectionSubTextStyle}"
+                                                           TextWrapping="Wrap" />
                                             </StackPanel>
                                             <StackPanel Spacing="6">
                                                 <Grid>
@@ -241,27 +456,19 @@
                                                         <ColumnDefinition Width="*" />
                                                         <ColumnDefinition Width="Auto" />
                                                     </Grid.ColumnDefinitions>
-
                                                     <TextBlock Text="Priorytet działania w tle"
-                   FontWeight="SemiBold" />
-
+                                                               FontWeight="SemiBold" />
                                                     <TextBlock Grid.Column="1"
-                   Text="{Binding Priority, Mode=OneWay}" />
+                                                               Text="{Binding Priority, Mode=OneWay}" />
                                                 </Grid>
-
                                                 <Slider Minimum="0"
-            Maximum="100"
-            StepFrequency="1"
-            Value="{Binding Priority, Mode=TwoWay}" />
-
-                                                <TextBlock Text="Większa wartość wygrywa, gdy kilka aplikacji z włączonym działaniem w tle działa jednocześnie. Wartość jest ignorowana, gdy działanie w tle jest wyłączone."
-               Style="{StaticResource SectionSubTextStyle}"
-               TextWrapping="Wrap" />
+                                                        Maximum="100"
+                                                        StepFrequency="1"
+                                                        Value="{Binding Priority, Mode=TwoWay}" />
                                             </StackPanel>
                                         </StackPanel>
-
                                     </Border>
-                                    <!-- NOWOŚĆ: wybór typu akcji profilu -->
+
                                     <Border Padding="16"
                                             CornerRadius="12"
                                             Background="{ThemeResource M3SurfaceContainerHighBrush}">
@@ -269,12 +476,11 @@
                                             <TextBlock Text="Co ma się dziać po aktywacji"
                                                        FontWeight="SemiBold"
                                                        FontSize="14" />
-
-                                            <TextBlock Text="Domyślnie profil zmienia parametry obrazu Video Sync. Możesz też wymusić stały kolor LED albo konkretny efekt WLED, niezależnie od tego, co jest aktualnie na ekranie."
+                                            <TextBlock Text="Domyślnie profil zmienia parametry obrazu Video Sync. Możesz też wymusić stały kolor LED albo konkretny efekt WLED."
                                                        Style="{StaticResource SectionSubTextStyle}"
                                                        TextWrapping="Wrap" />
-
-                                            <StackPanel Orientation="Horizontal" Spacing="16">
+                                            <StackPanel Orientation="Horizontal"
+                                                        Spacing="16">
                                                 <RadioButton Content="Parametry obrazu"
                                                              GroupName="{Binding ProfileId}"
                                                              Tag="{Binding}"
@@ -294,7 +500,8 @@
 
                                             <StackPanel Spacing="8"
                                                         Visibility="{Binding IsActionTypeStaticColor, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                                <TextBlock Text="Kolor stały" FontWeight="SemiBold" />
+                                                <TextBlock Text="Kolor stały"
+                                                           FontWeight="SemiBold" />
                                                 <ColorPicker ColorChanged="ProfileStaticColorPicker_ColorChanged"
                                                              Tag="{Binding}"
                                                              IsAlphaEnabled="False"
@@ -303,19 +510,20 @@
 
                                             <StackPanel Spacing="8"
                                                         Visibility="{Binding IsActionTypeWledEffect, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                                <TextBlock Text="Numer efektu WLED (FX Id)" FontWeight="SemiBold" />
+                                                <TextBlock Text="Numer efektu WLED (FX Id)"
+                                                           FontWeight="SemiBold" />
                                                 <NumberBox Minimum="0"
                                                            Maximum="255"
                                                            SpinButtonPlacementMode="Inline"
                                                            Value="{Binding WledEffectId, Mode=TwoWay}" />
-
-                                                <TextBlock Text="Prędkość efektu" FontWeight="SemiBold" />
+                                                <TextBlock Text="Prędkość efektu"
+                                                           FontWeight="SemiBold" />
                                                 <Slider Minimum="0"
                                                         Maximum="255"
                                                         StepFrequency="1"
                                                         Value="{Binding WledEffectSpeed, Mode=TwoWay}" />
-
-                                                <TextBlock Text="Intensywność efektu" FontWeight="SemiBold" />
+                                                <TextBlock Text="Intensywność efektu"
+                                                           FontWeight="SemiBold" />
                                                 <Slider Minimum="0"
                                                         Maximum="255"
                                                         StepFrequency="1"
@@ -324,8 +532,6 @@
                                         </StackPanel>
                                     </Border>
 
-
-                                    <!-- Parametry obrazu -->
                                     <Border Padding="16"
                                             CornerRadius="12"
                                             Background="{ThemeResource M3SurfaceContainerHighBrush}">
@@ -334,133 +540,114 @@
                                                        FontWeight="SemiBold"
                                                        FontSize="14" />
 
-                                            <!-- Jasność -->
                                             <StackPanel Spacing="6">
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="*" />
                                                         <ColumnDefinition Width="Auto" />
                                                     </Grid.ColumnDefinitions>
-
                                                     <TextBlock Text="Jasność (%)"
                                                                FontWeight="SemiBold" />
                                                     <TextBlock Grid.Column="1"
                                                                Text="{Binding BrightnessPercent, Mode=OneWay}" />
                                                 </Grid>
-
                                                 <Slider Minimum="1"
                                                         Maximum="100"
                                                         StepFrequency="1"
-                                                        Value="{Binding BrightnessPercent, Mode=TwoWay}" 
-                                                        ValueChanged="ProfileImageSlider_ValueChanged"/>
+                                                        Value="{Binding BrightnessPercent, Mode=TwoWay}"
+                                                        ValueChanged="ProfileImageSlider_ValueChanged" />
                                             </StackPanel>
 
-                                            <!-- Wygładzanie (ms) -->
                                             <StackPanel Spacing="6">
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="*" />
                                                         <ColumnDefinition Width="Auto" />
                                                     </Grid.ColumnDefinitions>
-
                                                     <TextBlock Text="Wygładzanie (ms)"
                                                                FontWeight="SemiBold" />
                                                     <TextBlock Grid.Column="1"
                                                                Text="{Binding SmoothingSpeedMs, Mode=OneWay}" />
                                                 </Grid>
-
                                                 <Slider Minimum="0"
                                                         Maximum="2000"
                                                         StepFrequency="10"
-                                                        Value="{Binding SmoothingSpeedMs, Mode=TwoWay}" 
-                                                        ValueChanged="ProfileImageSlider_ValueChanged"/>
+                                                        Value="{Binding SmoothingSpeedMs, Mode=TwoWay}"
+                                                        ValueChanged="ProfileImageSlider_ValueChanged" />
                                             </StackPanel>
 
-                                            <!-- Próg czerni -->
                                             <StackPanel Spacing="6">
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="*" />
                                                         <ColumnDefinition Width="Auto" />
                                                     </Grid.ColumnDefinitions>
-
                                                     <TextBlock Text="Próg czerni"
                                                                FontWeight="SemiBold" />
                                                     <TextBlock Grid.Column="1"
                                                                Text="{Binding BlackCutoffThreshold, Mode=OneWay}" />
                                                 </Grid>
-
                                                 <Slider Minimum="0"
                                                         Maximum="255"
                                                         StepFrequency="1"
-                                                        Value="{Binding BlackCutoffThreshold, Mode=TwoWay}" 
-                                                        ValueChanged="ProfileImageSlider_ValueChanged"/>
+                                                        Value="{Binding BlackCutoffThreshold, Mode=TwoWay}"
+                                                        ValueChanged="ProfileImageSlider_ValueChanged" />
                                             </StackPanel>
 
-                                            <!-- Temperatura barwowa -->
                                             <StackPanel Spacing="6">
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="*" />
                                                         <ColumnDefinition Width="Auto" />
                                                     </Grid.ColumnDefinitions>
-
                                                     <TextBlock Text="Temperatura barwowa (K)"
                                                                FontWeight="SemiBold" />
                                                     <TextBlock Grid.Column="1"
                                                                Text="{Binding ColorTemperatureKelvin, Mode=OneWay}" />
                                                 </Grid>
-
                                                 <Slider Minimum="1000"
                                                         Maximum="12000"
                                                         StepFrequency="100"
-                                                        Value="{Binding ColorTemperatureKelvin, Mode=TwoWay}" 
-                                                        ValueChanged="ProfileImageSlider_ValueChanged"/>
+                                                        Value="{Binding ColorTemperatureKelvin, Mode=TwoWay}"
+                                                        ValueChanged="ProfileImageSlider_ValueChanged" />
                                             </StackPanel>
 
-                                            <!-- Gamma -->
                                             <StackPanel Spacing="6">
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="*" />
                                                         <ColumnDefinition Width="Auto" />
                                                     </Grid.ColumnDefinitions>
-
                                                     <TextBlock Text="Gamma"
                                                                FontWeight="SemiBold" />
                                                     <TextBlock Grid.Column="1"
                                                                Text="{Binding GammaValue, Mode=OneWay}" />
                                                 </Grid>
-
                                                 <Slider Minimum="1"
                                                         Maximum="4"
                                                         StepFrequency="0.1"
-                                                        Value="{Binding GammaValue, Mode=TwoWay}" 
-                                                        ValueChanged="ProfileImageSlider_ValueChanged"/>
+                                                        Value="{Binding GammaValue, Mode=TwoWay}"
+                                                        ValueChanged="ProfileImageSlider_ValueChanged" />
                                             </StackPanel>
 
-                                            <!-- Nasycenie -->
                                             <StackPanel Spacing="6">
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="*" />
                                                         <ColumnDefinition Width="Auto" />
                                                     </Grid.ColumnDefinitions>
-
                                                     <TextBlock Text="Wzmocnienie nasycenia"
                                                                FontWeight="SemiBold" />
                                                     <TextBlock Grid.Column="1"
                                                                Text="{Binding SaturationBoost, Mode=OneWay}" />
                                                 </Grid>
-
                                                 <Slider Minimum="0"
                                                         Maximum="3"
                                                         StepFrequency="0.1"
-                                                        Value="{Binding SaturationBoost, Mode=TwoWay}" 
-                                                        ValueChanged="ProfileImageSlider_ValueChanged"/>
+                                                        Value="{Binding SaturationBoost, Mode=TwoWay}"
+                                                        ValueChanged="ProfileImageSlider_ValueChanged" />
                                             </StackPanel>
 
-                                            <!-- Reset do domyślnych -->
                                             <Button Content="Przywróć domyślne parametry obrazu"
                                                     HorizontalAlignment="Left"
                                                     Tag="{Binding}"
@@ -475,5 +662,4 @@
             </Grid>
         </Grid>
     </ScrollViewer>
-
 </Page>

@@ -14,6 +14,7 @@ namespace AmbilightEngine.Pages
         private MainWindow? mainWindow;
         private ObservableCollection<AppProfile> profiles = new();
         private bool isLivePreviewEnabled;
+
         public ProfilesPage()
         {
             InitializeComponent();
@@ -27,9 +28,9 @@ namespace AmbilightEngine.Pages
             if (mainWindow == null)
             {
                 ShowInfo(
-                    severity: InfoBarSeverity.Error,
-                    title: "Brak głównego okna",
-                    message: "Nie znaleziono głównego okna aplikacji. Profile nie mogą być wczytane.");
+                    InfoBarSeverity.Error,
+                    "Brak głównego okna",
+                    "Nie znaleziono głównego okna aplikacji. Profile nie mogą być wczytane.");
 
                 SaveStatusText.Text = "Nie znaleziono głównego okna aplikacji.";
                 profiles = new ObservableCollection<AppProfile>();
@@ -38,28 +39,64 @@ namespace AmbilightEngine.Pages
                 return;
             }
 
+            EnsureDefaultProfile();
+
             profiles = new ObservableCollection<AppProfile>(
                 mainWindow.Settings.Profiles ?? new List<AppProfile>());
 
             ProfilesList.ItemsSource = profiles;
+            DataContext = mainWindow.Settings;
+
+            if (DefaultStaticColorPicker != null)
+            {
+                AppProfile defaultProfile = mainWindow.Settings.DefaultProfile;
+                DefaultStaticColorPicker.Color = Windows.UI.Color.FromArgb(
+                    255,
+                    defaultProfile.StaticColorR,
+                    defaultProfile.StaticColorG,
+                    defaultProfile.StaticColorB);
+            }
+
             SaveStatusText.Text = string.Empty;
 
             if (profiles.Count == 0)
             {
                 ShowInfo(
-                    severity: InfoBarSeverity.Informational,
-                    title: "Brak profili",
-                    message: "Nie masz jeszcze żadnych profili. Dodaj pierwszy, aby przypisać ustawienia do aplikacji.");
+                    InfoBarSeverity.Informational,
+                    "Brak profili",
+                    "Nie masz jeszcze żadnych profili. Dodaj pierwszy, aby przypisać ustawienia do aplikacji.");
             }
             else
             {
                 ShowInfo(
-                    severity: InfoBarSeverity.Informational,
-                    title: "Profile wczytane",
-                    message: $"Załadowano {profiles.Count} profili z ustawień.");
+                    InfoBarSeverity.Informational,
+                    "Profile wczytane",
+                    $"Załadowano {profiles.Count} profili aplikacji oraz profil domyślny.");
             }
 
             UpdateEmptyState();
+        }
+
+        private void EnsureDefaultProfile()
+        {
+            if (mainWindow == null)
+            {
+                return;
+            }
+
+            mainWindow.Settings.DefaultProfile ??= new AppProfile();
+
+            AppProfile defaultProfile = mainWindow.Settings.DefaultProfile;
+
+            if (string.IsNullOrWhiteSpace(defaultProfile.DisplayName))
+            {
+                defaultProfile.DisplayName = "Domyślny";
+            }
+
+            defaultProfile.ExecutableFileName = string.Empty;
+            defaultProfile.AllowBackgroundActivation = false;
+            defaultProfile.Priority = 0;
+            defaultProfile.IsBuiltInDefault = true;
         }
 
         private void UpdateEmptyState()
@@ -69,14 +106,11 @@ namespace AmbilightEngine.Pages
                 return;
             }
 
-            bool hasProfiles = profiles != null && profiles.Count > 0;
+            bool hasProfiles = profiles.Count > 0;
             ProfilesEmptyStatePanel.Visibility = hasProfiles ? Visibility.Collapsed : Visibility.Visible;
             ProfilesList.Visibility = hasProfiles ? Visibility.Visible : Visibility.Collapsed;
         }
 
-        // NOWOŚĆ: obsługuje wszystkie pozycje menu DropDownButton (Puste / Gra / Film /
-        // Lounge / Biuro). Tag każdej MenuFlyoutItem odpowiada nazwie wartości enum
-        // ProfilePresetKind - parsujemy go, żeby uniknąć pięciu prawie identycznych handlerów.
         private void AddPresetProfileButton_Click(object sender, RoutedEventArgs e)
         {
             if (sender is not MenuFlyoutItem menuItem || menuItem.Tag is not string tagValue)
@@ -91,30 +125,35 @@ namespace AmbilightEngine.Pages
 
             string displayName = ProfilePresetCatalog.GetDefaultDisplayName(presetKind);
             AppProfile newProfile = ProfilePresetCatalog.CreateFromPreset(presetKind, displayName);
-
             profiles.Add(newProfile);
 
-            SaveStatusText.Text = $"Dodano profil na podstawie szablonu „{displayName}”. Zapisz zmiany, aby utrwalić konfigurację.";
+            SaveStatusText.Text =
+                $"Dodano profil na podstawie szablonu „{displayName}”. Zapisz zmiany, aby utrwalić konfigurację.";
+
             ShowInfo(
-                severity: InfoBarSeverity.Informational,
-                title: "Dodano profil",
-                message: $"Dodano profil „{displayName}” na podstawie szablonu. Pamiętaj o zapisaniu zmian.");
+                InfoBarSeverity.Informational,
+                "Dodano profil",
+                $"Dodano profil „{displayName}” na podstawie szablonu. Pamiętaj o zapisaniu zmian.");
+
             UpdateEmptyState();
         }
 
         private void RemoveProfileButton_Click(object sender, RoutedEventArgs e)
         {
-            if (sender is Button button && button.Tag is AppProfile profileToRemove)
+            if (sender is not Button button || button.Tag is not AppProfile profileToRemove)
             {
-                profiles.Remove(profileToRemove);
-
-                SaveStatusText.Text = "Usunięto profil. Zapisz zmiany, aby zaktualizować konfigurację.";
-                ShowInfo(
-                    severity: InfoBarSeverity.Warning,
-                    title: "Profil usunięty",
-                    message: "Profil został usunięty. Zapisz zmiany, aby zapisać nowy stan.");
-                UpdateEmptyState();
+                return;
             }
+
+            profiles.Remove(profileToRemove);
+
+            SaveStatusText.Text = "Usunięto profil. Zapisz zmiany, aby zaktualizować konfigurację.";
+            ShowInfo(
+                InfoBarSeverity.Warning,
+                "Profil usunięty",
+                "Profil został usunięty. Zapisz zmiany, aby zapisać nowy stan.");
+
+            UpdateEmptyState();
         }
 
         private async void PickApplicationButton_Click(object sender, RoutedEventArgs e)
@@ -146,17 +185,17 @@ namespace AmbilightEngine.Pages
 
                 SaveStatusText.Text = "Wybrano aplikację .exe. Zapisz zmiany, aby powiązać profil.";
                 ShowInfo(
-                    severity: InfoBarSeverity.Informational,
-                    title: "Aplikacja wybrana",
-                    message: $"Wybrano plik: {file.Name}. Zapisz zmiany, aby utrwalić powiązanie.");
+                    InfoBarSeverity.Informational,
+                    "Aplikacja wybrana",
+                    $"Wybrano plik: {file.Name}. Zapisz zmiany, aby utrwalić powiązanie.");
             }
             catch (Exception ex)
             {
                 SaveStatusText.Text = $"Błąd wyboru aplikacji: {ex.Message}";
                 ShowInfo(
-                    severity: InfoBarSeverity.Error,
-                    title: "Błąd wyboru aplikacji",
-                    message: $"Wystąpił błąd podczas wyboru pliku .exe: {ex.Message}");
+                    InfoBarSeverity.Error,
+                    "Błąd wyboru aplikacji",
+                    $"Wystąpił błąd podczas wyboru pliku .exe: {ex.Message}");
             }
         }
 
@@ -167,18 +206,43 @@ namespace AmbilightEngine.Pages
                 return;
             }
 
+            ResetImageParameters(profile);
+
+            SaveStatusText.Text =
+                "Przywrócono domyślne parametry obrazu dla profilu. Zapisz zmiany, aby je utrwalić.";
+
+            ShowInfo(
+                InfoBarSeverity.Informational,
+                "Domyślne parametry",
+                "Parametry obrazu dla tego profilu zostały zresetowane do wartości domyślnych.");
+        }
+
+        private void ResetDefaultProfileImageDefaultsButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (mainWindow?.Settings.DefaultProfile is not AppProfile profile)
+            {
+                return;
+            }
+
+            ResetImageParameters(profile);
+
+            SaveStatusText.Text =
+                "Przywrócono neutralne parametry profilu domyślnego. Zapisz zmiany, aby je utrwalić.";
+
+            ShowInfo(
+                InfoBarSeverity.Informational,
+                "Profil domyślny",
+                "Przywrócono neutralne parametry obrazu profilu domyślnego.");
+        }
+
+        private static void ResetImageParameters(AppProfile profile)
+        {
             profile.BrightnessPercent = 100;
             profile.SaturationBoost = 1.0;
             profile.SmoothingSpeedMs = 120;
             profile.BlackCutoffThreshold = 8;
             profile.ColorTemperatureKelvin = 6500;
             profile.GammaValue = 2.2;
-
-            SaveStatusText.Text = "Przywrócono domyślne parametry obrazu dla profilu. Zapisz zmiany, aby je utrwalić.";
-            ShowInfo(
-                severity: InfoBarSeverity.Informational,
-                title: "Domyślne parametry",
-                message: "Parametry obrazu dla tego profilu zostały zresetowane do wartości domyślnych.");
         }
 
         private void SaveChangesButton_Click(object sender, RoutedEventArgs e)
@@ -187,39 +251,39 @@ namespace AmbilightEngine.Pages
             {
                 SaveStatusText.Text = "Brak dostępu do ustawień aplikacji.";
                 ShowInfo(
-                    severity: InfoBarSeverity.Error,
-                    title: "Brak ustawień",
-                    message: "Brak dostępu do ustawień aplikacji. Zamknij i uruchom ponownie AmbilightEngine.");
+                    InfoBarSeverity.Error,
+                    "Brak ustawień",
+                    "Brak dostępu do ustawień aplikacji. Zamknij i uruchom ponownie AmbilightEngine.");
+
                 return;
             }
 
             try
             {
+                EnsureDefaultProfile();
                 mainWindow.Settings.Profiles = new List<AppProfile>(profiles);
                 mainWindow.SettingsService.Save(mainWindow.Settings);
-
-                // Odśwież listę profili w silniku, jeśli host to obsługuje.
                 mainWindow.EngineHost.RefreshProfileList();
 
-                SaveStatusText.Text = "Zapisano zmiany w profilach.";
+                SaveStatusText.Text = "Zapisano profile aplikacji oraz profil domyślny.";
                 ShowInfo(
-                    severity: InfoBarSeverity.Success,
-                    title: "Zapisano profile",
-                    message: "Zmiany w profilach zostały zapisane i przekazane do silnika.");
+                    InfoBarSeverity.Success,
+                    "Zapisano profile",
+                    "Zmiany w profilach aplikacji oraz profilu domyślnym zostały zapisane i przekazane do silnika.");
             }
             catch (Exception ex)
             {
                 SaveStatusText.Text = $"Błąd zapisu: {ex.Message}";
                 ShowInfo(
-                    severity: InfoBarSeverity.Error,
-                    title: "Błąd zapisu",
-                    message: $"Nie udało się zapisać profili: {ex.Message}");
+                    InfoBarSeverity.Error,
+                    "Błąd zapisu",
+                    $"Nie udało się zapisać profili: {ex.Message}");
             }
         }
+
         private void EnableLivePreviewButton_Click(object sender, RoutedEventArgs e)
         {
             isLivePreviewEnabled = true;
-
             SaveStatusText.Text =
                 "Podgląd na żywo jest włączony. Zmień dowolny suwak parametrów obrazu, aby zobaczyć efekt na LED-ach.";
         }
@@ -227,7 +291,6 @@ namespace AmbilightEngine.Pages
         private void DisableLivePreviewButton_Click(object sender, RoutedEventArgs e)
         {
             isLivePreviewEnabled = false;
-
             mainWindow?.EngineHost.EndProfilePreview();
 
             SaveStatusText.Text =
@@ -248,17 +311,26 @@ namespace AmbilightEngine.Pages
 
             mainWindow.EngineHost.PreviewProfile(profile);
         }
-        // NOWOŚĆ: trzy niezależne handlery RadioButton, każdy odpowiada za jedną
-        // wartość ActionType. Prostsze i odporniejsze na recykling DataTemplate niż
-        // poprzednie podejście z ComboBox.SelectedIndex + VisualTreeHelper, bo nie
-        // ma tu żadnego stanu odtwarzanego przy Loaded - RadioButton.IsChecked jest
-        // bindowany na żywo do właściwości obliczanej w AppProfile (OneWay).
+
+        private void DefaultProfileImageSlider_ValueChanged(
+            object sender,
+            RangeBaseValueChangedEventArgs e)
+        {
+            if (!isLivePreviewEnabled || mainWindow?.Settings.DefaultProfile is not AppProfile profile)
+            {
+                return;
+            }
+
+            mainWindow.EngineHost.PreviewProfile(profile);
+        }
+
         private void ActionTypeImageDsp_Checked(object sender, RoutedEventArgs e)
         {
             if (sender is RadioButton radioButton && radioButton.Tag is AppProfile profile)
             {
                 profile.ActionType = ProfileActionType.ImageDsp;
-                SaveStatusText.Text = "Zmieniono typ akcji profilu na parametry obrazu. Zapisz zmiany, aby utrwalić konfigurację.";
+                SaveStatusText.Text =
+                    "Zmieniono typ akcji profilu na parametry obrazu. Zapisz zmiany, aby utrwalić konfigurację.";
             }
         }
 
@@ -267,7 +339,8 @@ namespace AmbilightEngine.Pages
             if (sender is RadioButton radioButton && radioButton.Tag is AppProfile profile)
             {
                 profile.ActionType = ProfileActionType.StaticColor;
-                SaveStatusText.Text = "Zmieniono typ akcji profilu na stały kolor LED. Zapisz zmiany, aby utrwalić konfigurację.";
+                SaveStatusText.Text =
+                    "Zmieniono typ akcji profilu na stały kolor LED. Zapisz zmiany, aby utrwalić konfigurację.";
             }
         }
 
@@ -276,11 +349,47 @@ namespace AmbilightEngine.Pages
             if (sender is RadioButton radioButton && radioButton.Tag is AppProfile profile)
             {
                 profile.ActionType = ProfileActionType.WledEffect;
-                SaveStatusText.Text = "Zmieniono typ akcji profilu na efekt WLED. Zapisz zmiany, aby utrwalić konfigurację.";
+                SaveStatusText.Text =
+                    "Zmieniono typ akcji profilu na efekt WLED. Zapisz zmiany, aby utrwalić konfigurację.";
             }
         }
 
-        // NOWOŚĆ: obsługuje zmianę koloru w ColorPicker dla profili typu StaticColor.
+        private void DefaultActionTypeImageDsp_Checked(object sender, RoutedEventArgs e)
+        {
+            if (mainWindow?.Settings.DefaultProfile is not AppProfile profile)
+            {
+                return;
+            }
+
+            profile.ActionType = ProfileActionType.ImageDsp;
+            SaveStatusText.Text =
+                "Profil domyślny będzie przywracał parametry obrazu Video Sync. Zapisz zmiany, aby utrwalić konfigurację.";
+        }
+
+        private void DefaultActionTypeStaticColor_Checked(object sender, RoutedEventArgs e)
+        {
+            if (mainWindow?.Settings.DefaultProfile is not AppProfile profile)
+            {
+                return;
+            }
+
+            profile.ActionType = ProfileActionType.StaticColor;
+            SaveStatusText.Text =
+                "Profil domyślny będzie przywracał stały kolor LED. Zapisz zmiany, aby utrwalić konfigurację.";
+        }
+
+        private void DefaultActionTypeWledEffect_Checked(object sender, RoutedEventArgs e)
+        {
+            if (mainWindow?.Settings.DefaultProfile is not AppProfile profile)
+            {
+                return;
+            }
+
+            profile.ActionType = ProfileActionType.WledEffect;
+            SaveStatusText.Text =
+                "Profil domyślny będzie przywracał efekt WLED. Zapisz zmiany, aby utrwalić konfigurację.";
+        }
+
         private void ProfileStaticColorPicker_ColorChanged(ColorPicker sender, ColorChangedEventArgs args)
         {
             if (sender.Tag is not AppProfile profile)
@@ -294,11 +403,28 @@ namespace AmbilightEngine.Pages
 
             SaveStatusText.Text = "Zmieniono kolor stały profilu. Zapisz zmiany, aby utrwalić konfigurację.";
         }
+
+        private void DefaultStaticColorPicker_ColorChanged(ColorPicker sender, ColorChangedEventArgs args)
+        {
+            if (mainWindow?.Settings.DefaultProfile is not AppProfile profile)
+            {
+                return;
+            }
+
+            profile.StaticColorR = args.NewColor.R;
+            profile.StaticColorG = args.NewColor.G;
+            profile.StaticColorB = args.NewColor.B;
+
+            SaveStatusText.Text =
+                "Zmieniono stały kolor profilu domyślnego. Zapisz zmiany, aby utrwalić konfigurację.";
+        }
+
         private void ProfilesPage_Unloaded(object sender, RoutedEventArgs e)
         {
             isLivePreviewEnabled = false;
             mainWindow?.EngineHost.EndProfilePreview();
         }
+
         private void ShowInfo(InfoBarSeverity severity, string title, string message)
         {
             if (ProfilesInfoBar == null)

@@ -15,7 +15,7 @@ namespace AmbilightEngine.Controls
     // Wizualizuje aktualny stan diod LED na kształcie przypominającym monitor.
     // Podgląd kolorów pochodzi z funkcji "Peek" WLED przez WebSocket, współdzielony
     // przez WledLivePreviewHub - WLED serwuje strumień Peek tylko jednemu klientowi
-    // naraz, więc wszystkie instancje tej kontrolki (Dashboard, Ekran blokady,
+    // naraz, więc wszystkie instancje tej kontrolki (Dashboard, Ekran blokady
     // Bezczynność) muszą korzystać z JEDNEGO fizycznego połączenia per adres IP.
     //
     // WAŻNE: Configure() startuje subskrypcję bezpośrednio, NIE z Loaded - elementy
@@ -142,34 +142,58 @@ namespace AmbilightEngine.Controls
 
         private static (double x, double y) ComputeSwatchPosition(CaptureZone zone, int samplingDepth)
         {
-            bool isHorizontalEdge = zone.Height == samplingDepth;
-            bool isVerticalEdge = zone.Width == samplingDepth;
-
-            if (isHorizontalEdge)
+            if (samplingDepth <= 0)
             {
-                double normalizedX = (zone.X + zone.Width / 2.0) / NominalScreenWidth;
-                double canvasX = CanvasScreenRectX + normalizedX * CanvasScreenRectWidth;
-                bool isTop = zone.Y == 0;
-                double canvasY = isTop
-                    ? CanvasScreenRectY - SwatchOffset
-                    : CanvasScreenRectY + CanvasScreenRectHeight + SwatchOffset;
-
-                return (canvasX, canvasY);
+                samplingDepth = 1;
             }
 
-            if (isVerticalEdge)
-            {
-                double normalizedY = (zone.Y + zone.Height / 2.0) / NominalScreenHeight;
-                double canvasY = CanvasScreenRectY + normalizedY * CanvasScreenRectHeight;
-                bool isLeft = zone.X == 0;
-                double canvasX = isLeft
-                    ? CanvasScreenRectX - SwatchOffset
-                    : CanvasScreenRectX + CanvasScreenRectWidth + SwatchOffset;
+            const double edgeTolerance = 1.0;
 
-                return (canvasX, canvasY);
+            bool touchesTop = zone.Y <= edgeTolerance;
+            bool touchesBottom =
+                zone.Y + zone.Height >= NominalScreenHeight - edgeTolerance;
+
+            bool touchesLeft = zone.X <= edgeTolerance;
+            bool touchesRight =
+                zone.X + zone.Width >= NominalScreenWidth - edgeTolerance;
+
+            double normalizedX = Math.Clamp(
+                (zone.X + zone.Width / 2.0) / NominalScreenWidth,
+                0.0,
+                1.0);
+
+            double normalizedY = Math.Clamp(
+                (zone.Y + zone.Height / 2.0) / NominalScreenHeight,
+                0.0,
+                1.0);
+
+            double canvasX = CanvasScreenRectX + normalizedX * CanvasScreenRectWidth;
+            double canvasY = CanvasScreenRectY + normalizedY * CanvasScreenRectHeight;
+
+            // Najpierw rozstrzygamy boki pionowe. Dzięki temu narożniki zachowują
+            // zgodność z fizycznym obwodem LED, a strefy z przesunięciem nie znikają.
+            if (touchesLeft && !touchesTop && !touchesBottom)
+            {
+                return (CanvasScreenRectX - SwatchOffset, canvasY);
             }
 
-            return (-100, -100);
+            if (touchesRight && !touchesTop && !touchesBottom)
+            {
+                return (CanvasScreenRectX + CanvasScreenRectWidth + SwatchOffset, canvasY);
+            }
+
+            if (touchesTop)
+            {
+                return (canvasX, CanvasScreenRectY - SwatchOffset);
+            }
+
+            if (touchesBottom)
+            {
+                return (canvasX, CanvasScreenRectY + CanvasScreenRectHeight + SwatchOffset);
+            }
+
+            // Bezpieczny fallback: nigdy nie rysuj elementu poza canvasem.
+            return (canvasX, canvasY);
         }
 
         private void OnLiveColorsReceived(RgbColor[] colors)
