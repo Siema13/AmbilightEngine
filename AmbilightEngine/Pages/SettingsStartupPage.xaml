@@ -73,24 +73,24 @@
                                   Unchecked="AutoStartAmbilightCheckBox_Unchecked" />
                         <StackPanel Spacing="8">
                             <TextBlock Text="Tryb uruchamiany automatycznie"
-               FontWeight="SemiBold" />
+                                       FontWeight="SemiBold" />
 
                             <ComboBox x:Name="AutoStartDisplayModeComboBox"
-              HorizontalAlignment="Stretch"
-              Style="{StaticResource SettingsComboBoxStyle}"
-              SelectionChanged="AutoStartDisplayModeComboBox_SelectionChanged">
+                                      HorizontalAlignment="Stretch"
+                                      Style="{StaticResource SettingsComboBoxStyle}"
+                                      SelectionChanged="AutoStartDisplayModeComboBox_SelectionChanged">
                                 <ComboBoxItem Content="Video Sync"
-                      Tag="VideoSync" />
+                                              Tag="VideoSync" />
 
                                 <ComboBoxItem Content="Static Color"
-                      Tag="StaticColor" />
+                                              Tag="StaticColor" />
 
                                 <ComboBoxItem Content="WLED Effects"
-                      Tag="WledEffects" />
+                                              Tag="WledEffects" />
                             </ComboBox>
 
                             <TextBlock Text="Video Sync uruchamia przechwytywanie ekranu. Static Color wysyła zapisany kolor. WLED Effects uruchamia ostatnio użyty efekt."
-               Style="{StaticResource SectionSubTextStyle}" />
+                                       Style="{StaticResource SectionSubTextStyle}" />
                         </StackPanel>
                         <CheckBox x:Name="AutoMonitorCheckBox"
                                   Content="Automatycznie użyj głównego monitora"
@@ -109,6 +109,18 @@
                         <Button Content="Odśwież listę monitorów"
                                 Click="RefreshMonitorsButton_Click"
                                 Style="{StaticResource AccentButtonStyle}" />
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource CardStyle}">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Presety WLED"
+                                   Style="{StaticResource SectionHeaderTextStyle}" />
+                        <TextBlock Text="Lista presetów i playlist wczytywana automatycznie z urządzenia WLED przy otwarciu tej strony. Używana w kartach 'Ekran blokady' i 'Bezczynność' poniżej."
+                                   Style="{StaticResource SectionSubTextStyle}"
+                                   TextWrapping="Wrap" />
+                        <Button Content="Odśwież presety WLED"
+                                Click="RefreshPresetsButton_Click" />
                     </StackPanel>
                 </Border>
 
@@ -158,7 +170,7 @@
                                         Spacing="4">
                                 <TextBlock Text="Ekran blokady"
                                            Style="{StaticResource SectionHeaderTextStyle}" />
-                                <TextBlock Text="Efekt WLED wywoływany, gdy blokujesz ekran (Win+L) lub komputer usypia."
+                                <TextBlock Text="Efekt lub preset WLED wywoływany, gdy blokujesz ekran (Win+L) lub komputer usypia."
                                            Style="{StaticResource SectionSubTextStyle}" />
                             </StackPanel>
 
@@ -172,107 +184,132 @@
 
                         <StackPanel x:Name="LockScreenAmbientPanel"
                                     Spacing="12">
-                            <TextBlock Text="Efekt"
-                                       FontWeight="SemiBold" />
-                            <ComboBox x:Name="LockScreenEffectComboBox"
-                                      HorizontalAlignment="Stretch"
-                                      PlaceholderText="Wybierz efekt"
-                                      Style="{StaticResource SettingsComboBoxStyle}"
-                                      SelectionChanged="LockScreenEffectComboBox_SelectionChanged" />
-                            <TextBlock Text="Animacja lub kolor wyświetlany przez cały czas trwania blokady ekranu."
-                                       Style="{StaticResource SectionSubTextStyle}" />
 
-                            <!-- Podgląd na żywo (WLED Peek) - przeniesiony pod listę efektów, żeby był
-                                 widoczny od razu podczas przeglądania i konfigurowania efektu. -->
+                            <StackPanel Orientation="Horizontal" Spacing="16">
+                                <RadioButton x:Name="LockScreenModeEffectRadio"
+                                             Content="Efekt WLED"
+                                             GroupName="LockScreenAmbientMode"
+                                             Checked="LockScreenModeEffectRadio_Checked" />
+                                <RadioButton x:Name="LockScreenModePresetRadio"
+                                             Content="Preset WLED"
+                                             GroupName="LockScreenAmbientMode"
+                                             Checked="LockScreenModePresetRadio_Checked" />
+                            </StackPanel>
+
+                            <StackPanel x:Name="LockScreenPresetPanel" Spacing="8" Visibility="Collapsed">
+                                <TextBlock Text="Preset WLED" FontWeight="SemiBold" />
+                                <ComboBox x:Name="LockScreenPresetComboBox"
+                                          HorizontalAlignment="Stretch"
+                                          PlaceholderText="Wybierz preset lub playlistę"
+                                          ItemsSource="{x:Bind LoadedPresets}"
+                                          DisplayMemberPath="DisplayLabel"
+                                          SelectionChanged="LockScreenPresetComboBox_SelectionChanged" />
+                                <TextBlock Text="Lista wczytywana automatycznie z urządzenia WLED. Użyj przycisku „Odśwież presety WLED” powyżej, jeśli dodałeś nowy preset w aplikacji webowej."
+                                           Style="{StaticResource SectionSubTextStyle}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <StackPanel x:Name="LockScreenEffectPanel" Spacing="12">
+                                <TextBlock Text="Efekt"
+                                           FontWeight="SemiBold" />
+                                <ComboBox x:Name="LockScreenEffectComboBox"
+                                          HorizontalAlignment="Stretch"
+                                          PlaceholderText="Wybierz efekt"
+                                          Style="{StaticResource SettingsComboBoxStyle}"
+                                          SelectionChanged="LockScreenEffectComboBox_SelectionChanged" />
+                                <TextBlock Text="Animacja lub kolor wyświetlany przez cały czas trwania blokady ekranu."
+                                           Style="{StaticResource SectionSubTextStyle}" />
+
+                                <TextBlock Text="Paleta kolorów"
+                                           FontWeight="SemiBold" />
+                                <ComboBox x:Name="LockScreenPaletteComboBox"
+                                          HorizontalAlignment="Stretch"
+                                          PlaceholderText="Wybierz paletę"
+                                          Style="{StaticResource SettingsComboBoxStyle}"
+                                          SelectionChanged="LockScreenPaletteComboBox_SelectionChanged" />
+                                <TextBlock Text="Zestaw kolorów używany przez efekty gradientowe (ignorowane przez efekty jednokolorowe)."
+                                           Style="{StaticResource SectionSubTextStyle}" />
+
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Szybkość animacji"
+                                               FontWeight="SemiBold"
+                                               VerticalAlignment="Center" />
+                                    <TextBlock x:Name="LockScreenSpeedValueText"
+                                               Grid.Column="1"
+                                               VerticalAlignment="Center"
+                                               Text="128" />
+                                </Grid>
+                                <Slider x:Name="LockScreenSpeedSlider"
+                                        Minimum="0"
+                                        Maximum="255"
+                                        ValueChanged="LockScreenSpeedSlider_ValueChanged" />
+                                <TextBlock Text="Jak szybko zmienia się animacja efektu (0 = bardzo wolno, 255 = bardzo szybko)."
+                                           Style="{StaticResource SectionSubTextStyle}" />
+
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Intensywność"
+                                               FontWeight="SemiBold"
+                                               VerticalAlignment="Center" />
+                                    <TextBlock x:Name="LockScreenIntensityValueText"
+                                               Grid.Column="1"
+                                               VerticalAlignment="Center"
+                                               Text="128" />
+                                </Grid>
+                                <Slider x:Name="LockScreenIntensitySlider"
+                                        Minimum="0"
+                                        Maximum="255"
+                                        ValueChanged="LockScreenIntensitySlider_ValueChanged" />
+                                <TextBlock Text="Nasycenie/wyrazistość efektu - znaczenie zależy od wybranego efektu (np. gęstość iskier, szerokość paska)."
+                                           Style="{StaticResource SectionSubTextStyle}" />
+
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Jasność"
+                                               FontWeight="SemiBold"
+                                               VerticalAlignment="Center" />
+                                    <TextBlock x:Name="LockScreenBrightnessValueText"
+                                               Grid.Column="1"
+                                               VerticalAlignment="Center"
+                                               Text="128" />
+                                </Grid>
+                                <Slider x:Name="LockScreenBrightnessSlider"
+                                        Minimum="1"
+                                        Maximum="255"
+                                        ValueChanged="LockScreenBrightnessSlider_ValueChanged" />
+                                <TextBlock Text="Ogólna jasność diod podczas blokady ekranu."
+                                           Style="{StaticResource SectionSubTextStyle}" />
+
+                                <TextBlock Text="Kolor podstawowy"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Text="Główny kolor używany przez efekt (dla efektów jednokolorowych to jedyny używany kolor)."
+                                           Style="{StaticResource SectionSubTextStyle}" />
+                                <controls:ColorPicker x:Name="LockScreenPrimaryColorPicker"
+                                                      ColorChanged="LockScreenPrimaryColorPicker_ColorChanged"
+                                                      IsAlphaEnabled="False"
+                                                      IsMoreButtonVisible="False" />
+
+                                <TextBlock Text="Kolor dodatkowy"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Text="Drugi kolor używany w efektach dwukolorowych/gradientowych. Ignorowany przez wiele efektów jednokolorowych."
+                                           Style="{StaticResource SectionSubTextStyle}" />
+                                <controls:ColorPicker x:Name="LockScreenSecondaryColorPicker"
+                                                      ColorChanged="LockScreenSecondaryColorPicker_ColorChanged"
+                                                      IsAlphaEnabled="False"
+                                                      IsMoreButtonVisible="False" />
+                            </StackPanel>
+
                             <preview:LedStripPreviewControl x:Name="LockScreenPreviewControl" Margin="0,4,0,4" />
-
-                            <TextBlock Text="Paleta kolorów"
-                                       FontWeight="SemiBold" />
-                            <ComboBox x:Name="LockScreenPaletteComboBox"
-                                      HorizontalAlignment="Stretch"
-                                      PlaceholderText="Wybierz paletę"
-                                      Style="{StaticResource SettingsComboBoxStyle}"
-                                      SelectionChanged="LockScreenPaletteComboBox_SelectionChanged" />
-                            <TextBlock Text="Zestaw kolorów używany przez efekty gradientowe (ignorowane przez efekty jednokolorowe)."
-                                       Style="{StaticResource SectionSubTextStyle}" />
-
-                            <Grid ColumnSpacing="12">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Szybkość animacji"
-                                           FontWeight="SemiBold"
-                                           VerticalAlignment="Center" />
-                                <TextBlock x:Name="LockScreenSpeedValueText"
-                                           Grid.Column="1"
-                                           VerticalAlignment="Center"
-                                           Text="128" />
-                            </Grid>
-                            <Slider x:Name="LockScreenSpeedSlider"
-                                    Minimum="0"
-                                    Maximum="255"
-                                    ValueChanged="LockScreenSpeedSlider_ValueChanged" />
-                            <TextBlock Text="Jak szybko zmienia się animacja efektu (0 = bardzo wolno, 255 = bardzo szybko)."
-                                       Style="{StaticResource SectionSubTextStyle}" />
-
-                            <Grid ColumnSpacing="12">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Intensywność"
-                                           FontWeight="SemiBold"
-                                           VerticalAlignment="Center" />
-                                <TextBlock x:Name="LockScreenIntensityValueText"
-                                           Grid.Column="1"
-                                           VerticalAlignment="Center"
-                                           Text="128" />
-                            </Grid>
-                            <Slider x:Name="LockScreenIntensitySlider"
-                                    Minimum="0"
-                                    Maximum="255"
-                                    ValueChanged="LockScreenIntensitySlider_ValueChanged" />
-                            <TextBlock Text="Nasycenie/wyrazistość efektu - znaczenie zależy od wybranego efektu (np. gęstość iskier, szerokość paska)."
-                                       Style="{StaticResource SectionSubTextStyle}" />
-
-                            <Grid ColumnSpacing="12">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Jasność"
-                                           FontWeight="SemiBold"
-                                           VerticalAlignment="Center" />
-                                <TextBlock x:Name="LockScreenBrightnessValueText"
-                                           Grid.Column="1"
-                                           VerticalAlignment="Center"
-                                           Text="128" />
-                            </Grid>
-                            <Slider x:Name="LockScreenBrightnessSlider"
-                                    Minimum="1"
-                                    Maximum="255"
-                                    ValueChanged="LockScreenBrightnessSlider_ValueChanged" />
-                            <TextBlock Text="Ogólna jasność diod podczas blokady ekranu."
-                                       Style="{StaticResource SectionSubTextStyle}" />
-
-                            <TextBlock Text="Kolor podstawowy"
-                                       FontWeight="SemiBold" />
-                            <TextBlock Text="Główny kolor używany przez efekt (dla efektów jednokolorowych to jedyny używany kolor)."
-                                       Style="{StaticResource SectionSubTextStyle}" />
-                            <controls:ColorPicker x:Name="LockScreenPrimaryColorPicker"
-                                                  ColorChanged="LockScreenPrimaryColorPicker_ColorChanged"
-                                                  IsAlphaEnabled="False"
-                                                  IsMoreButtonVisible="False" />
-
-                            <TextBlock Text="Kolor dodatkowy"
-                                       FontWeight="SemiBold" />
-                            <TextBlock Text="Drugi kolor używany w efektach dwukolorowych/gradientowych. Ignorowany przez wiele efektów jednokolorowych."
-                                       Style="{StaticResource SectionSubTextStyle}" />
-                            <controls:ColorPicker x:Name="LockScreenSecondaryColorPicker"
-                                                  ColorChanged="LockScreenSecondaryColorPicker_ColorChanged"
-                                                  IsAlphaEnabled="False"
-                                                  IsMoreButtonVisible="False" />
                         </StackPanel>
                     </StackPanel>
                 </Border>
@@ -289,7 +326,7 @@
                                         Spacing="4">
                                 <TextBlock Text="Bezczynność"
                                            Style="{StaticResource SectionHeaderTextStyle}" />
-                                <TextBlock Text="Efekt WLED wywoływany po okresie braku aktywności ustawionym powyżej."
+                                <TextBlock Text="Efekt lub preset WLED wywoływany po okresie braku aktywności ustawionym powyżej."
                                            Style="{StaticResource SectionSubTextStyle}" />
                             </StackPanel>
 
@@ -303,107 +340,132 @@
 
                         <StackPanel x:Name="IdleAmbientPanel"
                                     Spacing="12">
-                            <TextBlock Text="Efekt"
-                                       FontWeight="SemiBold" />
-                            <ComboBox x:Name="IdleEffectComboBox"
-                                      HorizontalAlignment="Stretch"
-                                      PlaceholderText="Wybierz efekt"
-                                      Style="{StaticResource SettingsComboBoxStyle}"
-                                      SelectionChanged="IdleEffectComboBox_SelectionChanged" />
-                            <TextBlock Text="Animacja lub kolor wyświetlany podczas bezczynności."
-                                       Style="{StaticResource SectionSubTextStyle}" />
 
-                            <!-- Podgląd na żywo (WLED Peek) - przeniesiony pod listę efektów, żeby był
-                                 widoczny od razu podczas przeglądania i konfigurowania efektu. -->
+                            <StackPanel Orientation="Horizontal" Spacing="16">
+                                <RadioButton x:Name="IdleModeEffectRadio"
+                                             Content="Efekt WLED"
+                                             GroupName="IdleAmbientMode"
+                                             Checked="IdleModeEffectRadio_Checked" />
+                                <RadioButton x:Name="IdleModePresetRadio"
+                                             Content="Preset WLED"
+                                             GroupName="IdleAmbientMode"
+                                             Checked="IdleModePresetRadio_Checked" />
+                            </StackPanel>
+
+                            <StackPanel x:Name="IdlePresetPanel" Spacing="8" Visibility="Collapsed">
+                                <TextBlock Text="Preset WLED" FontWeight="SemiBold" />
+                                <ComboBox x:Name="IdlePresetComboBox"
+                                          HorizontalAlignment="Stretch"
+                                          PlaceholderText="Wybierz preset lub playlistę"
+                                          ItemsSource="{x:Bind LoadedPresets}"
+                                          DisplayMemberPath="DisplayLabel"
+                                          SelectionChanged="IdlePresetComboBox_SelectionChanged" />
+                                <TextBlock Text="Lista wczytywana automatycznie z urządzenia WLED. Użyj przycisku „Odśwież presety WLED” powyżej, jeśli dodałeś nowy preset w aplikacji webowej."
+                                           Style="{StaticResource SectionSubTextStyle}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <StackPanel x:Name="IdleEffectPanel" Spacing="12">
+                                <TextBlock Text="Efekt"
+                                           FontWeight="SemiBold" />
+                                <ComboBox x:Name="IdleEffectComboBox"
+                                          HorizontalAlignment="Stretch"
+                                          PlaceholderText="Wybierz efekt"
+                                          Style="{StaticResource SettingsComboBoxStyle}"
+                                          SelectionChanged="IdleEffectComboBox_SelectionChanged" />
+                                <TextBlock Text="Animacja lub kolor wyświetlany podczas bezczynności."
+                                           Style="{StaticResource SectionSubTextStyle}" />
+
+                                <TextBlock Text="Paleta kolorów"
+                                           FontWeight="SemiBold" />
+                                <ComboBox x:Name="IdlePaletteComboBox"
+                                          HorizontalAlignment="Stretch"
+                                          PlaceholderText="Wybierz paletę"
+                                          Style="{StaticResource SettingsComboBoxStyle}"
+                                          SelectionChanged="IdlePaletteComboBox_SelectionChanged" />
+                                <TextBlock Text="Zestaw kolorów używany przez efekty gradientowe (ignorowane przez efekty jednokolorowe)."
+                                           Style="{StaticResource SectionSubTextStyle}" />
+
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Szybkość animacji"
+                                               FontWeight="SemiBold"
+                                               VerticalAlignment="Center" />
+                                    <TextBlock x:Name="IdleSpeedValueText"
+                                               Grid.Column="1"
+                                               VerticalAlignment="Center"
+                                               Text="128" />
+                                </Grid>
+                                <Slider x:Name="IdleSpeedSlider"
+                                        Minimum="0"
+                                        Maximum="255"
+                                        ValueChanged="IdleSpeedSlider_ValueChanged" />
+                                <TextBlock Text="Jak szybko zmienia się animacja efektu (0 = bardzo wolno, 255 = bardzo szybko)."
+                                           Style="{StaticResource SectionSubTextStyle}" />
+
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Intensywność"
+                                               FontWeight="SemiBold"
+                                               VerticalAlignment="Center" />
+                                    <TextBlock x:Name="IdleIntensityValueText"
+                                               Grid.Column="1"
+                                               VerticalAlignment="Center"
+                                               Text="128" />
+                                </Grid>
+                                <Slider x:Name="IdleIntensitySlider"
+                                        Minimum="0"
+                                        Maximum="255"
+                                        ValueChanged="IdleIntensitySlider_ValueChanged" />
+                                <TextBlock Text="Nasycenie/wyrazistość efektu - znaczenie zależy od wybranego efektu."
+                                           Style="{StaticResource SectionSubTextStyle}" />
+
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Jasność"
+                                               FontWeight="SemiBold"
+                                               VerticalAlignment="Center" />
+                                    <TextBlock x:Name="IdleBrightnessValueText"
+                                               Grid.Column="1"
+                                               VerticalAlignment="Center"
+                                               Text="128" />
+                                </Grid>
+                                <Slider x:Name="IdleBrightnessSlider"
+                                        Minimum="1"
+                                        Maximum="255"
+                                        ValueChanged="IdleBrightnessSlider_ValueChanged" />
+                                <TextBlock Text="Ogólna jasność diod podczas bezczynności."
+                                           Style="{StaticResource SectionSubTextStyle}" />
+
+                                <TextBlock Text="Kolor podstawowy"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Text="Główny kolor używany przez efekt (dla efektów jednokolorowych to jedyny używany kolor)."
+                                           Style="{StaticResource SectionSubTextStyle}" />
+                                <controls:ColorPicker x:Name="IdlePrimaryColorPicker"
+                                                      ColorChanged="IdlePrimaryColorPicker_ColorChanged"
+                                                      IsAlphaEnabled="False"
+                                                      IsMoreButtonVisible="False" />
+
+                                <TextBlock Text="Kolor dodatkowy"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Text="Drugi kolor używany w efektach dwukolorowych/gradientowych. Ignorowany przez wiele efektów jednokolorowych."
+                                           Style="{StaticResource SectionSubTextStyle}" />
+                                <controls:ColorPicker x:Name="IdleSecondaryColorPicker"
+                                                      ColorChanged="IdleSecondaryColorPicker_ColorChanged"
+                                                      IsAlphaEnabled="False"
+                                                      IsMoreButtonVisible="False" />
+                            </StackPanel>
+
                             <preview:LedStripPreviewControl x:Name="IdlePreviewControl" Margin="0,4,0,4" />
-
-                            <TextBlock Text="Paleta kolorów"
-                                       FontWeight="SemiBold" />
-                            <ComboBox x:Name="IdlePaletteComboBox"
-                                      HorizontalAlignment="Stretch"
-                                      PlaceholderText="Wybierz paletę"
-                                      Style="{StaticResource SettingsComboBoxStyle}"
-                                      SelectionChanged="IdlePaletteComboBox_SelectionChanged" />
-                            <TextBlock Text="Zestaw kolorów używany przez efekty gradientowe (ignorowane przez efekty jednokolorowe)."
-                                       Style="{StaticResource SectionSubTextStyle}" />
-
-                            <Grid ColumnSpacing="12">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Szybkość animacji"
-                                           FontWeight="SemiBold"
-                                           VerticalAlignment="Center" />
-                                <TextBlock x:Name="IdleSpeedValueText"
-                                           Grid.Column="1"
-                                           VerticalAlignment="Center"
-                                           Text="128" />
-                            </Grid>
-                            <Slider x:Name="IdleSpeedSlider"
-                                    Minimum="0"
-                                    Maximum="255"
-                                    ValueChanged="IdleSpeedSlider_ValueChanged" />
-                            <TextBlock Text="Jak szybko zmienia się animacja efektu (0 = bardzo wolno, 255 = bardzo szybko)."
-                                       Style="{StaticResource SectionSubTextStyle}" />
-
-                            <Grid ColumnSpacing="12">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Intensywność"
-                                           FontWeight="SemiBold"
-                                           VerticalAlignment="Center" />
-                                <TextBlock x:Name="IdleIntensityValueText"
-                                           Grid.Column="1"
-                                           VerticalAlignment="Center"
-                                           Text="128" />
-                            </Grid>
-                            <Slider x:Name="IdleIntensitySlider"
-                                    Minimum="0"
-                                    Maximum="255"
-                                    ValueChanged="IdleIntensitySlider_ValueChanged" />
-                            <TextBlock Text="Nasycenie/wyrazistość efektu - znaczenie zależy od wybranego efektu."
-                                       Style="{StaticResource SectionSubTextStyle}" />
-
-                            <Grid ColumnSpacing="12">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Jasność"
-                                           FontWeight="SemiBold"
-                                           VerticalAlignment="Center" />
-                                <TextBlock x:Name="IdleBrightnessValueText"
-                                           Grid.Column="1"
-                                           VerticalAlignment="Center"
-                                           Text="128" />
-                            </Grid>
-                            <Slider x:Name="IdleBrightnessSlider"
-                                    Minimum="1"
-                                    Maximum="255"
-                                    ValueChanged="IdleBrightnessSlider_ValueChanged" />
-                            <TextBlock Text="Ogólna jasność diod podczas bezczynności."
-                                       Style="{StaticResource SectionSubTextStyle}" />
-
-                            <TextBlock Text="Kolor podstawowy"
-                                       FontWeight="SemiBold" />
-                            <TextBlock Text="Główny kolor używany przez efekt (dla efektów jednokolorowych to jedyny używany kolor)."
-                                       Style="{StaticResource SectionSubTextStyle}" />
-                            <controls:ColorPicker x:Name="IdlePrimaryColorPicker"
-                                                  ColorChanged="IdlePrimaryColorPicker_ColorChanged"
-                                                  IsAlphaEnabled="False"
-                                                  IsMoreButtonVisible="False" />
-
-                            <TextBlock Text="Kolor dodatkowy"
-                                       FontWeight="SemiBold" />
-                            <TextBlock Text="Drugi kolor używany w efektach dwukolorowych/gradientowych. Ignorowany przez wiele efektów jednokolorowych."
-                                       Style="{StaticResource SectionSubTextStyle}" />
-                            <controls:ColorPicker x:Name="IdleSecondaryColorPicker"
-                                                  ColorChanged="IdleSecondaryColorPicker_ColorChanged"
-                                                  IsAlphaEnabled="False"
-                                                  IsMoreButtonVisible="False" />
                         </StackPanel>
                     </StackPanel>
                 </Border>

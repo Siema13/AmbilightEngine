@@ -11,6 +11,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using WinRT;
 using WinRT.Interop;
+using AmbilightEngine.Views;
 
 namespace AmbilightEngine
 {
@@ -18,6 +19,7 @@ namespace AmbilightEngine
     {
         private readonly StartupRegistrationService startupRegistrationService = new();
         public GlobalHotkeyService? GlobalHotkeyService { get; private set; }
+        public OsdNotificationService? OsdService { get; private set; }
         private MicaController? micaController;
         private SystemBackdropConfiguration? backdropConfiguration;
         private bool isExitRequested;
@@ -95,6 +97,8 @@ namespace AmbilightEngine
             // jest już prawidłowy w tym miejscu. SetWindowSubclass (comctl32) współistnieje
             // bezpiecznie z WtsSessionMessageMonitor na tym samym HWND (różne SubclassId).
             InitializeGlobalHotkeys();
+
+            InitializeOsdService();
             _ = InitializeWledConnectionOnStartupAsync(hwnd);
 
             // NOWOŚĆ: przy pierwszym uruchomieniu aplikacji (flaga HasCompletedCalibrationOnboarding
@@ -103,7 +107,18 @@ namespace AmbilightEngine
             // odpina się od Activated natychmiast po pierwszym wywołaniu.
             Activated += MainWindow_FirstActivationCheckOnboarding;
         }
-
+        private void InitializeOsdService()
+        {
+            try
+            {
+                OsdService = new OsdNotificationService(Settings, DispatcherQueue);
+                System.Diagnostics.Debug.WriteLine("[DIAG] OsdNotificationService zainicjalizowany.");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DIAG] Nie udało się zainicjalizować OsdNotificationService: {ex.Message}");
+            }
+        }
         private async System.Threading.Tasks.Task InitializeWledConnectionOnStartupAsync(IntPtr hwnd)
         {
             try
@@ -537,6 +552,7 @@ namespace AmbilightEngine
             startupRegistrationService.Apply(Settings.StartWithWindows, Settings.StartMinimizedToTray);
             EngineHost.Dispose();
             micaController?.Dispose();
+            OsdService?.Dispose();
         }
 
         private void InitializeGlobalHotkeys()
@@ -561,30 +577,95 @@ namespace AmbilightEngine
             {
                 try
                 {
+                    // NOWOŚĆ: aktywacja profilu aplikacji przez globalny skrót. Sprawdzane
+                    // przed switch, bo ActionId profili jest dynamiczny (profile.activate:{Id})
+                    // i nie należy do zamkniętego zbioru stałych HotkeyActionIds.
+                    if (HotkeyActionIds.TryGetProfileId(actionId, out string profileId))
+                    {
+                        Core.Models.AppProfile? profile = Settings.Profiles.Find(p =>
+                            string.Equals(p.ProfileId, profileId, StringComparison.Ordinal));
+
+                        if (profile is null)
+                        {
+                            System.Diagnostics.Debug.WriteLine(
+                                $"[DIAG] Skrót profilu: nie znaleziono profilu o ProfileId='{profileId}'.");
+
+                            return;
+                        }
+
+                        EngineHost.ActivateProfile(profile, "skrót globalny");
+
+                        OsdService?.Show(
+                            "\uE8FC",
+                            "Profil aktywny",
+                            profile.DisplayName);
+
+                        return;
+                    }
+
                     switch (actionId)
                     {
                         case HotkeyActionIds.ToggleEngine:
+                            bool wasCapturing = EngineHost.IsCapturing;
                             await ToggleAmbilightAsync();
+
+                            OsdService?.Show(
+                                wasCapturing ? "\uE71A" : "\uE768",
+                                wasCapturing ? "Ambilight zatrzymany" : "Ambilight uruchomiony");
                             break;
 
                         case HotkeyActionIds.CycleMode:
-                            await EngineHost.CycleDisplayModeAsync();
+                            bool cycled = await EngineHost.CycleDisplayModeAsync();
+
+                            if (cycled)
+                            {
+                                string modeLabel = Settings.ActiveDisplayMode switch
+                                {
+                                    AmbilightEngine.Core.SystemState.DisplayMode.StaticColor => "Static Color",
+                                    AmbilightEngine.Core.SystemState.DisplayMode.WledEffects => "WLED Effects",
+                                    _ => "Video Sync"
+                                };
+
+                                OsdService?.Show("\uE7F4", "Tryb wyświetlania", modeLabel);
+                            }
                             break;
 
                         case HotkeyActionIds.Blackout:
-                            await EngineHost.ToggleBlackoutAsync();
+                            bool blackoutToggled = await EngineHost.ToggleBlackoutAsync();
+
+                            if (blackoutToggled)
+                            {
+                                OsdService?.Show("\uE7E8", "Blackout");
+                            }
                             break;
 
                         case HotkeyActionIds.CycleWhitePreset:
-                            EngineHost.CycleWhitePreset();
+                            int kelvin = EngineHost.CycleWhitePreset();
+
+                            if (kelvin > 0)
+                            {
+                                OsdService?.Show("\uE706", "Temperatura światła", $"{kelvin}K");
+                            }
                             break;
+
                         case HotkeyActionIds.BrightnessUp:
-                            await EngineHost.IncreaseMasterBrightnessAsync();
+                            bool increased = await EngineHost.IncreaseMasterBrightnessAsync();
+
+                            if (increased)
+                            {
+                                OsdService?.Show("\uE706", "Jasność główna", $"{Settings.MasterBrightnessPercent}%");
+                            }
                             break;
 
                         case HotkeyActionIds.BrightnessDown:
-                            await EngineHost.DecreaseMasterBrightnessAsync();
+                            bool decreased = await EngineHost.DecreaseMasterBrightnessAsync();
+
+                            if (decreased)
+                            {
+                                OsdService?.Show("\uE706", "Jasność główna", $"{Settings.MasterBrightnessPercent}%");
+                            }
                             break;
+
                         default:
                             System.Diagnostics.Debug.WriteLine($"[DIAG] Nieobsłużona akcja skrótu: {actionId}");
                             break;

@@ -49,7 +49,7 @@ namespace AmbilightEngine.Pages
             UpdateThemePresetButtons();
             UpdateBackgroundStyleButtons();
             UpdateColorPreviews();
-
+            OsdEnabledSwitch.IsOn = mainWindow.Settings.OsdEnabled;
             isInitializing = false;
         }
 
@@ -104,7 +104,16 @@ namespace AmbilightEngine.Pages
             UpdateThemePresetButtons();
         }
 
+        private void OsdEnabledSwitch_Toggled(object sender, RoutedEventArgs e)
+        {
+            if (mainWindow is null || isInitializing)
+            {
+                return;
+            }
 
+            mainWindow.Settings.OsdEnabled = OsdEnabledSwitch.IsOn;
+            mainWindow.SettingsService.Save(mainWindow.Settings);
+        }
         private DispatcherTimer? glassOpacityDebounceTimer;
 
         private void GlassOpacitySlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)

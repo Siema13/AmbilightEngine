@@ -9,7 +9,12 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+	  <Compile Remove="Hardware\FlexibleNullableIntConverter.cs" />
 	  <Compile Remove="SystemState\AmbientDisplaySnapshot.cs" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <None Include="Models\FlexibleNullableIntConverter.cs" />
 	</ItemGroup>
 
 	<ItemGroup>

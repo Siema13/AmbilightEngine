@@ -282,7 +282,21 @@
                         </StackPanel>
                     </StackPanel>
                 </Border>
+                <Border Style="{StaticResource CardStyle}">
+                    <StackPanel Spacing="14">
+                        <TextBlock Text="Powiadomienia ekranowe (OSD)"
+                   FontSize="20"
+                   FontWeight="SemiBold" />
 
+                        <TextBlock Text="Krótkie potwierdzenie na ekranie po użyciu skrótu globalnego: zmiana trybu, Blackout, jasność główna, preset bieli lub scena Quick Palette."
+                   Style="{StaticResource SectionSubTextStyle}"
+                   TextWrapping="Wrap" />
+
+                        <ToggleSwitch x:Name="OsdEnabledSwitch"
+                      Header="Pokazuj powiadomienia OSD"
+                      Toggled="OsdEnabledSwitch_Toggled" />
+                    </StackPanel>
+                </Border>
                 <Border Style="{StaticResource CardStyle}">
                     <StackPanel Spacing="10">
                         <TextBlock Text="Informacje"

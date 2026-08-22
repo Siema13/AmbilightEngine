@@ -120,6 +120,7 @@ namespace AmbilightEngine.Pages
             RefreshAllButtonLabels();
             RefreshButtonLabel(HotkeyActionIds.BrightnessUp);
             RefreshButtonLabel(HotkeyActionIds.BrightnessDown);
+            PopulateProfileHotkeys();
         }
 
         private void HotkeysSettingsPage_Unloaded(object sender, RoutedEventArgs e)
@@ -164,7 +165,53 @@ namespace AmbilightEngine.Pages
                 CancelActiveCapture();
             }
         }
+        private void ProfileHotkeyCaptureButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button button || button.Tag is not string profileId)
+            {
+                return;
+            }
 
+            if (mainWindow is null)
+            {
+                return;
+            }
+
+            string actionId = HotkeyActionIds.BuildProfileActionId(profileId);
+
+            if (activeCaptureButton is not null && activeCaptureButton != button)
+            {
+                CancelActiveCapture();
+            }
+
+            activeCaptureButton = button;
+            activeCaptureActionId = actionId;
+
+            button.Content = "Naciśnij kombinację...";
+            ConflictInfoBar.IsOpen = false;
+
+            if (!StartKeyboardCapture())
+            {
+                ShowConflict(
+                    "Nie udało się uruchomić przechwytywania klawiatury. " +
+                    "Spróbuj ponownie albo uruchom aplikację jako administrator.");
+
+                CancelActiveCapture();
+            }
+        }
+
+        private void ProfileClearHotkeyButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button button || button.Tag is not string profileId)
+            {
+                return;
+            }
+
+            string actionId = HotkeyActionIds.BuildProfileActionId(profileId);
+
+            ClearHotkey(actionId);
+            CancelActiveCapture();
+        }
         private bool StartKeyboardCapture()
         {
             if (keyboardHookHandle != IntPtr.Zero)
@@ -345,7 +392,7 @@ namespace AmbilightEngine.Pages
             {
                 ShowConflict(
                     $"Kombinacja {FormatCombination(modifiers, virtualKey)} jest już przypisana do akcji: " +
-                    $"{GetActionDisplayName(conflictingActionId)}.");
+                    $"{GetActionDisplayName(conflictingActionId, mainWindow)}.");
 
                 return;
             }
@@ -539,12 +586,88 @@ namespace AmbilightEngine.Pages
             RefreshButtonLabel(HotkeyActionIds.CycleMode);
             RefreshButtonLabel(HotkeyActionIds.Blackout);
             RefreshButtonLabel(HotkeyActionIds.CycleWhitePreset);
+
+            RefreshAllProfileButtonLabels();
+        }
+
+        private void PopulateProfileHotkeys()
+        {
+            if (mainWindow is null)
+            {
+                return;
+            }
+
+            ProfileHotkeysItemsControl.ItemsSource = mainWindow.Settings.Profiles;
+
+            NoProfilesForHotkeysText.Visibility = mainWindow.Settings.Profiles.Count == 0
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+
+            // Odpinamy ewentualny poprzedni handler, żeby uniknąć wielokrotnej subskrypcji
+            // przy kolejnych wejściach na stronę (Loaded może odpalić się wielokrotnie
+            // dla tego samego ItemsControl, jeśli strona jest cache'owana przez Frame).
+            ProfileHotkeysItemsControl.Loaded -= ProfileHotkeysItemsControl_Loaded;
+            ProfileHotkeysItemsControl.Loaded += ProfileHotkeysItemsControl_Loaded;
+
+            // Fallback: jeśli kontrolka jest już w drzewie wizualnym (np. przy powrocie
+            // na stronę z cache Frame), Loaded może się nie odpalić ponownie - w takim
+            // przypadku odświeżamy z niewielkim opóźnieniem, dając WinUI czas na realizację
+            // kontenerów po zmianie ItemsSource.
+            var fallbackTimer = DispatcherQueue.CreateTimer();
+            fallbackTimer.Interval = TimeSpan.FromMilliseconds(150);
+            fallbackTimer.IsRepeating = false;
+            fallbackTimer.Tick += (_, _) => RefreshAllProfileButtonLabels();
+            fallbackTimer.Start();
+        }
+
+        private void ProfileHotkeysItemsControl_Loaded(object sender, RoutedEventArgs e)
+        {
+            RefreshAllProfileButtonLabels();
+        }
+
+        private void RefreshAllProfileButtonLabels()
+        {
+            if (mainWindow is null)
+            {
+                return;
+            }
+
+            foreach (Core.Models.AppProfile profile in mainWindow.Settings.Profiles)
+            {
+                HotkeyBinding? binding = mainWindow.Settings.Hotkeys.Bindings.Find(item =>
+                    string.Equals(
+                        item.ActionId,
+                        HotkeyActionIds.BuildProfileActionId(profile.ProfileId),
+                        StringComparison.Ordinal));
+
+                profile.AssignedHotkeyLabel = binding?.ToDisplayString() ?? "Brak";
+            }
         }
 
         private void RefreshButtonLabel(string actionId)
         {
             if (mainWindow is null)
             {
+                return;
+            }
+
+            // NOWOŚĆ: akcje profili aktualizują AssignedHotkeyLabel na modelu -
+            // XAML z x:Bind AssignedHotkeyLabel odświeży się sam, bez szukania
+            // Button w drzewie wizualnym (co wcześniej zawodziło przy pierwszym
+            // renderowaniu ItemsControl).
+            if (HotkeyActionIds.TryGetProfileId(actionId, out string profileId))
+            {
+                Core.Models.AppProfile? profile = mainWindow.Settings.Profiles.Find(p =>
+                    string.Equals(p.ProfileId, profileId, StringComparison.Ordinal));
+
+                if (profile is not null)
+                {
+                    HotkeyBinding? profileBinding = mainWindow.Settings.Hotkeys.Bindings.Find(item =>
+                        string.Equals(item.ActionId, actionId, StringComparison.Ordinal));
+
+                    profile.AssignedHotkeyLabel = profileBinding?.ToDisplayString() ?? "Brak";
+                }
+
                 return;
             }
 
@@ -555,12 +678,8 @@ namespace AmbilightEngine.Pages
                 return;
             }
 
-            HotkeyBinding? binding =
-                mainWindow.Settings.Hotkeys.Bindings.Find(
-                    item => string.Equals(
-                        item.ActionId,
-                        actionId,
-                        StringComparison.Ordinal));
+            HotkeyBinding? binding = mainWindow.Settings.Hotkeys.Bindings.Find(item =>
+                string.Equals(item.ActionId, actionId, StringComparison.Ordinal));
 
             button.Content = binding?.ToDisplayString() ?? "Brak";
         }
@@ -572,14 +691,13 @@ namespace AmbilightEngine.Pages
                 HotkeyActionIds.ToggleEngine => ToggleEngineHotkeyButton,
                 HotkeyActionIds.CycleMode => CycleModeHotkeyButton,
                 HotkeyActionIds.Blackout => BlackoutHotkeyButton,
-                HotkeyActionIds.CycleWhitePreset =>
-                    CycleWhitePresetHotkeyButton,
+                HotkeyActionIds.CycleWhitePreset => CycleWhitePresetHotkeyButton,
                 HotkeyActionIds.BrightnessUp => BrightnessUpHotkeyButton,
                 HotkeyActionIds.BrightnessDown => BrightnessDownHotkeyButton,
                 _ => null
             };
         }
-
+        
         private static uint GetCurrentModifierFlags()
         {
             uint modifiers = 0;
@@ -624,25 +742,43 @@ namespace AmbilightEngine.Pages
                 virtualKey: virtualKey).ToDisplayString();
         }
 
-        private static string GetActionDisplayName(string? actionId)
+        private static string GetActionDisplayName(string? actionId, MainWindow? window)
         {
-            return actionId switch
+            switch (actionId)
             {
-                HotkeyActionIds.ToggleEngine =>
-                    "Włącz / wyłącz Video Sync",
+                case HotkeyActionIds.ToggleEngine:
+                    return "Włącz / wyłącz Video Sync";
 
-                HotkeyActionIds.CycleMode =>
-                    "Przełącz tryb wyświetlania",
+                case HotkeyActionIds.CycleMode:
+                    return "Przełącz tryb wyświetlania";
 
-                HotkeyActionIds.Blackout =>
-                    "Blackout",
+                case HotkeyActionIds.Blackout:
+                    return "Blackout";
 
-                HotkeyActionIds.CycleWhitePreset =>
-                    "Temperatura światła białego",
-                HotkeyActionIds.BrightnessUp => "Zwiększ jasność o 5%",
-                HotkeyActionIds.BrightnessDown => "Zmniejsz jasność o 5%",
-                _ => "nieznana akcja"
-            };
+                case HotkeyActionIds.CycleWhitePreset:
+                    return "Temperatura światła białego";
+
+                case HotkeyActionIds.BrightnessUp:
+                    return "Zwiększ jasność o 5%";
+
+                case HotkeyActionIds.BrightnessDown:
+                    return "Zmniejsz jasność o 5%";
+            }
+
+            if (actionId is not null &&
+                HotkeyActionIds.TryGetProfileId(actionId, out string profileId) &&
+                window is not null)
+            {
+                Core.Models.AppProfile? profile = window.Settings.Profiles.Find(p =>
+                    string.Equals(p.ProfileId, profileId, StringComparison.Ordinal));
+
+                if (profile is not null)
+                {
+                    return $"Profil „{profile.DisplayName}”";
+                }
+            }
+
+            return "nieznana akcja";
         }
     }
 }

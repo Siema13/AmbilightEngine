@@ -3,7 +3,8 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:Microsoft.UI.Xaml.Controls"
-    xmlns:preview="using:AmbilightEngine.Controls">
+    xmlns:preview="using:AmbilightEngine.Controls"
+    xmlns:models="using:AmbilightEngine.Core.Models">
 
     <Grid HorizontalAlignment="Stretch" Background="{ThemeResource M3SurfaceContainerBrush}">
 
@@ -221,6 +222,125 @@
                                     IsAlphaEnabled="False"
                                     IsMoreButtonVisible="False" />
                             </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- NOWOŚĆ: Quick Palette - zapisane sceny (tryb + parametry + Master Brightness +
+                         opcjonalny preset bieli), uruchamiane jednym kliknięciem z Dashboardu. -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel Spacing="12">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Text="Quick Palette"
+                                           Style="{StaticResource SectionHeaderTextStyle}"
+                                           VerticalAlignment="Center" />
+
+                                <Button x:Name="SaveSceneButton"
+                                        Grid.Column="1"
+                                        Content="Zapisz bieżącą scenę"
+                                        Click="SaveSceneButton_Click"
+                                        Style="{StaticResource AccentButtonStyle}" />
+                            </Grid>
+
+                            <TextBlock
+                                Text="Zapisane sceny łączą tryb wyświetlania, kolory lub efekt WLED, jasność bazową, Master Brightness i opcjonalny preset bieli. Uruchom scenę jednym kliknięciem."
+                                Style="{StaticResource SectionSubTextStyle}"
+                                TextWrapping="Wrap" />
+
+                            <TextBlock x:Name="NoScenesText"
+                                       Text="Brak zapisanych scen. Skonfiguruj wygląd LED i kliknij „Zapisz bieżącą scenę”."
+                                       Style="{StaticResource SectionSubTextStyle}"
+                                       Visibility="Collapsed" />
+
+                            <ItemsControl x:Name="ScenesItemsControl">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Spacing="8" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="models:SceneProfile">
+                                        <Border
+                                            Background="{ThemeResource M3NavigationPanelBrush}"
+                                            CornerRadius="8"
+                                            Padding="12,10">
+                                            <Grid ColumnSpacing="8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+
+                                                <TextBlock
+                                                    Grid.Column="0"
+                                                    Text="{x:Bind Name}"
+                                                    VerticalAlignment="Center"
+                                                    FontWeight="SemiBold"
+                                                    TextTrimming="CharacterEllipsis" />
+
+                                                <Button
+                                                    Grid.Column="1"
+                                                    Content="Uruchom"
+                                                    Tag="{x:Bind SceneId}"
+                                                    Click="RunSceneButton_Click" />
+
+                                                <Button
+                                                    Grid.Column="2"
+                                                    Content="Usuń"
+                                                    Tag="{x:Bind SceneId}"
+                                                    Click="DeleteSceneButton_Click" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel Spacing="12">
+                            <TextBlock
+            Text="Presety i playlisty WLED"
+            Style="{StaticResource SectionHeaderTextStyle}" />
+
+                            <TextBlock
+            Text="Wybierz zapisany w aplikacji webowej WLED preset albo playlistę. Aktywacja działa niezależnie od trybu wyświetlania Ambilight."
+            Style="{StaticResource SectionSubTextStyle}"
+            TextWrapping="Wrap" />
+
+                            <controls:InfoBar x:Name="PresetsInfoBar"
+                          IsOpen="False"
+                          IsClosable="False"
+                          Severity="Informational"
+                          Title="Presety WLED"
+                          Message="" />
+
+                            <ComboBox x:Name="WledPresetComboBox"
+                  HorizontalAlignment="Stretch"
+                  PlaceholderText="Kliknij „Wczytaj presety”, aby pobrać listę z urządzenia"
+                  DisplayMemberPath="DisplayLabel"
+                  SelectionChanged="WledPresetComboBox_SelectionChanged" />
+
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <Button x:Name="LoadPresetsButton"
+                    Content="Wczytaj presety"
+                    Click="LoadPresetsButton_Click" />
+
+                                <Button x:Name="ActivatePresetButton"
+                    Content="Aktywuj wybrany"
+                    Style="{StaticResource AccentButtonStyle}"
+                    IsEnabled="False"
+                    Click="ActivatePresetButton_Click" />
+                            </StackPanel>
+
+                            <TextBlock x:Name="SelectedPresetDetailsText"
+                   Style="{StaticResource SectionSubTextStyle}"
+                   TextWrapping="Wrap"
+                   Text="" />
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource CardStyle}">

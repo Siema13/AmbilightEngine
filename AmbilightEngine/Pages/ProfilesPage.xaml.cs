@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
+using System.Threading.Tasks;
 using AmbilightEngine.Core.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -14,6 +16,14 @@ namespace AmbilightEngine.Pages
         private MainWindow? mainWindow;
         private ObservableCollection<AppProfile> profiles = new();
         private bool isLivePreviewEnabled;
+        private bool isLoadingWledLists;
+
+        // Listy współdzielone przez wszystkie ComboBox efektów/presetów na stronie -
+        // DefaultEffectComboBox/DefaultPresetComboBox są "źródłem prawdy", a każdy
+        // ComboBox w ItemsControl (lista profili) bindem ElementName pobiera z nich
+        // ItemsSource, więc odświeżenie listy raz aktualizuje wszystkie kontrolki naraz.
+        private List<string> loadedWledEffectNames = new();
+        private List<AmbilightEngine.Core.Models.WledPresetInfo> loadedWledPresets = new();
 
         public ProfilesPage()
         {
@@ -22,7 +32,7 @@ namespace AmbilightEngine.Pages
             Unloaded += ProfilesPage_Unloaded;
         }
 
-        private void ProfilesPage_Loaded(object sender, RoutedEventArgs e)
+        private async void ProfilesPage_Loaded(object sender, RoutedEventArgs e)
         {
             mainWindow = (Application.Current as App)?.MainAppWindow;
             if (mainWindow == null)
@@ -35,6 +45,7 @@ namespace AmbilightEngine.Pages
                 SaveStatusText.Text = "Nie znaleziono głównego okna aplikacji.";
                 profiles = new ObservableCollection<AppProfile>();
                 ProfilesList.ItemsSource = profiles;
+                RefreshHotkeyLabels();
                 UpdateEmptyState();
                 return;
             }
@@ -75,6 +86,97 @@ namespace AmbilightEngine.Pages
             }
 
             UpdateEmptyState();
+
+            // NOWOŚĆ: automatyczne wczytanie list efektów i presetów WLED przy
+            // otwarciu strony, żeby ComboBox-y nie były puste od startu. Przycisk
+            // "Odśwież listy WLED" zostaje jako opcja ręcznego ponownego pobrania
+            // (np. po dodaniu nowego presetu w aplikacji webowej WLED).
+            await RefreshWledListsAsync();
+        }
+
+        private async Task RefreshWledListsAsync()
+        {
+            if (mainWindow == null)
+            {
+                return;
+            }
+
+            isLoadingWledLists = true;
+            RefreshWledListsButton.IsEnabled = false;
+
+            try
+            {
+                List<string> effects = await mainWindow.EngineHost.GetAvailableWledEffectsAsync();
+                loadedWledEffectNames = effects
+                    .Where(name => !string.Equals(name, "RSVD", StringComparison.OrdinalIgnoreCase) &&
+                                   name.Trim() != "-")
+                    .ToList();
+
+                DefaultEffectComboBox.ItemsSource = loadedWledEffectNames;
+
+                var presetService = new AmbilightEngine.Core.Hardware.WledPresetService();
+                loadedWledPresets = await presetService.GetPresetsAsync(mainWindow.Settings.EspIpAddress);
+
+                DefaultPresetComboBox.ItemsSource = loadedWledPresets;
+
+                if (loadedWledEffectNames.Count == 0 && loadedWledPresets.Count == 0)
+                {
+                    ShowInfo(
+                        InfoBarSeverity.Warning,
+                        "WLED niedostępne",
+                        "Nie udało się połączyć z urządzeniem WLED. Sprawdź adres IP i połączenie sieciowe, następnie kliknij „Odśwież listy WLED”.");
+                }
+                else
+                {
+                    ShowInfo(
+                        InfoBarSeverity.Success,
+                        "Listy WLED wczytane",
+                        $"Wczytano {loadedWledEffectNames.Count} efektów i {loadedWledPresets.Count} presetów/playlist z urządzenia WLED.");
+                }
+
+                RestoreSelectedEffectAndPreset();
+            }
+            catch (Exception ex)
+            {
+                ShowInfo(
+                    InfoBarSeverity.Error,
+                    "Błąd wczytywania list WLED",
+                    $"Nie udało się pobrać efektów/presetów z urządzenia: {ex.Message}");
+            }
+            finally
+            {
+                isLoadingWledLists = false;
+                RefreshWledListsButton.IsEnabled = true;
+            }
+        }
+
+        // Po wczytaniu list dopasowuje aktualnie zapisany WledEffectId/WledPresetId
+        // profilu domyślnego do pozycji w ComboBox - bez tego ComboBox pokazywałby
+        // puste pole mimo istniejącej, poprawnej wartości w ustawieniach.
+        private void RestoreSelectedEffectAndPreset()
+        {
+            if (mainWindow == null)
+            {
+                return;
+            }
+
+            AppProfile defaultProfile = mainWindow.Settings.DefaultProfile;
+
+            if (defaultProfile.WledEffectId >= 0 && defaultProfile.WledEffectId < loadedWledEffectNames.Count)
+            {
+                DefaultEffectComboBox.SelectedIndex = defaultProfile.WledEffectId;
+            }
+
+            int defaultPresetIndex = loadedWledPresets.FindIndex(p => p.PresetId == defaultProfile.WledPresetId);
+            if (defaultPresetIndex >= 0)
+            {
+                DefaultPresetComboBox.SelectedIndex = defaultPresetIndex;
+            }
+        }
+
+        private async void RefreshWledListsButton_Click(object sender, RoutedEventArgs e)
+        {
+            await RefreshWledListsAsync();
         }
 
         private void EnsureDefaultProfile()
@@ -264,7 +366,7 @@ namespace AmbilightEngine.Pages
                 mainWindow.Settings.Profiles = new List<AppProfile>(profiles);
                 mainWindow.SettingsService.Save(mainWindow.Settings);
                 mainWindow.EngineHost.RefreshProfileList();
-
+                RefreshHotkeyLabels();
                 SaveStatusText.Text = "Zapisano profile aplikacji oraz profil domyślny.";
                 ShowInfo(
                     InfoBarSeverity.Success,
@@ -354,6 +456,36 @@ namespace AmbilightEngine.Pages
             }
         }
 
+        private void ActionTypeWledPreset_Checked(object sender, RoutedEventArgs e)
+        {
+            if (sender is RadioButton radioButton && radioButton.Tag is AppProfile profile)
+            {
+                profile.ActionType = ProfileActionType.WledPreset;
+                SaveStatusText.Text =
+                    "Zmieniono typ akcji profilu na preset WLED. Zapisz zmiany, aby utrwalić konfigurację.";
+            }
+        }
+
+        // NOWOŚĆ: ComboBox efektu WLED w wierszach profili z listy jest bindowany
+        // SelectedIndex="{Binding WledEffectId, Mode=TwoWay}" - wybór zapisuje się
+        // od razu w modelu bez potrzeby osobnego handlera SelectionChanged.
+
+        // NOWOŚĆ: ComboBox presetu w wierszach profili wymaga własnego handlera,
+        // bo WledPresetInfo.PresetId (nie indeks pozycji) musi trafić do profile.WledPresetId.
+        private void ProfilePresetComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (isLoadingWledLists ||
+                sender is not ComboBox comboBox ||
+                comboBox.Tag is not AppProfile profile ||
+                comboBox.SelectedItem is not AmbilightEngine.Core.Models.WledPresetInfo preset)
+            {
+                return;
+            }
+
+            profile.WledPresetId = preset.PresetId;
+            SaveStatusText.Text = "Zmieniono preset WLED profilu. Zapisz zmiany, aby utrwalić konfigurację.";
+        }
+
         private void DefaultActionTypeImageDsp_Checked(object sender, RoutedEventArgs e)
         {
             if (mainWindow?.Settings.DefaultProfile is not AppProfile profile)
@@ -388,6 +520,42 @@ namespace AmbilightEngine.Pages
             profile.ActionType = ProfileActionType.WledEffect;
             SaveStatusText.Text =
                 "Profil domyślny będzie przywracał efekt WLED. Zapisz zmiany, aby utrwalić konfigurację.";
+        }
+
+        private void DefaultActionTypeWledPreset_Checked(object sender, RoutedEventArgs e)
+        {
+            if (mainWindow?.Settings.DefaultProfile is not AppProfile profile)
+            {
+                return;
+            }
+
+            profile.ActionType = ProfileActionType.WledPreset;
+            SaveStatusText.Text =
+                "Profil domyślny będzie aktywował preset WLED. Zapisz zmiany, aby utrwalić konfigurację.";
+        }
+
+        private void DefaultEffectComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (isLoadingWledLists || mainWindow?.Settings.DefaultProfile is not AppProfile profile ||
+                DefaultEffectComboBox.SelectedIndex < 0)
+            {
+                return;
+            }
+
+            profile.WledEffectId = DefaultEffectComboBox.SelectedIndex;
+            SaveStatusText.Text = "Zmieniono efekt WLED profilu domyślnego. Zapisz zmiany, aby utrwalić konfigurację.";
+        }
+
+        private void DefaultPresetComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (isLoadingWledLists || mainWindow?.Settings.DefaultProfile is not AppProfile profile ||
+                DefaultPresetComboBox.SelectedItem is not AmbilightEngine.Core.Models.WledPresetInfo preset)
+            {
+                return;
+            }
+
+            profile.WledPresetId = preset.PresetId;
+            SaveStatusText.Text = "Zmieniono preset WLED profilu domyślnego. Zapisz zmiany, aby utrwalić konfigurację.";
         }
 
         private void ProfileStaticColorPicker_ColorChanged(ColorPicker sender, ColorChangedEventArgs args)
@@ -436,6 +604,47 @@ namespace AmbilightEngine.Pages
             ProfilesInfoBar.Title = title;
             ProfilesInfoBar.Message = message;
             ProfilesInfoBar.IsOpen = true;
+        }
+
+        private void RefreshHotkeyLabels()
+        {
+            if (mainWindow == null)
+            {
+                return;
+            }
+
+            foreach (AppProfile profile in profiles)
+            {
+                profile.AssignedHotkeyLabel = BuildHotkeyLabelForProfile(profile.ProfileId);
+            }
+
+            if (mainWindow.Settings.DefaultProfile is AppProfile defaultProfile)
+            {
+                defaultProfile.AssignedHotkeyLabel =
+                    BuildHotkeyLabelForProfile(defaultProfile.ProfileId);
+            }
+        }
+
+        private string BuildHotkeyLabelForProfile(string profileId)
+        {
+            const string NoHotkeyLabel = "Brak przypisanego skrótu";
+
+            if (mainWindow?.Settings?.Hotkeys?.Bindings == null || string.IsNullOrWhiteSpace(profileId))
+            {
+                return NoHotkeyLabel;
+            }
+
+            string expectedActionId = $"profile.activate:{profileId}";
+
+            AmbilightEngine.Models.HotkeyBinding? binding = mainWindow.Settings.Hotkeys.Bindings
+                .FirstOrDefault(b => string.Equals(b.ActionId, expectedActionId, StringComparison.Ordinal));
+
+            if (binding == null || !binding.IsAssigned)
+            {
+                return NoHotkeyLabel;
+            }
+
+            return binding.ToDisplayString();
         }
     }
 }

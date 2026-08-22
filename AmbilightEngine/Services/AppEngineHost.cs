@@ -96,6 +96,7 @@ namespace AmbilightEngine
         private CaptureZone[]? currentZones;
 
         private readonly BlackBarDetectionService blackBarDetector = new BlackBarDetectionService();
+        private readonly AmbilightEngine.Core.Hardware.WledPresetService wledPresetService = new AmbilightEngine.Core.Hardware.WledPresetService();
         private BlackBarInsets currentInsets = BlackBarInsets.None;
 
         public bool IsRunning { get; private set; }
@@ -183,11 +184,29 @@ namespace AmbilightEngine
                     SaveAmbientDisplaySnapshot();
 
                     var config = trigger == SystemAmbientTrigger.LockOrSleep
-                    ? settings.LockScreenAmbient
-                    : settings.IdleAmbient;
+                        ? settings.LockScreenAmbient
+                        : settings.IdleAmbient;
 
-                    pipelineManager?.EnterAmbientMode(config);
-                    SetStatus(EngineStatusInfo.Ambient($"Tryb ambientowy: {trigger} (efekt WLED #{config.EffectId}, włączony: {config.IsEnabled})"));
+                    // NOWOŚĆ: jeśli konfiguracja ambient wskazuje na preset/playlistę WLED
+                    // (UsePreset == true), aktywujemy go bezpośrednio przez JSON API zamiast
+                    // wysyłać surowy efekt przez PipelineManager.EnterAmbientMode. EnterAmbientMode
+                    // jest wywoływane w obu przypadkach, bo blokuje wysyłanie ramek Video Sync -
+                    // realny wygląd LED nadpisuje zaraz potem aktywowany preset z WLED.
+                    if (config.UsePreset && config.PresetId > 0)
+                    {
+                        pipelineManager?.EnterAmbientMode(config);
+                        _ = wledPresetService.ActivatePresetAsync(settings.EspIpAddress, config.PresetId);
+
+                        SetStatus(EngineStatusInfo.Ambient(
+                            $"Tryb ambientowy ({trigger}), preset WLED nr {config.PresetId}, włączony={config.IsEnabled}"));
+                    }
+                    else
+                    {
+                        pipelineManager?.EnterAmbientMode(config);
+
+                        SetStatus(EngineStatusInfo.Ambient(
+                            $"Tryb ambientowy ({trigger}), efekt WLED {config.EffectId}, włączony={config.IsEnabled}"));
+                    }
                 };
                 stateWatcher.NormalModeRequested += () =>
                 {
@@ -422,7 +441,24 @@ namespace AmbilightEngine
 
                     return;
                 }
+                // NOWOŚĆ: aktywacja zapisanego w aplikacji webowej WLED presetu albo playlisty.
+                // Wywołanie jest fire-and-forget (podobnie jak ActivateWledEffectAsync powyżej),
+                // żeby ActivateProfile - wywoływane też synchronicznie z ProcessProfileWatcher -
+                // nie blokowało się na żądaniu HTTP do urządzenia WLED.
+                if (profile.ActionType == ProfileActionType.WledPreset)
+                {
+                    _ = wledPresetService.ActivatePresetAsync(settings.EspIpAddress, profile.WledPresetId);
 
+                    pipelineManager?.NotifyDisplayModeChanged();
+                    CurrentProfileName = profileName;
+                    currentProfileId = profile.ProfileId;
+                    SetStatus(EngineStatusInfo.Running(
+                        $"Profil aktywny: {profileName} (preset WLED nr {profile.WledPresetId}), źródło: {triggerSource}."));
+                    ProfileChanged?.Invoke(CurrentProfileName);
+                    Debug.WriteLine(
+                        $"[DIAG] Aktywowano profil WledPreset '{profileName}', preset={profile.WledPresetId}, źródło: {triggerSource}.");
+                    return;
+                }
                 // ImageDsp: przywraca analizę obrazu tylko w już działającej sesji Video Sync.
                 // Nie uruchamiamy tu StartCaptureAsync(), bo automatyczne profile nie mogą
                 // wywoływać systemowego selektora monitora.
@@ -496,7 +532,7 @@ namespace AmbilightEngine
                     $"[DIAG] Błąd ActivateProfile dla '{profileName}': {ex}");
             }
         }
-
+       
         public void PreviewProfile(AppProfile profile)
         {
             if (profile == null)
@@ -1253,7 +1289,17 @@ namespace AmbilightEngine
                 fxId, speed, intensity, paletteId, primaryColor, secondaryColor, brightness,
                 custom1, custom2, custom3, check1, check2, check3, cancellationToken);
         }
+        public async System.Threading.Tasks.Task<bool> PreviewWledPresetAsync(
+    int presetId,
+    System.Threading.CancellationToken cancellationToken = default)
+        {
+            if (presetId <= 0)
+            {
+                return false;
+            }
 
+            return await wledPresetService.ActivatePresetAsync(settings.EspIpAddress, presetId, cancellationToken);
+        }
         public async Task<List<string>> GetAvailableWledEffectsAsync()
         {
             if (ledSender != null)
@@ -1506,6 +1552,56 @@ public Task<bool> DecreaseMasterBrightnessAsync(
                 0,
                 255);
         }
+        /// <summary>
+        /// Przelicza temperaturę barwową (Kelvin, zakres ok. 1000-12000K) na kolor RGB
+        /// światła białego, zgodnie z klasycznym przybliżeniem promieniowania ciała czarnego
+        /// (algorytm Tanner Helland). Wyniki są clampowane do 0-255 per kanał.
+        /// </summary>
+        private static (byte R, byte G, byte B) KelvinToRgb(float kelvin)
+        {
+            float temp = Math.Clamp(kelvin, 1000f, 12000f) / 100f;
+
+            float red;
+            float green;
+            float blue;
+
+            if (temp <= 66f)
+            {
+                red = 255f;
+            }
+            else
+            {
+                red = 329.698727446f * MathF.Pow(temp - 60f, -0.1332047592f);
+            }
+
+            if (temp <= 66f)
+            {
+                green = 99.4708025861f * MathF.Log(temp) - 161.1195681661f;
+            }
+            else
+            {
+                green = 288.1221695283f * MathF.Pow(temp - 60f, -0.0755148492f);
+            }
+
+            if (temp >= 66f)
+            {
+                blue = 255f;
+            }
+            else if (temp <= 19f)
+            {
+                blue = 0f;
+            }
+            else
+            {
+                blue = 138.5177312231f * MathF.Log(temp - 10f) - 305.0447927307f;
+            }
+
+            byte r = (byte)Math.Clamp(red, 0f, 255f);
+            byte g = (byte)Math.Clamp(green, 0f, 255f);
+            byte b = (byte)Math.Clamp(blue, 0f, 255f);
+
+            return (r, g, b);
+        }
         public void Stop()
         {
             try
@@ -1745,30 +1841,9 @@ public Task<bool> DecreaseMasterBrightnessAsync(
         {
             try
             {
-                AppProfile? targetProfile = null;
-
-                if (!string.IsNullOrWhiteSpace(currentProfileId))
-                {
-                    targetProfile = settings.Profiles?.Find(profile =>
-                        string.Equals(
-                            profile.ProfileId,
-                            currentProfileId,
-                            StringComparison.Ordinal));
-                }
-
-                targetProfile ??= settings.DefaultProfile;
-
-                if (targetProfile is null)
-                {
-                    Debug.WriteLine(
-                        "[DIAG] CycleWhitePreset: brak aktywnego profilu do modyfikacji.");
-
-                    return 0;
-                }
-
                 int currentIndex = Array.IndexOf(
                     WhitePresetKelvinCycle,
-                    targetProfile.ColorTemperatureKelvin);
+                    settings.LastWhitePresetKelvin);
 
                 int nextIndex = currentIndex >= 0
                     ? (currentIndex + 1) % WhitePresetKelvinCycle.Length
@@ -1776,19 +1851,19 @@ public Task<bool> DecreaseMasterBrightnessAsync(
 
                 int targetKelvin = WhitePresetKelvinCycle[nextIndex];
 
-                // Zapisujemy docelowy preset od razu, aby kolejny skrót poprawnie wybrał
-                // następny punkt cyklu nawet wtedy, gdy bieżące przejście jeszcze trwa.
-                targetProfile.ColorTemperatureKelvin = targetKelvin;
+                settings.LastWhitePresetKelvin = targetKelvin;
 
-                StartWhitePresetTransition(targetKelvin);
+                (byte r, byte g, byte b) = KelvinToRgb(targetKelvin);
+
+                _ = SetStaticColorWithTransitionAsync(r, g, b);
 
                 SetStatus(
                     EngineStatusInfo.Running(
-                        $"Temperatura bieli: {targetKelvin}K."));
+                        $"Temperatura światła: {targetKelvin}K."));
 
                 Debug.WriteLine(
-                    $"[DIAG] CycleWhitePreset: profil '{targetProfile.DisplayName}' " +
-                    $"-> {targetKelvin}K (płynne przejście).");
+                    $"[DIAG] CycleWhitePreset: -> {targetKelvin}K, RGB({r}, {g}, {b}), " +
+                    "tryb Static Color.");
 
                 return targetKelvin;
             }
@@ -1892,12 +1967,237 @@ public Task<bool> DecreaseMasterBrightnessAsync(
                 }
             }, CancellationToken.None);
         }
+        // ============================================================================
+        // PLIK: AmbilightEngine/AppEngineHost.cs
+        // METODA: wstawić jako nowe publiczne metody, TUŻ PRZED "public void Dispose()"
+        // (czyli zaraz po zamknięciu metody StartWhitePresetTransition).
+        // Nie modyfikuje żadnej istniejącej metody - wyłącznie dodaje trzy nowe.
+        // ============================================================================
+
+        /// <summary>
+        /// Zapisuje bieżący stan wyświetlania (tryb + parametry Static Color / WLED Effect +
+        /// Master Brightness + opcjonalny preset bieli aktywnego profilu) jako nazwaną scenę
+        /// Quick Palette. Nie modyfikuje samego wyświetlania - to czysty zrzut do settings.Scenes.
+        /// </summary>
+        public SceneProfile SaveCurrentScene(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                throw new ArgumentException("Nazwa sceny nie może być pusta.", nameof(name));
+            }
+
+            // Preset bieli jest opcjonalny - odczytujemy go z aktualnie aktywnego profilu
+            // (currentProfileId) lub z DefaultProfile, tą samą ścieżką co CycleWhitePreset,
+            // żeby scena zapamiętała rzeczywistą temperaturę barwową w momencie zapisu.
+            int? colorTemperatureKelvin = null;
+
+            AppProfile? activeProfile = null;
+
+            if (!string.IsNullOrWhiteSpace(currentProfileId))
+            {
+                activeProfile = settings.Profiles?.Find(profile =>
+                    string.Equals(profile.ProfileId, currentProfileId, StringComparison.Ordinal));
+            }
+
+            activeProfile ??= settings.DefaultProfile;
+
+            if (activeProfile is not null)
+            {
+                colorTemperatureKelvin = activeProfile.ColorTemperatureKelvin;
+            }
+
+            var scene = new SceneProfile
+            {
+                Name = name.Trim(),
+                Mode = settings.ActiveDisplayMode,
+
+                StaticColorR = settings.StaticColorR,
+                StaticColorG = settings.StaticColorG,
+                StaticColorB = settings.StaticColorB,
+
+                WledEffectId = settings.LastWledEffectId,
+                WledPaletteId = settings.LastWledPaletteId,
+                WledSpeed = settings.LastWledSpeed,
+                WledIntensity = settings.LastWledIntensity,
+                WledBrightness = settings.LastWledBrightness,
+
+                WledCustom1 = settings.LastWledCustom1,
+                WledCustom2 = settings.LastWledCustom2,
+                WledCustom3 = settings.LastWledCustom3,
+
+                WledCheck1 = settings.LastWledCheck1,
+                WledCheck2 = settings.LastWledCheck2,
+                WledCheck3 = settings.LastWledCheck3,
+
+                WledPrimaryColorR = settings.LastWledPrimaryColorR,
+                WledPrimaryColorG = settings.LastWledPrimaryColorG,
+                WledPrimaryColorB = settings.LastWledPrimaryColorB,
+
+                WledSecondaryColorR = settings.LastWledSecondaryColorR,
+                WledSecondaryColorG = settings.LastWledSecondaryColorG,
+                WledSecondaryColorB = settings.LastWledSecondaryColorB,
+
+                MasterBrightnessPercent = settings.MasterBrightnessPercent,
+                ColorTemperatureKelvin = colorTemperatureKelvin
+            };
+
+            settings.Scenes.Add(scene);
+
+            Debug.WriteLine(
+                $"[DIAG] SaveCurrentScene: zapisano scenę '{scene.Name}' (tryb={scene.Mode}, " +
+                $"masterBrightness={scene.MasterBrightnessPercent}%, kelvin={scene.ColorTemperatureKelvin?.ToString() ?? "brak"}).");
+
+            return scene;
+        }
+
+        /// <summary>
+        /// Usuwa zapisaną scenę Quick Palette po SceneId. Nie wpływa na bieżące wyświetlanie LED -
+        /// wyłącznie na listę zapisanych scen w ustawieniach.
+        /// </summary>
+        public bool DeleteScene(string sceneId)
+        {
+            if (string.IsNullOrWhiteSpace(sceneId) || settings.Scenes is null)
+            {
+                return false;
+            }
+
+            int removedCount = settings.Scenes.RemoveAll(scene =>
+                string.Equals(scene.SceneId, sceneId, StringComparison.Ordinal));
+
+            if (removedCount > 0)
+            {
+                Debug.WriteLine($"[DIAG] DeleteScene: usunięto scenę o SceneId='{sceneId}'.");
+                return true;
+            }
+
+            Debug.WriteLine($"[DIAG] DeleteScene: nie znaleziono sceny o SceneId='{sceneId}'.");
+            return false;
+        }
+
+        /// <summary>
+        /// Przywraca zapisaną scenę Quick Palette na diodach LED. Reużywa istniejących, płynnych
+        /// ścieżek przejścia (ApplyVideoSyncWithTransitionAsync / SetStaticColorWithTransitionAsync /
+        /// ActivateWledEffectAsync) - nie tworzy żadnego nowego mechanizmu wysyłania ramek ani DDP,
+        /// żeby zachować spójność z fade w PipelineManager. Na końcu aplikuje Master Brightness
+        /// zapisany w scenie oraz - jeśli scena go zawiera - preset temperatury bieli.
+        /// </summary>
+        public async Task<bool> ApplySceneAsync(
+            SceneProfile scene,
+            CancellationToken cancellationToken = default)
+        {
+            if (scene is null)
+            {
+                return false;
+            }
+
+            if (!IsRunning || ledSender is null)
+            {
+                Debug.WriteLine($"[DIAG] ApplySceneAsync: pominięto scenę '{scene.Name}', brak połączenia z WLED.");
+                return false;
+            }
+
+            try
+            {
+                bool modeApplied;
+
+                switch (scene.Mode)
+                {
+                    case DisplayMode.StaticColor:
+                        modeApplied = await SetStaticColorWithTransitionAsync(
+                            scene.StaticColorR,
+                            scene.StaticColorG,
+                            scene.StaticColorB,
+                            cancellationToken);
+                        break;
+
+                    case DisplayMode.WledEffects:
+                        modeApplied = await ActivateWledEffectAsync(
+                            scene.WledEffectId,
+                            scene.WledSpeed,
+                            scene.WledIntensity,
+                            scene.WledPaletteId,
+                            (scene.WledPrimaryColorR, scene.WledPrimaryColorG, scene.WledPrimaryColorB),
+                            (scene.WledSecondaryColorR, scene.WledSecondaryColorG, scene.WledSecondaryColorB),
+                            scene.WledBrightness,
+                            scene.WledCustom1,
+                            scene.WledCustom2,
+                            scene.WledCustom3,
+                            scene.WledCheck1,
+                            scene.WledCheck2,
+                            scene.WledCheck3,
+                            cancellationToken);
+
+                        pipelineManager?.NotifyDisplayModeChanged();
+                        break;
+
+                    case DisplayMode.VideoSync:
+                    default:
+                        if (!IsCapturing || pipelineManager is null)
+                        {
+                            Debug.WriteLine(
+                                $"[DIAG] ApplySceneAsync: scena '{scene.Name}' wymaga Video Sync, " +
+                                "ale przechwytywanie nie jest aktywne.");
+
+                            return false;
+                        }
+
+                        modeApplied = await ApplyVideoSyncWithTransitionAsync(cancellationToken);
+                        break;
+                }
+
+                if (!modeApplied)
+                {
+                    Debug.WriteLine($"[DIAG] ApplySceneAsync: nie udało się zastosować trybu dla sceny '{scene.Name}'.");
+                    return false;
+                }
+
+                // Preset bieli jest opcjonalny - jeśli scena go nie zawiera, nie dotykamy
+                // bieżącej temperatury barwowej aktywnego profilu.
+                if (scene.ColorTemperatureKelvin.HasValue)
+                {
+                    settings.LastWhitePresetKelvin = scene.ColorTemperatureKelvin.Value;
+
+                    (byte kelvinR, byte kelvinG, byte kelvinB) = KelvinToRgb(scene.ColorTemperatureKelvin.Value);
+
+                    // Scena z zapisaną temperaturą bieli zawsze reprezentuje światło Static Color -
+                    // ta sama konwersja Kelvin->RGB co CycleWhitePreset, żeby zachować spójność
+                    // między obiema ścieżkami sterowania ciepłotą światła.
+                    await SetStaticColorWithTransitionAsync(kelvinR, kelvinG, kelvinB, cancellationToken);
+
+                    Debug.WriteLine(
+                        $"[DIAG] ApplySceneAsync: preset bieli sceny '{scene.Name}' " +
+                        $"-> {scene.ColorTemperatureKelvin.Value}K, RGB({kelvinR}, {kelvinG}, {kelvinB}).");
+                }
+
+                // Master Brightness zapisany w scenie jest stosowany na końcu, po ustawieniu trybu,
+                // żeby SetMasterBrightnessPercentAsync operowało już na docelowym trybie wyświetlania.
+                await SetMasterBrightnessPercentAsync(scene.MasterBrightnessPercent, cancellationToken);
+
+                SetStatus(EngineStatusInfo.Running($"Scena aktywna: {scene.Name}."));
+
+                Debug.WriteLine(
+                    $"[DIAG] ApplySceneAsync: zastosowano scenę '{scene.Name}' " +
+                    $"(tryb={scene.Mode}, masterBrightness={scene.MasterBrightnessPercent}%).");
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[DIAG] ApplySceneAsync: błąd podczas stosowania sceny '{scene.Name}': {ex}");
+
+                SetStatus(EngineStatusInfo.Error(
+                    $"Nie udało się zastosować sceny „{scene.Name}”: {ex.Message}"));
+
+                return false;
+            }
+        }
+
         public void Dispose()
         {
             Stop();
         }
+      
 
-       
     }
 
 }

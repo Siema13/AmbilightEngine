@@ -1,5 +1,5 @@
 ﻿using System.Collections.Generic;
-
+using System;
 namespace AmbilightEngine.Models
 {
     /// <summary>
@@ -14,6 +14,34 @@ namespace AmbilightEngine.Models
         public const string BrightnessDown = "brightness.down";
         public const string Blackout = "engine.blackout";
         public const string CycleWhitePreset = "whitepoint.cycle";
+
+        // NOWOŚĆ: prefiks dla dynamicznych akcji aktywacji konkretnego profilu aplikacji.
+        // Pełny ActionId ma format "profile.activate:{ProfileId}" - dzięki temu liczba
+        // profili może się swobodnie zmieniać, bez potrzeby dodawania nowych stałych
+        // ani modyfikowania GlobalHotkeyService (który operuje wyłącznie na string ActionId).
+        public const string ProfileActivatePrefix = "profile.activate:";
+
+        public static string BuildProfileActionId(string profileId)
+        {
+            return ProfileActivatePrefix + profileId;
+        }
+
+        /// <summary>
+        /// Sprawdza, czy podany ActionId to dynamiczna akcja aktywacji profilu, i jeśli tak,
+        /// zwraca w profileId oryginalny AppProfile.ProfileId zakodowany w tym identyfikatorze.
+        /// </summary>
+        public static bool TryGetProfileId(string actionId, out string profileId)
+        {
+            if (!string.IsNullOrEmpty(actionId) &&
+                actionId.StartsWith(ProfileActivatePrefix, StringComparison.Ordinal))
+            {
+                profileId = actionId.Substring(ProfileActivatePrefix.Length);
+                return !string.IsNullOrWhiteSpace(profileId);
+            }
+
+            profileId = string.Empty;
+            return false;
+        }
     }
 
     /// <summary>

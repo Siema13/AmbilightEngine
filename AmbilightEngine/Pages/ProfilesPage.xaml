@@ -32,7 +32,7 @@
                 <TextBlock Text="Profile aplikacji"
                            FontSize="24"
                            FontWeight="Bold" />
-                <TextBlock Text="Twórz osobne profile i przypisuj je do konkretnych aplikacji. Możesz zmieniać parametry Video Sync, ustawić stały kolor albo wybrany efekt WLED."
+                <TextBlock Text="Twórz osobne profile i przypisuj je do konkretnych aplikacji. Możesz zmieniać parametry Video Sync, ustawić stały kolor, wybrać efekt WLED albo aktywować zapisany preset lub playlistę WLED."
                            Style="{StaticResource SectionSubTextStyle}"
                            TextWrapping="Wrap" />
             </StackPanel>
@@ -89,6 +89,10 @@
 
                         <Button Content="Zapisz zmiany"
                                 Click="SaveChangesButton_Click" />
+
+                        <Button x:Name="RefreshWledListsButton"
+                                Content="Odśwież listy WLED (efekty/presety)"
+                                Click="RefreshWledListsButton_Click" />
                     </StackPanel>
 
                     <TextBlock x:Name="SaveStatusText"
@@ -191,6 +195,10 @@
                                              GroupName="DefaultProfileAction"
                                              IsChecked="{Binding DefaultProfile.IsActionTypeWledEffect, Mode=OneWay}"
                                              Checked="DefaultActionTypeWledEffect_Checked" />
+                                <RadioButton Content="Preset WLED"
+                                             GroupName="DefaultProfileAction"
+                                             IsChecked="{Binding DefaultProfile.IsActionTypeWledPreset, Mode=OneWay}"
+                                             Checked="DefaultActionTypeWledPreset_Checked" />
                             </StackPanel>
 
                             <StackPanel Spacing="8"
@@ -205,12 +213,12 @@
 
                             <StackPanel Spacing="8"
                                         Visibility="{Binding DefaultProfile.IsActionTypeWledEffect, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                <TextBlock Text="Numer efektu WLED (FX Id)"
+                                <TextBlock Text="Efekt WLED"
                                            FontWeight="SemiBold" />
-                                <NumberBox Minimum="0"
-                                           Maximum="255"
-                                           SpinButtonPlacementMode="Inline"
-                                           Value="{Binding DefaultProfile.WledEffectId, Mode=TwoWay}" />
+                                <ComboBox x:Name="DefaultEffectComboBox"
+                                          HorizontalAlignment="Stretch"
+                                          PlaceholderText="Kliknij „Odśwież listy WLED”, aby pobrać efekty z urządzenia"
+                                          SelectionChanged="DefaultEffectComboBox_SelectionChanged" />
 
                                 <TextBlock Text="Prędkość efektu"
                                            FontWeight="SemiBold" />
@@ -225,6 +233,20 @@
                                         Maximum="255"
                                         StepFrequency="1"
                                         Value="{Binding DefaultProfile.WledEffectIntensity, Mode=TwoWay}" />
+                            </StackPanel>
+
+                            <StackPanel Spacing="8"
+                                        Visibility="{Binding DefaultProfile.IsActionTypeWledPreset, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock Text="Preset lub playlista WLED"
+                                           FontWeight="SemiBold" />
+                                <ComboBox x:Name="DefaultPresetComboBox"
+                                          HorizontalAlignment="Stretch"
+                                          PlaceholderText="Kliknij „Odśwież listy WLED”, aby pobrać presety z urządzenia"
+                                          DisplayMemberPath="DisplayLabel"
+                                          SelectionChanged="DefaultPresetComboBox_SelectionChanged" />
+                                <TextBlock Text="Lista wczytywana bezpośrednio z aplikacji webowej WLED (zakładka Presets)."
+                                           Style="{StaticResource SectionSubTextStyle}"
+                                           TextWrapping="Wrap" />
                             </StackPanel>
                         </StackPanel>
                     </Border>
@@ -420,6 +442,19 @@
                                             <TextBlock Text="Ustawienia tego profilu zostaną aktywowane po wykryciu wskazanego procesu."
                                                        Style="{StaticResource SectionSubTextStyle}"
                                                        TextWrapping="Wrap" />
+
+                                            <StackPanel Orientation="Horizontal"
+                                                        Spacing="6"
+                                                        Margin="0,4,0,0">
+                                                <FontIcon Glyph="&#xE765;"
+                                                          FontSize="12"
+                                                          Opacity="0.7"
+                                                          VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding AssignedHotkeyLabel}"
+                                                           FontSize="12"
+                                                           Opacity="0.75"
+                                                           VerticalAlignment="Center" />
+                                            </StackPanel>
                                         </StackPanel>
                                         <Button Grid.Column="1"
                                                 Content="Usuń"
@@ -476,7 +511,7 @@
                                             <TextBlock Text="Co ma się dziać po aktywacji"
                                                        FontWeight="SemiBold"
                                                        FontSize="14" />
-                                            <TextBlock Text="Domyślnie profil zmienia parametry obrazu Video Sync. Możesz też wymusić stały kolor LED albo konkretny efekt WLED."
+                                            <TextBlock Text="Domyślnie profil zmienia parametry obrazu Video Sync. Możesz też wymusić stały kolor LED, konkretny efekt WLED, albo aktywować zapisany w aplikacji webowej WLED preset lub playlistę."
                                                        Style="{StaticResource SectionSubTextStyle}"
                                                        TextWrapping="Wrap" />
                                             <StackPanel Orientation="Horizontal"
@@ -496,6 +531,11 @@
                                                              Tag="{Binding}"
                                                              IsChecked="{Binding IsActionTypeWledEffect, Mode=OneWay}"
                                                              Checked="ActionTypeWledEffect_Checked" />
+                                                <RadioButton Content="Preset WLED"
+                                                             GroupName="{Binding ProfileId}"
+                                                             Tag="{Binding}"
+                                                             IsChecked="{Binding IsActionTypeWledPreset, Mode=OneWay}"
+                                                             Checked="ActionTypeWledPreset_Checked" />
                                             </StackPanel>
 
                                             <StackPanel Spacing="8"
@@ -510,12 +550,13 @@
 
                                             <StackPanel Spacing="8"
                                                         Visibility="{Binding IsActionTypeWledEffect, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                                <TextBlock Text="Numer efektu WLED (FX Id)"
+                                                <TextBlock Text="Efekt WLED"
                                                            FontWeight="SemiBold" />
-                                                <NumberBox Minimum="0"
-                                                           Maximum="255"
-                                                           SpinButtonPlacementMode="Inline"
-                                                           Value="{Binding WledEffectId, Mode=TwoWay}" />
+                                                <ComboBox Tag="{Binding}"
+                                                          HorizontalAlignment="Stretch"
+                                                          PlaceholderText="Kliknij „Odśwież listy WLED”, aby pobrać efekty z urządzenia"
+                                                          ItemsSource="{Binding ElementName=DefaultEffectComboBox, Path=ItemsSource}"
+                                                          SelectedIndex="{Binding WledEffectId, Mode=TwoWay}" />
                                                 <TextBlock Text="Prędkość efektu"
                                                            FontWeight="SemiBold" />
                                                 <Slider Minimum="0"
@@ -529,6 +570,21 @@
                                                         StepFrequency="1"
                                                         Value="{Binding WledEffectIntensity, Mode=TwoWay}" />
                                             </StackPanel>
+
+                                            <StackPanel Spacing="8"
+                                                        Visibility="{Binding IsActionTypeWledPreset, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                <TextBlock Text="Preset lub playlista WLED"
+                                                           FontWeight="SemiBold" />
+                                                <ComboBox Tag="{Binding}"
+                                                          HorizontalAlignment="Stretch"
+                                                          PlaceholderText="Kliknij „Odśwież listy WLED”, aby pobrać presety z urządzenia"
+                                                          ItemsSource="{Binding ElementName=DefaultPresetComboBox, Path=ItemsSource}"
+                                                          DisplayMemberPath="DisplayLabel"
+                                                          SelectionChanged="ProfilePresetComboBox_SelectionChanged" />
+                                                <TextBlock Text="Lista wczytywana bezpośrednio z aplikacji webowej WLED (zakładka Presets)."
+                                                           Style="{StaticResource SectionSubTextStyle}"
+                                                           TextWrapping="Wrap" />
+                                            </StackPanel>
                                         </StackPanel>
                                     </Border>
 
@@ -539,7 +595,6 @@
                                             <TextBlock Text="Parametry obrazu"
                                                        FontWeight="SemiBold"
                                                        FontSize="14" />
-
                                             <StackPanel Spacing="6">
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>

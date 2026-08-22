@@ -4,12 +4,15 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using AmbilightEngine.Core.Hardware;
+using AmbilightEngine.Core.Models;
 using AmbilightEngine.Core.SystemState;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using WinRT.Interop;
+using AmbilightEngine.Core.Hardware;
+using AmbilightEngine.Core.Models;
 
 namespace AmbilightEngine.Pages;
 
@@ -18,7 +21,8 @@ public sealed partial class DashboardPage : Page
     private List<string> loadedWledEffects = new();
     private List<string> loadedWledPalettes = new();
     private List<WledEffectMetadata> loadedEffectMetadata = new();
-
+    private readonly WledPresetService presetService = new();
+    private List<WledPresetInfo> loadedPresets = new();
     private List<int> effectIndexMap = new();
     private List<int> paletteIndexMap = new();
 
@@ -83,11 +87,17 @@ public sealed partial class DashboardPage : Page
             MasterBrightnessValueText.Text =
                 $"{mainWindow.Settings.MasterBrightnessPercent}%";
             ApplyDisplayModeToUi(mainWindow.Settings.ActiveDisplayMode);
-
+            RefreshScenesList();
             if (mainWindow.Settings.ActiveDisplayMode == DisplayMode.WledEffects)
             {
                 await LoadWledEffectsAsync();
             }
+            // NOWOŚĆ: presety wczytują się automatycznie przy otwarciu Dashboardu,
+            // niezależnie od aktywnego trybu wyświetlania - użytkownik nie musi już
+            // klikać "Wczytaj presety" przy każdej wizycie na stronie. Przycisk
+            // LoadPresetsButton zostaje jako opcja ręcznego odświeżenia (np. po
+            // dodaniu nowego presetu w aplikacji webowej WLED).
+            await LoadPresetsAutomaticallyAsync();
         }
         finally
         {
@@ -336,7 +346,125 @@ public sealed partial class DashboardPage : Page
     {
         await LoadWledEffectsAsync();
     }
+    private async Task LoadPresetsAutomaticallyAsync()
+    {
+        if (mainWindow is null)
+        {
+            return;
+        }
 
+        try
+        {
+            loadedPresets = await presetService.GetPresetsAsync(mainWindow.Settings.EspIpAddress);
+
+            WledPresetComboBox.ItemsSource = loadedPresets;
+
+            if (loadedPresets.Count > 0)
+            {
+                PresetsInfoBar.Severity = InfoBarSeverity.Success;
+                PresetsInfoBar.Message = $"Wczytano automatycznie {loadedPresets.Count} presetów/playlist z urządzenia WLED.";
+                PresetsInfoBar.IsOpen = true;
+            }
+            // Brak presetów przy automatycznym ładowaniu nie pokazuje błędu - urządzenie
+            // mogło być offline przy starcie aplikacji; użytkownik może kliknąć
+            // "Wczytaj presety" ręcznie, kiedy WLED będzie dostępne.
+        }
+        catch (Exception)
+        {
+            // Cichy fallback - błąd połączenia przy automatycznym ładowaniu nie
+            // powinien przeszkadzać w korzystaniu z reszty Dashboardu.
+        }
+    }
+    private async void LoadPresetsButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (mainWindow is null)
+        {
+            return;
+        }
+
+        LoadPresetsButton.IsEnabled = false;
+        PresetsInfoBar.IsOpen = true;
+        PresetsInfoBar.Severity = InfoBarSeverity.Informational;
+        PresetsInfoBar.Message = "Wczytywanie presetów z urządzenia...";
+
+        try
+        {
+            loadedPresets = await presetService.GetPresetsAsync(mainWindow.Settings.EspIpAddress);
+
+            WledPresetComboBox.ItemsSource = loadedPresets;
+
+            if (loadedPresets.Count == 0)
+            {
+                PresetsInfoBar.Severity = InfoBarSeverity.Warning;
+                PresetsInfoBar.Message = "Nie znaleziono żadnych zapisanych presetów na urządzeniu WLED.";
+            }
+            else
+            {
+                PresetsInfoBar.Severity = InfoBarSeverity.Success;
+                PresetsInfoBar.Message = $"Wczytano {loadedPresets.Count} presetów/playlist z urządzenia WLED.";
+            }
+        }
+        catch (Exception ex)
+        {
+            PresetsInfoBar.Severity = InfoBarSeverity.Error;
+            PresetsInfoBar.Message = $"Błąd podczas komunikacji z WLED: {ex.Message}";
+        }
+        finally
+        {
+            LoadPresetsButton.IsEnabled = true;
+        }
+    }
+
+    private void WledPresetComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (WledPresetComboBox.SelectedItem is not WledPresetInfo selected)
+        {
+            ActivatePresetButton.IsEnabled = false;
+            SelectedPresetDetailsText.Text = string.Empty;
+            return;
+        }
+
+        ActivatePresetButton.IsEnabled = true;
+
+        SelectedPresetDetailsText.Text = selected.IsPlaylist
+            ? $"Playlista: {selected.Playlist!.PresetSequence.Count} kroków, powtórzeń: " +
+              $"{(selected.Playlist.RepeatCount == 0 ? "w kółko" : selected.Playlist.RepeatCount.ToString())}."
+            : $"Preset numer {selected.PresetId}.";
+    }
+
+    private async void ActivatePresetButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (mainWindow is null || WledPresetComboBox.SelectedItem is not WledPresetInfo selected)
+        {
+            return;
+        }
+
+        ActivatePresetButton.IsEnabled = false;
+
+        try
+        {
+            bool success = await presetService.ActivatePresetAsync(
+                mainWindow.Settings.EspIpAddress,
+                selected.PresetId);
+
+            PresetsInfoBar.IsOpen = true;
+
+            if (success)
+            {
+                PresetsInfoBar.Severity = InfoBarSeverity.Success;
+                PresetsInfoBar.Message = $"Aktywowano „{selected.DisplayName}”.";
+            }
+            else
+            {
+                PresetsInfoBar.Severity = InfoBarSeverity.Error;
+                PresetsInfoBar.Message = "Nie udało się aktywować presetu. Urządzenie może być offline.";
+            }
+        }
+        finally
+        {
+            ActivatePresetButton.IsEnabled = true;
+        }
+    }
     private void SetUiBusy(bool isBusy)
     {
         WledEffectComboBox.IsEnabled = !isBusy;
@@ -1044,6 +1172,209 @@ public sealed partial class DashboardPage : Page
         finally
         {
             isApplyingMasterBrightness = false;
+        }
+    }
+    private void RefreshScenesList()
+    {
+        if (mainWindow is null)
+        {
+            return;
+        }
+
+        ScenesItemsControl.ItemsSource = null;
+        ScenesItemsControl.ItemsSource = mainWindow.Settings.Scenes;
+
+        NoScenesText.Visibility = mainWindow.Settings.Scenes.Count == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private async void SaveSceneButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (mainWindow is null)
+        {
+            return;
+        }
+
+        var nameTextBox = new TextBox
+        {
+            PlaceholderText = "Np. Gaming, Film wieczorem, Relaks...",
+            MaxLength = 60
+        };
+
+        var saveDialog = new ContentDialog
+        {
+            Title = "Zapisz bieżącą scenę",
+            Content = nameTextBox,
+            PrimaryButtonText = "Zapisz",
+            CloseButtonText = "Anuluj",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = this.XamlRoot
+        };
+
+        // Blokada zapisu pustej nazwy - przycisk "Zapisz" staje się aktywny dopiero,
+        // gdy użytkownik wpisze co najmniej jeden niepusty znak.
+        saveDialog.IsPrimaryButtonEnabled = false;
+
+        nameTextBox.TextChanged += (_, _) =>
+        {
+            saveDialog.IsPrimaryButtonEnabled = !string.IsNullOrWhiteSpace(nameTextBox.Text);
+        };
+
+        ContentDialogResult result = await saveDialog.ShowAsync();
+
+        if (result != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        string sceneName = nameTextBox.Text.Trim();
+
+        if (string.IsNullOrWhiteSpace(sceneName))
+        {
+            return;
+        }
+
+        try
+        {
+            mainWindow.EngineHost.SaveCurrentScene(sceneName);
+            mainWindow.SettingsService.Save(mainWindow.Settings);
+
+            RefreshScenesList();
+
+            StatusInfoBar.IsOpen = true;
+            StatusInfoBar.Severity = InfoBarSeverity.Success;
+            StatusInfoBar.Title = "Quick Palette";
+            StatusInfoBar.Message = $"Zapisano scenę „{sceneName}”.";
+        }
+        catch (Exception ex)
+        {
+            StatusInfoBar.IsOpen = true;
+            StatusInfoBar.Severity = InfoBarSeverity.Error;
+            StatusInfoBar.Title = "Quick Palette";
+            StatusInfoBar.Message = $"Nie udało się zapisać sceny: {ex.Message}";
+        }
+    }
+
+    private async void RunSceneButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (mainWindow is null || sender is not Button button || button.Tag is not string sceneId)
+        {
+            return;
+        }
+
+        SceneProfile? scene = mainWindow.Settings.Scenes.Find(s =>
+            string.Equals(s.SceneId, sceneId, StringComparison.Ordinal));
+
+        if (scene is null)
+        {
+            return;
+        }
+
+        button.IsEnabled = false;
+
+        try
+        {
+            bool applied = await mainWindow.EngineHost.ApplySceneAsync(scene);
+
+            if (applied)
+            {
+                // Odświeżamy stan radiobuttonów/paneli, żeby UI Dashboardu odzwierciedlał
+                // tryb przywrócony przez scenę (np. przełączenie z WLED Effects na Static Color).
+                isLoadingUi = true;
+
+                try
+                {
+                    ApplyDisplayModeToUi(mainWindow.Settings.ActiveDisplayMode);
+
+                    MasterBrightnessSlider.Value = mainWindow.Settings.MasterBrightnessPercent;
+                    MasterBrightnessValueText.Text = $"{mainWindow.Settings.MasterBrightnessPercent}%";
+
+                    if (mainWindow.Settings.ActiveDisplayMode == DisplayMode.StaticColor)
+                    {
+                        StaticColorPicker.Color = Windows.UI.Color.FromArgb(
+                            255,
+                            mainWindow.Settings.StaticColorR,
+                            mainWindow.Settings.StaticColorG,
+                            mainWindow.Settings.StaticColorB);
+                    }
+                }
+                finally
+                {
+                    isLoadingUi = false;
+                }
+
+                mainWindow.SettingsService.Save(mainWindow.Settings);
+
+                StatusInfoBar.IsOpen = true;
+                StatusInfoBar.Severity = InfoBarSeverity.Success;
+                StatusInfoBar.Title = "Quick Palette";
+                StatusInfoBar.Message = $"Uruchomiono scenę „{scene.Name}”.";
+            }
+            else
+            {
+                StatusInfoBar.IsOpen = true;
+                StatusInfoBar.Severity = InfoBarSeverity.Error;
+                StatusInfoBar.Title = "Quick Palette";
+                StatusInfoBar.Message = $"Nie udało się uruchomić sceny „{scene.Name}”.";
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusInfoBar.IsOpen = true;
+            StatusInfoBar.Severity = InfoBarSeverity.Error;
+            StatusInfoBar.Title = "Quick Palette";
+            StatusInfoBar.Message = $"Błąd podczas uruchamiania sceny: {ex.Message}";
+        }
+        finally
+        {
+            button.IsEnabled = true;
+        }
+    }
+
+    private async void DeleteSceneButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (mainWindow is null || sender is not Button button || button.Tag is not string sceneId)
+        {
+            return;
+        }
+
+        SceneProfile? scene = mainWindow.Settings.Scenes.Find(s =>
+            string.Equals(s.SceneId, sceneId, StringComparison.Ordinal));
+
+        if (scene is null)
+        {
+            return;
+        }
+
+        var confirmDialog = new ContentDialog
+        {
+            Title = "Usunąć scenę?",
+            Content = $"Scena „{scene.Name}” zostanie trwale usunięta z Quick Palette.",
+            PrimaryButtonText = "Usuń",
+            CloseButtonText = "Anuluj",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = this.XamlRoot
+        };
+
+        ContentDialogResult result = await confirmDialog.ShowAsync();
+
+        if (result != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        bool removed = mainWindow.EngineHost.DeleteScene(sceneId);
+
+        if (removed)
+        {
+            mainWindow.SettingsService.Save(mainWindow.Settings);
+            RefreshScenesList();
+
+            StatusInfoBar.IsOpen = true;
+            StatusInfoBar.Severity = InfoBarSeverity.Informational;
+            StatusInfoBar.Title = "Quick Palette";
+            StatusInfoBar.Message = $"Usunięto scenę „{scene.Name}”.";
         }
     }
 }

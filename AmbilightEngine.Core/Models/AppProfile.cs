@@ -6,15 +6,17 @@ using System.Runtime.CompilerServices;
 namespace AmbilightEngine.Core.Models
 {
     // Określa, co profil robi po aktywacji: standardowa zmiana parametrów obrazu
-    // (Video Sync), wymuszenie stałego koloru LED, albo wymuszenie konkretnego
-    // efektu WLED. Umożliwia scenariusze typu "gdy uruchamiam TeamSpeak, diody
-    // mają zaświecić stałym niebieskim kolorem", niezależnie od bieżącego trybu
-    // wyświetlania Video Sync.
+    // (Video Sync), wymuszenie stałego koloru LED, wymuszenie konkretnego efektu
+    // WLED, albo aktywacja zapisanego w aplikacji webowej WLED presetu/playlisty.
+    // Umożliwia scenariusze typu "gdy uruchamiam TeamSpeak, diody mają zaświecić
+    // stałym niebieskim kolorem", niezależnie od bieżącego trybu wyświetlania
+    // Video Sync.
     public enum ProfileActionType
     {
         ImageDsp,
         StaticColor,
-        WledEffect
+        WledEffect,
+        WledPreset
     }
 
     public sealed class AppProfile : INotifyPropertyChanged
@@ -57,6 +59,11 @@ namespace AmbilightEngine.Core.Models
         private byte wledSecondaryColorR;
         private byte wledSecondaryColorG;
         private byte wledSecondaryColorB;
+
+        // NOWOŚĆ: numer presetu/playlisty WLED do aktywacji, gdy ActionType == WledPreset.
+        // Odpowiada numerowi widocznemu w aplikacji webowej WLED (zakładka Presets),
+        // np. 3 dla presetu "Startup". Wartość domyślna 0 oznacza "nie wybrano".
+        private int wledPresetId;
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -157,7 +164,7 @@ namespace AmbilightEngine.Core.Models
                     PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsActionTypeImageDsp)));
                     PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsActionTypeStaticColor)));
                     PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsActionTypeWledEffect)));
-
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsActionTypeWledPreset)));
                 }
             }
         }
@@ -246,6 +253,13 @@ namespace AmbilightEngine.Core.Models
             set => SetProperty(ref wledSecondaryColorB, value);
         }
 
+        // NOWOŚĆ: numer presetu/playlisty WLED do aktywacji dla ActionType.WledPreset.
+        public int WledPresetId
+        {
+            get => wledPresetId;
+            set => SetProperty(ref wledPresetId, value);
+        }
+
         // NOWOŚĆ: właściwości pomocnicze tylko do odczytu dla bindowania XAML
         // (RadioButton.IsChecked, StackPanel.Visibility) - unikają migotania/resetu
         // przy recyklingu DataTemplate, bo nie ma tu żadnego SelectedIndex do
@@ -253,8 +267,8 @@ namespace AmbilightEngine.Core.Models
         public bool IsActionTypeImageDsp => ActionType == ProfileActionType.ImageDsp;
         public bool IsActionTypeStaticColor => ActionType == ProfileActionType.StaticColor;
         public bool IsActionTypeWledEffect => ActionType == ProfileActionType.WledEffect;
+        public bool IsActionTypeWledPreset => ActionType == ProfileActionType.WledPreset;
 
-       
         public bool MatchesProcess(string processExeName)
         {
             if (string.IsNullOrWhiteSpace(processExeName) ||
@@ -270,9 +284,9 @@ namespace AmbilightEngine.Core.Models
         }
 
         private bool SetProperty<T>(
-    ref T field,
-    T value,
-    [CallerMemberName] string? propertyName = null)
+            ref T field,
+            T value,
+            [CallerMemberName] string? propertyName = null)
         {
             if (EqualityComparer<T>.Default.Equals(field, value))
             {
@@ -284,6 +298,14 @@ namespace AmbilightEngine.Core.Models
                 this,
                 new PropertyChangedEventArgs(propertyName));
             return true;
+        }
+
+        private string assignedHotkeyLabel = "Brak przypisanego skrótu";
+
+        public string AssignedHotkeyLabel
+        {
+            get => assignedHotkeyLabel;
+            set => SetProperty(ref assignedHotkeyLabel, value);
         }
     }
 }

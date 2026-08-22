@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Threading;
 using System.Threading.Tasks;
 using AmbilightEngine.Core.Capture;
+using AmbilightEngine.Core.Hardware;
+using AmbilightEngine.Core.Models;
 using AmbilightEngine.Core.SystemState;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
@@ -17,20 +20,25 @@ namespace AmbilightEngine.Pages
         private MainWindow? mainWindow;
         private bool isLoadingUi = true;
 
-        // Debounce dla żądań efektu ambientowego, żeby przeciąganie sliderów nie zalewało
-        // WLED requestami HTTP - identyczny mechanizm jak w DashboardPage. Wysyłają PODGLĄD
-        // (PreviewWledEffectAsync) - nie zmieniają aktywnego trybu wyświetlania aplikacji.
+        // Debounce dla żądań efektu/presetu ambientowego, żeby przeciąganie sliderów
+        // nie zalewało WLED requestami HTTP - identyczny mechanizm jak w DashboardPage.
         private DispatcherQueueTimer? lockScreenDebounceTimer;
         private DispatcherQueueTimer? idleDebounceTimer;
         private CancellationTokenSource? lockScreenApplyCts;
         private CancellationTokenSource? idleApplyCts;
         private static readonly TimeSpan EffectDebounceDelay = TimeSpan.FromMilliseconds(150);
 
-        // Ustawiane na true, gdy w trakcie wizyty na tej stronie faktycznie wysłano jakikolwiek
-        // podgląd do WLED - używane przy wyjściu, żeby wiedzieć, czy trzeba przywrócić stan Dashboard.
         private bool hasSentAnyPreview;
 
         private List<MonitorInfoItem> loadedMonitors = new();
+
+        // NOWOŚĆ: lista presetów WLED współdzielona przez obie karty (Ekran blokady
+        // i Bezczynność) - wczytywana automatycznie przy Loaded, bez konieczności
+        // ręcznego klikania. Przycisk "Odśwież presety WLED" pozwala odświeżyć ją
+        // ręcznie po dodaniu nowego presetu bezpośrednio w aplikacji webowej WLED.
+        private readonly WledPresetService presetService = new();
+
+        public ObservableCollection<WledPresetInfo> LoadedPresets { get; } = new();
 
         public SettingsStartupPage()
         {
@@ -86,10 +94,88 @@ namespace AmbilightEngine.Pages
                 IdleBrightnessSlider, IdleBrightnessValueText,
                 IdlePrimaryColorPicker, IdleSecondaryColorPicker);
 
+            LockScreenModePresetRadio.IsChecked = settings.LockScreenAmbient.UsePreset;
+            LockScreenModeEffectRadio.IsChecked = !settings.LockScreenAmbient.UsePreset;
+            LockScreenPresetPanel.Visibility = settings.LockScreenAmbient.UsePreset ? Visibility.Visible : Visibility.Collapsed;
+            LockScreenEffectPanel.Visibility = settings.LockScreenAmbient.UsePreset ? Visibility.Collapsed : Visibility.Visible;
+
+            IdleModePresetRadio.IsChecked = settings.IdleAmbient.UsePreset;
+            IdleModeEffectRadio.IsChecked = !settings.IdleAmbient.UsePreset;
+            IdlePresetPanel.Visibility = settings.IdleAmbient.UsePreset ? Visibility.Visible : Visibility.Collapsed;
+            IdleEffectPanel.Visibility = settings.IdleAmbient.UsePreset ? Visibility.Collapsed : Visibility.Visible;
+
+            // NOWOŚĆ: automatyczne wczytanie listy presetów WLED, PO wypełnieniu list
+            // efektów/palet, żeby oba ComboBoxy (efekt i preset) były gotowe od razu
+            // przy pierwszym wejściu na stronę.
+            await RefreshPresetsAsync();
+
+            // Ustawienie zaznaczenia presetu w ComboBox dopiero PO wczytaniu listy -
+            // wcześniej lista byłaby pusta i SelectedValue nie miałby czego wybrać.
+            SetSelectedPreset(LockScreenPresetComboBox, settings.LockScreenAmbient.PresetId);
+            SetSelectedPreset(IdlePresetComboBox, settings.IdleAmbient.PresetId);
+
             isLoadingUi = false;
             LockScreenPreviewControl.Configure(settings);
             IdlePreviewControl.Configure(settings);
         }
+
+        private async Task RefreshPresetsAsync()
+        {
+            if (mainWindow == null)
+            {
+                return;
+            }
+
+            try
+            {
+                List<WledPresetInfo> presets = await presetService.GetPresetsAsync(mainWindow.Settings.EspIpAddress);
+
+                LoadedPresets.Clear();
+                foreach (WledPresetInfo preset in presets)
+                {
+                    LoadedPresets.Add(preset);
+                }
+
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DIAG] SettingsStartupPage: wczytano {LoadedPresets.Count} presetów WLED.");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DIAG] SettingsStartupPage: błąd wczytywania presetów WLED: {ex.Message}");
+            }
+        }
+
+        private async void RefreshPresetsButton_Click(object sender, RoutedEventArgs e)
+        {
+            int previousLockScreenPresetId = mainWindow?.Settings.LockScreenAmbient.PresetId ?? 0;
+            int previousIdlePresetId = mainWindow?.Settings.IdleAmbient.PresetId ?? 0;
+
+            await RefreshPresetsAsync();
+
+            // Po ręcznym odświeżeniu przywracamy poprzednio wybrany numer presetu
+            // w obu ComboBoxach, jeśli nadal istnieje na wczytanej liście.
+            SetSelectedPreset(LockScreenPresetComboBox, previousLockScreenPresetId);
+            SetSelectedPreset(IdlePresetComboBox, previousIdlePresetId);
+        }
+
+        private static void SetSelectedPreset(ComboBox comboBox, int presetId)
+        {
+            if (presetId <= 0)
+            {
+                return;
+            }
+
+            foreach (object item in comboBox.Items)
+            {
+                if (item is WledPresetInfo preset && preset.PresetId == presetId)
+                {
+                    comboBox.SelectedItem = preset;
+                    return;
+                }
+            }
+        }
+
         private void SettingsStartupPage_Unloaded(object sender, RoutedEventArgs e)
         {
             lockScreenDebounceTimer?.Stop();
@@ -97,10 +183,6 @@ namespace AmbilightEngine.Pages
             lockScreenApplyCts?.Cancel();
             idleApplyCts?.Cancel();
 
-            // Jeśli w trakcie wizyty na tej stronie wysłaliśmy jakikolwiek podgląd do WLED,
-            // a aktywny tryb aplikacji to WledEffects (czyli nic innego nie nadpisuje diod
-            // ciągłym strumieniem DDP), musimy jawnie przywrócić efekt, który faktycznie
-            // powinien grać - inaczej diody zostają "zawieszone" na ostatnio podglądanym efekcie.
             if (hasSentAnyPreview && mainWindow != null &&
                 mainWindow.Settings.ActiveDisplayMode == DisplayMode.WledEffects)
             {
@@ -109,9 +191,9 @@ namespace AmbilightEngine.Pages
                 var secondary = (settings.LastWledSecondaryColorR, settings.LastWledSecondaryColorG, settings.LastWledSecondaryColorB);
 
                 _ = mainWindow.EngineHost.PreviewWledEffectAsync(
-    settings.LastWledEffectId, settings.LastWledSpeed, settings.LastWledIntensity,
-    settings.LastWledPaletteId, primary, secondary, settings.LastWledBrightness,
-    cancellationToken: CancellationToken.None);
+                    settings.LastWledEffectId, settings.LastWledSpeed, settings.LastWledIntensity,
+                    settings.LastWledPaletteId, primary, secondary, settings.LastWledBrightness,
+                    cancellationToken: CancellationToken.None);
             }
         }
 
@@ -209,17 +291,30 @@ namespace AmbilightEngine.Pages
 
         private async Task ApplyLockScreenPreviewAsync(CancellationToken token)
         {
-            if (mainWindow == null || LockScreenEffectComboBox.SelectedIndex < 0) return;
+            if (mainWindow == null) return;
 
             var config = mainWindow.Settings.LockScreenAmbient;
 
             try
             {
-                bool success = await mainWindow.EngineHost.PreviewWledEffectAsync(
-    config.EffectId, config.Speed, config.Intensity, config.PaletteId,
-    (config.PrimaryColorR, config.PrimaryColorG, config.PrimaryColorB),
-    (config.SecondaryColorR, config.SecondaryColorG, config.SecondaryColorB),
-    config.Brightness, cancellationToken: token);
+                bool success;
+
+                if (config.UsePreset)
+                {
+                    if (config.PresetId <= 0) return;
+
+                    success = await mainWindow.EngineHost.PreviewWledPresetAsync(config.PresetId, token);
+                }
+                else
+                {
+                    if (LockScreenEffectComboBox.SelectedIndex < 0) return;
+
+                    success = await mainWindow.EngineHost.PreviewWledEffectAsync(
+                        config.EffectId, config.Speed, config.Intensity, config.PaletteId,
+                        (config.PrimaryColorR, config.PrimaryColorG, config.PrimaryColorB),
+                        (config.SecondaryColorR, config.SecondaryColorG, config.SecondaryColorB),
+                        config.Brightness, cancellationToken: token);
+                }
 
                 if (success) hasSentAnyPreview = true;
             }
@@ -258,17 +353,30 @@ namespace AmbilightEngine.Pages
 
         private async Task ApplyIdlePreviewAsync(CancellationToken token)
         {
-            if (mainWindow == null || IdleEffectComboBox.SelectedIndex < 0) return;
+            if (mainWindow == null) return;
 
             var config = mainWindow.Settings.IdleAmbient;
 
             try
             {
-                bool success = await mainWindow.EngineHost.PreviewWledEffectAsync(
-    config.EffectId, config.Speed, config.Intensity, config.PaletteId,
-    (config.PrimaryColorR, config.PrimaryColorG, config.PrimaryColorB),
-    (config.SecondaryColorR, config.SecondaryColorG, config.SecondaryColorB),
-    config.Brightness, cancellationToken: token);
+                bool success;
+
+                if (config.UsePreset)
+                {
+                    if (config.PresetId <= 0) return;
+
+                    success = await mainWindow.EngineHost.PreviewWledPresetAsync(config.PresetId, token);
+                }
+                else
+                {
+                    if (IdleEffectComboBox.SelectedIndex < 0) return;
+
+                    success = await mainWindow.EngineHost.PreviewWledEffectAsync(
+                        config.EffectId, config.Speed, config.Intensity, config.PaletteId,
+                        (config.PrimaryColorR, config.PrimaryColorG, config.PrimaryColorB),
+                        (config.SecondaryColorR, config.SecondaryColorG, config.SecondaryColorB),
+                        config.Brightness, cancellationToken: token);
+                }
 
                 if (success) hasSentAnyPreview = true;
             }
@@ -278,7 +386,7 @@ namespace AmbilightEngine.Pages
             }
         }
 
-        // ── Karta "Autostart i zasobnik" (bez zmian funkcjonalnych - poza zakresem tej zmiany) ──
+        // ── Karta "Autostart i zasobnik" ──
 
         private void StartWithWindowsCheckBox_Checked(object sender, RoutedEventArgs e)
         {
@@ -347,9 +455,10 @@ namespace AmbilightEngine.Pages
 
             mainWindow.SettingsService.Save(mainWindow.Settings);
         }
+
         private void AutoStartDisplayModeComboBox_SelectionChanged(
-    object sender,
-    SelectionChangedEventArgs e)
+            object sender,
+            SelectionChangedEventArgs e)
         {
             if (isLoadingUi || mainWindow == null)
             {
@@ -371,6 +480,7 @@ namespace AmbilightEngine.Pages
 
             mainWindow.SettingsService.Save(mainWindow.Settings);
         }
+
         private void AutoMonitorCheckBox_Checked(object sender, RoutedEventArgs e)
         {
             if (isLoadingUi || mainWindow == null) return;
@@ -386,10 +496,7 @@ namespace AmbilightEngine.Pages
         }
 
         // ── Lista monitorów ──────────────────────────────────────────────────────
-        // Wcześniej RefreshMonitorsButton_Click i MonitorComboBox_SelectionChanged miały
-        // puste ciała - ComboBox nigdy nie był wypełniany, mimo działającego UI.
-        // MonitorEnumerationHelper enumeruje monitory przez natywne Win32 EnumDisplayMonitors.
-           
+
         private void RefreshMonitorsList()
         {
             loadedMonitors = MonitorEnumerationHelper.EnumerateMonitors();
@@ -453,6 +560,39 @@ namespace AmbilightEngine.Pages
             if (isLoadingUi || mainWindow == null) return;
             mainWindow.Settings.LockScreenAmbient.IsEnabled = LockScreenAmbientToggle.IsOn;
             mainWindow.SettingsService.Save(mainWindow.Settings);
+        }
+
+        private void LockScreenModeEffectRadio_Checked(object sender, RoutedEventArgs e)
+        {
+            LockScreenEffectPanel.Visibility = Visibility.Visible;
+            LockScreenPresetPanel.Visibility = Visibility.Collapsed;
+
+            if (isLoadingUi || mainWindow == null) return;
+            mainWindow.Settings.LockScreenAmbient.UsePreset = false;
+            mainWindow.SettingsService.Save(mainWindow.Settings);
+            RequestLockScreenPreviewDebounced();
+        }
+
+        private void LockScreenModePresetRadio_Checked(object sender, RoutedEventArgs e)
+        {
+            LockScreenEffectPanel.Visibility = Visibility.Collapsed;
+            LockScreenPresetPanel.Visibility = Visibility.Visible;
+
+            if (isLoadingUi || mainWindow == null) return;
+            mainWindow.Settings.LockScreenAmbient.UsePreset = true;
+            mainWindow.SettingsService.Save(mainWindow.Settings);
+            RequestLockScreenPreviewDebounced();
+        }
+
+        // NOWOŚĆ: wybór presetu z listy zamiast ręcznego numeru.
+        private void LockScreenPresetComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (isLoadingUi || mainWindow == null) return;
+            if (LockScreenPresetComboBox.SelectedItem is not WledPresetInfo selectedPreset) return;
+
+            mainWindow.Settings.LockScreenAmbient.PresetId = selectedPreset.PresetId;
+            mainWindow.SettingsService.Save(mainWindow.Settings);
+            RequestLockScreenPreviewDebounced();
         }
 
         private void LockScreenEffectComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -529,6 +669,39 @@ namespace AmbilightEngine.Pages
             if (isLoadingUi || mainWindow == null) return;
             mainWindow.Settings.IdleAmbient.IsEnabled = IdleAmbientToggle.IsOn;
             mainWindow.SettingsService.Save(mainWindow.Settings);
+        }
+
+        private void IdleModeEffectRadio_Checked(object sender, RoutedEventArgs e)
+        {
+            IdleEffectPanel.Visibility = Visibility.Visible;
+            IdlePresetPanel.Visibility = Visibility.Collapsed;
+
+            if (isLoadingUi || mainWindow == null) return;
+            mainWindow.Settings.IdleAmbient.UsePreset = false;
+            mainWindow.SettingsService.Save(mainWindow.Settings);
+            RequestIdlePreviewDebounced();
+        }
+
+        private void IdleModePresetRadio_Checked(object sender, RoutedEventArgs e)
+        {
+            IdleEffectPanel.Visibility = Visibility.Collapsed;
+            IdlePresetPanel.Visibility = Visibility.Visible;
+
+            if (isLoadingUi || mainWindow == null) return;
+            mainWindow.Settings.IdleAmbient.UsePreset = true;
+            mainWindow.SettingsService.Save(mainWindow.Settings);
+            RequestIdlePreviewDebounced();
+        }
+
+        // NOWOŚĆ: wybór presetu z listy zamiast ręcznego numeru.
+        private void IdlePresetComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (isLoadingUi || mainWindow == null) return;
+            if (IdlePresetComboBox.SelectedItem is not WledPresetInfo selectedPreset) return;
+
+            mainWindow.Settings.IdleAmbient.PresetId = selectedPreset.PresetId;
+            mainWindow.SettingsService.Save(mainWindow.Settings);
+            RequestIdlePreviewDebounced();
         }
 
         private void IdleEffectComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)

@@ -2,6 +2,7 @@
 using AmbilightEngine.Core.Models;
 using AmbilightEngine.Core.Processing;
 using AmbilightEngine.Models;
+
 namespace AmbilightEngine.Core.SystemState
 {
     public enum AmbientLightMode
@@ -24,9 +25,16 @@ namespace AmbilightEngine.Core.SystemState
         public byte SecondaryColorR { get; set; } = 0;
         public byte SecondaryColorG { get; set; } = 0;
         public byte SecondaryColorB { get; set; } = 0;
+
+        // NOWOŚĆ: gdy true, tryb ambientowy aktywuje zapisany w WLED preset/playlistę
+        // (PresetId) zamiast surowego efektu skonstruowanego z pól powyżej. Wartość
+        // domyślna false gwarantuje, że istniejące konfiguracje wczytane ze starszego
+        // settings.json (bez tych pól) zachowują dotychczasowe zachowanie oparte
+        // na surowym efekcie WLED, bez żadnej migracji danych.
+        public bool UsePreset { get; set; } = false;
+        public int PresetId { get; set; } = 0;
     }
 
-    
     public sealed class AmbilightSettings
     {
         public string? WallColorHex { get; set; } = null;
@@ -213,6 +221,12 @@ namespace AmbilightEngine.Core.SystemState
         public byte StaticColorG { get; set; } = 255;
         public byte StaticColorB { get; set; } = 255;
 
+        // --- Preset temperatury światła (Static Color) ---
+        // Pamięta pozycję w cyklu 2700K/4000K/5000K/6500K/9300K używanym przez skrót
+        // globalny "whitepoint.cycle". W przeciwieństwie do AppProfile.ColorTemperatureKelvin
+        // (który koryguje obraz z kamery w Video Sync), to pole steruje REALNYM kolorem
+        // światła LED w trybie Static Color - jak przełącznik ciepłoty w lampie sufitowej.
+        public int LastWhitePresetKelvin { get; set; } = 6500;
         public string SelectedWledEffectId { get; set; } = string.Empty;
 
         // --- Ostatni efekt WLED ---
@@ -261,6 +275,7 @@ namespace AmbilightEngine.Core.SystemState
         public byte NoiseFloor { get; set; } = 4;
 
         public bool HasCompletedCalibrationOnboarding { get; set; } = false;
+
         // --- Master Brightness ---
         // Globalny mnożnik końcowej jasności dla Video Sync, Static Color i efektów WLED.
         // Nie zmienia BrightnessPercent profili ani LastWledBrightness efektu.
@@ -271,11 +286,12 @@ namespace AmbilightEngine.Core.SystemState
             get => masterBrightnessPercent;
             set => masterBrightnessPercent = value < 0 ? 0 : (value > 100 ? 100 : value);
         }
+
         // --- Zachowanie aplikacji ---
         public bool StartWithWindows { get; set; } = false;
         public bool StartMinimizedToTray { get; set; } = false;
         public bool CloseToTray { get; set; } = true;
-
+        public bool OsdEnabled { get; set; } = true;
         public bool AutoStartAmbilight { get; set; } = false;
         public DisplayMode AutoStartDisplayMode { get; set; } = DisplayMode.VideoSync;
 
@@ -284,6 +300,13 @@ namespace AmbilightEngine.Core.SystemState
 
         // --- Profile ---
         public List<AppProfile> Profiles { get; set; } = new();
+
+        // --- Quick Palette: zapisane sceny ---
+        // Każda scena to kompletny, nazwany zrzut stanu wyświetlania (tryb + parametry Static Color
+        // lub WLED Effect + Master Brightness + opcjonalny preset bieli), uruchamiany na żądanie
+        // z Dashboardu. Niezależne od Profiles (AppProfile), które są wyzwalane automatycznie
+        // przez ProcessProfileWatcher na podstawie aktywnego procesu.
+        public List<SceneProfile> Scenes { get; set; } = new();
 
         public AppProfile DefaultProfile { get; set; } = new()
         {
