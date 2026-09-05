@@ -6,9 +6,12 @@ using AmbilightEngine.Models;
 using AmbilightEngine.Pages;
 using AmbilightEngine.Services;
 using Microsoft.UI.Composition.SystemBackdrops;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
+using Windows.Graphics;
 using WinRT;
 using WinRT.Interop;
 using AmbilightEngine.Views;
@@ -42,6 +45,13 @@ namespace AmbilightEngine
         public MainWindow()
         {
             InitializeComponent();
+
+            // Domyślny rozmiar WinUI 3 (bez żadnego Resize) jest zbyt duży dla zawartości
+            // stron aplikacji (najszersza strona ma MaxWidth=960 + panel nawigacji ~48-280px).
+            // Ustawiamy kompaktowy rozmiar startowy i minimalny, żeby okno nie zajmowało
+            // nadmiernej części ekranu, a użytkownik nie mógł go zmniejszyć poniżej
+            // użytecznego minimum (kontrolki zaczynają się przycinać/nakładać poniżej tego).
+            SetInitialWindowSize();
 
             ShowCommand = new RelayCommand(() => RestoreWindow());
             ToggleWindowVisibilityCommand = new RelayCommand(() => ToggleWindowVisibility());
@@ -107,6 +117,34 @@ namespace AmbilightEngine
             // odpina się od Activated natychmiast po pierwszym wywołaniu.
             Activated += MainWindow_FirstActivationCheckOnboarding;
         }
+        // Ustawia kompaktowy rozmiar startowy okna (1040x700) i minimalny (900x600) przez
+        // AppWindow.Resize/OverlappedPresenter.PreferredMinimumWidth/Height - to samo API,
+        // które DesktopPeekWindow.xaml.cs już używa do własnego, mniejszego okna podglądu.
+        // Wartości są w rzeczywistych pikselach ekranu (nie DIP) - przy typowym skalowaniu
+        // 100% odpowiadają bezpośrednio wymiarom logicznym zawartości XAML.
+        private void SetInitialWindowSize()
+        {
+            try
+            {
+                IntPtr hwnd = WindowNative.GetWindowHandle(this);
+                WindowId windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
+                AppWindow appWindow = AppWindow.GetFromWindowId(windowId);
+
+                appWindow.Resize(new SizeInt32(1040, 700));
+
+                if (appWindow.Presenter is OverlappedPresenter presenter)
+                {
+                    presenter.PreferredMinimumWidth = 900;
+                    presenter.PreferredMinimumHeight = 600;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DIAG] SetInitialWindowSize: nie udało się ustawić rozmiaru okna: {ex.Message}");
+            }
+        }
+
         private void InitializeOsdService()
         {
             try

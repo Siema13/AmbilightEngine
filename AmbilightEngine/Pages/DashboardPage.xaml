@@ -21,7 +21,7 @@
                     <StackPanel Spacing="4">
                         <TextBlock
                             Text="Panel główny"
-                            FontSize="24"
+                            Style="{StaticResource PageTitleTextStyle}"
                             FontWeight="Bold" />
 
                         <TextBlock

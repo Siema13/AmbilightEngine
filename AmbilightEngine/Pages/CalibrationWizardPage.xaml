@@ -43,8 +43,7 @@
                         Spacing="16"
                         Visibility="Visible">
                 <TextBlock Text="Zanim zaczniemy"
-                           FontSize="22"
-                           FontWeight="SemiBold" />
+                           Style="{StaticResource PageTitleTextStyle}" />
                 <TextBlock TextWrapping="Wrap"
                            Style="{StaticResource SectionSubTextStyle}"
                            Text="Ten wizard pomoże dostroić kolory i parametry obrazu wyświetlane na diodach LED tak, aby wiernie odpowiadały temu, co widzisz na ekranie. Zajmie to około 2-3 minut." />

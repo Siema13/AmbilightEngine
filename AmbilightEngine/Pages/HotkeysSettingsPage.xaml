@@ -30,8 +30,7 @@
                 <Border Style="{StaticResource CardStyle}">
                     <StackPanel Spacing="14">
                         <TextBlock Text="Sterowanie Ambilight"
-                                   FontSize="20"
-                                   FontWeight="SemiBold" />
+                                   Style="{StaticResource SectionHeaderTextStyle}" />
 
                         <TextBlock Text="Kliknij pole skrótu, a następnie naciśnij kombinację z Ctrl, Alt, Shift lub Win. Escape anuluje edycję. Backspace albo Delete usuwa przypisanie."
                                    Style="{StaticResource SectionSubTextStyle}"
@@ -104,8 +103,7 @@
                 <Border Style="{StaticResource CardStyle}">
                     <StackPanel Spacing="14">
                         <TextBlock Text="Światło"
-                                   FontSize="20"
-                                   FontWeight="SemiBold" />
+                                   Style="{StaticResource SectionHeaderTextStyle}" />
 
                         <Grid ColumnSpacing="16"
                               RowSpacing="16">
@@ -176,8 +174,7 @@
                 <Border Style="{StaticResource CardStyle}">
                     <StackPanel Spacing="14">
                         <TextBlock Text="Jasność główna"
-                   FontSize="20"
-                   FontWeight="SemiBold" />
+                   Style="{StaticResource SectionHeaderTextStyle}" />
 
                         <TextBlock Text="Skróty zmieniają globalną jasność o 5%. Skrót zmniejszania nie schodzi niżej niż 1%; 0% można ustawić suwakiem na Panelu głównym."
                    Style="{StaticResource SectionSubTextStyle}"
@@ -249,8 +246,7 @@
                 <Border Style="{StaticResource CardStyle}">
                 <StackPanel Spacing="14">
                     <TextBlock Text="Profile aplikacji"
-                   FontSize="20"
-                   FontWeight="SemiBold" />
+                   Style="{StaticResource SectionHeaderTextStyle}" />
 
                     <TextBlock Text="Przypisz skrót globalny, który natychmiast aktywuje wybrany profil aplikacji, niezależnie od tego, jakie okno jest aktualnie aktywne."
                    Style="{StaticResource SectionSubTextStyle}"

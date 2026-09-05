@@ -29,8 +29,7 @@
                 <Border Style="{StaticResource CardStyle}">
                     <StackPanel Spacing="14">
                         <TextBlock Text="Preset motywu"
-                                   FontSize="20"
-                                   FontWeight="SemiBold" />
+                                   Style="{StaticResource SectionHeaderTextStyle}" />
                         <TextBlock Text="Wybierz gotowy wariant kolorystyczny dla całej aplikacji."
                                    Style="{StaticResource SectionSubTextStyle}" />
 
@@ -87,8 +86,7 @@
                 <Border Style="{StaticResource CardStyle}">
                     <StackPanel Spacing="14">
                         <TextBlock Text="Motyw niestandardowy"
-                                   FontSize="20"
-                                   FontWeight="SemiBold" />
+                                   Style="{StaticResource SectionHeaderTextStyle}" />
                         <TextBlock Text="Tryb własny włącza ręczne sterowanie warstwą wizualną aplikacji."
                                    Style="{StaticResource SectionSubTextStyle}" />
 
@@ -285,8 +283,7 @@
                 <Border Style="{StaticResource CardStyle}">
                     <StackPanel Spacing="14">
                         <TextBlock Text="Powiadomienia ekranowe (OSD)"
-                   FontSize="20"
-                   FontWeight="SemiBold" />
+                   Style="{StaticResource SectionHeaderTextStyle}" />
 
                         <TextBlock Text="Krótkie potwierdzenie na ekranie po użyciu skrótu globalnego: zmiana trybu, Blackout, jasność główna, preset bieli lub scena Quick Palette."
                    Style="{StaticResource SectionSubTextStyle}"
@@ -300,8 +297,7 @@
                 <Border Style="{StaticResource CardStyle}">
                     <StackPanel Spacing="10">
                         <TextBlock Text="Informacje"
-                                   FontSize="20"
-                                   FontWeight="SemiBold" />
+                                   Style="{StaticResource SectionHeaderTextStyle}" />
                         <TextBlock Text="Ta sekcja steruje głównie wyglądem i sposobem prezentacji interfejsu."
                                    Style="{StaticResource SectionSubTextStyle}" />
                         <TextBlock Text="Wersja aplikacji"

@@ -95,7 +95,7 @@
                                             Grid.Column="0"
                                             Spacing="4">
                                     <TextBlock Text="Góra"
-                                               FontSize="12"
+                                               FontSize="11"
                                                Opacity="0.7" />
                                     <controls:NumberBox x:Name="TopCountBox"
                                                         Minimum="0"
@@ -108,7 +108,7 @@
                                             Grid.Column="1"
                                             Spacing="4">
                                     <TextBlock Text="Dół"
-                                               FontSize="12"
+                                               FontSize="11"
                                                Opacity="0.7" />
                                     <controls:NumberBox x:Name="BottomCountBox"
                                                         Minimum="0"
@@ -121,7 +121,7 @@
                                             Grid.Column="0"
                                             Spacing="4">
                                     <TextBlock Text="Lewo"
-                                               FontSize="12"
+                                               FontSize="11"
                                                Opacity="0.7" />
                                     <controls:NumberBox x:Name="LeftCountBox"
                                                         Minimum="0"
@@ -134,7 +134,7 @@
                                             Grid.Column="1"
                                             Spacing="4">
                                     <TextBlock Text="Prawo"
-                                               FontSize="12"
+                                               FontSize="11"
                                                Opacity="0.7" />
                                     <controls:NumberBox x:Name="RightCountBox"
                                                         Minimum="0"

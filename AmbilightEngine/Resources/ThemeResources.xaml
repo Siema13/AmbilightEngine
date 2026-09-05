@@ -71,53 +71,68 @@
     <SolidColorBrush x:Key="M3ErrorBrush" Color="{StaticResource M3ErrorColor}" />
 
     <!-- Typografia -->
+    <!-- FIX (ujednolicenie UI): zmniejszone o ok. 15% wzgledem poprzednich wartosci (26/18/13/14),
+         aby caly interfejs zajal mniej miejsca przy tym samym ukladzie - wyglad (kolory, wagi
+         czcionek, hierarchia) pozostaje identyczny, zmienia sie tylko gestosc. -->
     <Style x:Key="PageTitleTextStyle" TargetType="TextBlock">
-        <Setter Property="FontSize" Value="26" />
+        <Setter Property="FontSize" Value="22" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Foreground" Value="{ThemeResource M3OnSurfaceBrush}" />
     </Style>
 
     <Style x:Key="SectionHeaderTextStyle" TargetType="TextBlock">
-        <Setter Property="FontSize" Value="18" />
+        <Setter Property="FontSize" Value="16" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Foreground" Value="{ThemeResource M3OnSurfaceBrush}" />
     </Style>
 
     <Style x:Key="SectionSubTextStyle" TargetType="TextBlock">
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontSize" Value="12" />
         <Setter Property="Foreground" Value="{ThemeResource M3OnSurfaceVariantBrush}" />
         <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
 
     <Style x:Key="BodyStrongTextBlockStyle" TargetType="TextBlock">
-        <Setter Property="FontSize" Value="14" />
+        <Setter Property="FontSize" Value="13" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Foreground" Value="{ThemeResource M3OnSurfaceBrush}" />
+    </Style>
+
+    <!-- NOWY styl: dla drobnych podpisow/etykiet (dawniej hardkodowane FontSize="12" w kilku
+         stronach) - ujednolica wszystkie takie miejsca pod jedna nazwana wartoscia. -->
+    <Style x:Key="CaptionTextStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Foreground" Value="{ThemeResource M3OnSurfaceVariantBrush}" />
     </Style>
 
     <!-- Cień karty -->
     <ThemeShadow x:Key="CardShadow" />
 
     <!-- Karta - kolor z motywu + realna elewacja (cień) -->
+    <!-- FIX (ujednolicenie UI): Padding 22->16 i Margin 18->12, CornerRadius bez zmian (16) -
+         zachowuje ten sam wyglad wizualny karty (zaokraglenie, cien), ale zmniejsza odstepy,
+         dzieki czemu wiecej tresci widac bez przewijania. -->
     <Style x:Key="MaterialCardStyle" TargetType="Border">
         <Setter Property="Background" Value="{ThemeResource M3SurfaceContainerHighBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource M3OutlineBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="16" />
-        <Setter Property="Padding" Value="22" />
-        <Setter Property="Margin" Value="0,0,0,18" />
+        <Setter Property="Padding" Value="16" />
+        <Setter Property="Margin" Value="0,0,0,12" />
         <Setter Property="Shadow" Value="{StaticResource CardShadow}" />
         <Setter Property="helpers:CardElevationHelper.Elevation" Value="16" />
     </Style>
 
     <Style x:Key="CardStyle" TargetType="Border" BasedOn="{StaticResource MaterialCardStyle}" />
 
+    <!-- FIX (ujednolicenie UI): Padding 16,8->14,6, MinHeight 40->34 - te same proporcje
+         i CornerRadius (20), tylko mniejszy naciek na wysokosc wiersza przyciskow. -->
     <Style x:Key="MaterialPrimaryButtonStyle" TargetType="Button">
         <Setter Property="Background" Value="{ThemeResource M3PrimaryBrush}" />
         <Setter Property="Foreground" Value="{ThemeResource M3OnPrimaryBrush}" />
         <Setter Property="CornerRadius" Value="20" />
-        <Setter Property="Padding" Value="16,8" />
-        <Setter Property="MinHeight" Value="40" />
+        <Setter Property="Padding" Value="14,6" />
+        <Setter Property="MinHeight" Value="34" />
         <Setter Property="HorizontalAlignment" Value="Left" />
     </Style>
 
@@ -127,8 +142,8 @@
         <Setter Property="Background" Value="{ThemeResource M3SecondaryContainerBrush}" />
         <Setter Property="Foreground" Value="{ThemeResource M3OnSecondaryContainerBrush}" />
         <Setter Property="CornerRadius" Value="20" />
-        <Setter Property="Padding" Value="16,8" />
-        <Setter Property="MinHeight" Value="40" />
+        <Setter Property="Padding" Value="14,6" />
+        <Setter Property="MinHeight" Value="34" />
         <Setter Property="HorizontalAlignment" Value="Left" />
     </Style>
 
@@ -138,8 +153,8 @@
         <Setter Property="BorderBrush" Value="{ThemeResource M3OutlineBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="12" />
-        <Setter Property="Padding" Value="12,8" />
-        <Setter Property="Margin" Value="0,4,0,8" />
+        <Setter Property="Padding" Value="12,6" />
+        <Setter Property="Margin" Value="0,3,0,6" />
     </Style>
 
     <Style x:Key="SettingsTextBoxStyle" TargetType="TextBox" BasedOn="{StaticResource MaterialTextBoxStyle}" />
@@ -150,8 +165,8 @@
         <Setter Property="BorderBrush" Value="{ThemeResource M3OutlineBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="12" />
-        <Setter Property="Padding" Value="12,8" />
-        <Setter Property="Margin" Value="0,4,0,8" />
+        <Setter Property="Padding" Value="12,6" />
+        <Setter Property="Margin" Value="0,3,0,6" />
     </Style>
 
     <Style x:Key="MaterialComboBoxStyle" TargetType="ComboBox">
@@ -160,20 +175,20 @@
         <Setter Property="BorderBrush" Value="{ThemeResource M3OutlineBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="12" />
-        <Setter Property="Margin" Value="0,4,0,8" />
+        <Setter Property="Margin" Value="0,3,0,6" />
     </Style>
 
     <Style x:Key="SettingsComboBoxStyle" TargetType="ComboBox" BasedOn="{StaticResource MaterialComboBoxStyle}" />
 
     <Style x:Key="SettingsCheckBoxStyle" TargetType="CheckBox">
         <Setter Property="Foreground" Value="{ThemeResource M3OnSurfaceBrush}" />
-        <Setter Property="Margin" Value="0,4,0,4" />
+        <Setter Property="Margin" Value="0,3,0,3" />
     </Style>
 
     <Style x:Key="ThemePresetButtonStyle" TargetType="Button">
         <Setter Property="CornerRadius" Value="12" />
-        <Setter Property="Padding" Value="18,10" />
-        <Setter Property="MinWidth" Value="110" />
+        <Setter Property="Padding" Value="16,8" />
+        <Setter Property="MinWidth" Value="100" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="BorderThickness" Value="1.5" />
         <Setter Property="Background" Value="{ThemeResource M3SurfaceContainerHighBrush}" />

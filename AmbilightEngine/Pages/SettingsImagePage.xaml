@@ -625,8 +625,7 @@
         Background="{ThemeResource M3SurfaceContainerHighBrush}">
                         <StackPanel Spacing="10">
                             <TextBlock Text="Profil domyślny"
-                   FontSize="16"
-                   FontWeight="SemiBold" />
+                   Style="{StaticResource SectionHeaderTextStyle}" />
 
                             <TextBlock Text="Zapisz bieżące ustawienia obrazu jako profil używany po zamknięciu aplikacji z własnym profilem lub gdy nie ma pasującego profilu."
                    Style="{StaticResource SectionSubTextStyle}"

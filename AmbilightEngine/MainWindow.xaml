@@ -7,6 +7,10 @@
     xmlns:tb="using:H.NotifyIcon"
     mc:Ignorable="d">
 
+    <!-- Rozmiar okna ustawiany ręcznie w kodzie (MainWindow.xaml.cs, SetInitialWindowSize) -
+         WinUI 3 nie udostępnia deklaratywnych Width/Height/MinWidth/MinHeight na elemencie
+         Window w XAML, trzeba to zrobić przez AppWindow.Resize po utworzeniu okna. -->
+
     <Window.SystemBackdrop>
         <MicaBackdrop Kind="Base" />
     </Window.SystemBackdrop>
