@@ -11,18 +11,38 @@ using Windows.Foundation;
 
 namespace AmbilightEngine.Controls
 {
+    // Reużywalny kontener kart z obsługą przenoszenia metodą "drag&drop" w trybie edycji.
+    // Karty są rejestrowane przez stronę-właściciela jako już zbudowane elementy Border
+    // (ze stylem CardStyle) - kontener TYLKO zarządza ich rozmieszczeniem w dwóch kolumnach
+    // typu "masonry" (różne wysokości, nowa karta trafia do aktualnie krótszej kolumny) oraz
+    // dodaje/usuwa nakładkę z uchwytem przeciągania. Ponieważ Border jest przenoszony między
+    // kontenerami metodą Children.Remove/Insert (nie tworzony na nowo), wszystkie referencje
+    // x:Name do kontrolek WEWNĄTRZ karty (np. StatusText, ToggleButton na Dashboardzie)
+    // pozostają w pełni działające - x:Name wiąże pole klasy strony z obiektem w pamięci,
+    // niezależnie od miejsca obiektu w drzewie wizualnym.
     public sealed partial class RearrangeableCardHost : UserControl
     {
+        // Margines "martwej strefy" (px) - jeśli przeciągana karta nie przekroczyła tej
+        // odległości od punktu startowego, traktujemy to jako kliknięcie, nie przesunięcie
+        // (zapobiega przypadkowej zmianie kolejności przy drobnym drgnięciu myszki/dotyku).
         private const double DragThreshold = 6.0;
+
+        // Czas trwania animacji "rozsuwania się" kart sąsiadujących podczas live-reorder.
         private const int NeighborShiftAnimationMs = 150;
 
         private sealed class CardEntry
         {
             public required string CardId { get; init; }
             public required Border CardBorder { get; init; }
+
+            // Uchwyt przeciągania to teraz Border (nie Button) - unika kolizji z wewnętrzną
+            // maszyną stanów ButtonBase, która w WinUI 3 potrafi "podkradać" capture wskaźnika
+            // dla lewego przycisku myszy, blokując dalsze zdarzenia PointerMoved.
             public Border? DragHandle { get; set; }
         }
 
+        // Kolejność odzwierciedla AKTUALNE rozmieszczenie: LeftColumnPanel.Children i
+        // RightColumnPanel.Children są zawsze zsynchronizowane z tymi dwoma listami.
         private readonly List<CardEntry> leftColumnCards = new();
         private readonly List<CardEntry> rightColumnCards = new();
         private readonly List<CardEntry> pendingCards = new();
@@ -32,9 +52,14 @@ namespace AmbilightEngine.Controls
         private Point dragStartPointerPosition;
         private bool dragThresholdExceeded;
 
+        // Migawka kolumny docelowej w trakcie przeciągania, używana do wizualnego
+        // "rozsuwania" sąsiadów (live-reorder preview) - patrz UpdateLiveReorderPreview.
         private List<CardEntry>? liveReorderColumn;
         private int liveReorderPreviewIndex = -1;
 
+        // Wywoływane po KAŻDEJ zmianie układu (przestawienie karty) - strona-właściciel
+        // zapisuje wynikową listę CardId (w kolejności: najpierw lewa kolumna top->bottom,
+        // potem prawa) do AmbilightSettings.CardLayout i wywołuje SettingsService.Save.
         public event Action<IReadOnlyList<string>>? LayoutChanged;
 
         public RearrangeableCardHost()
@@ -42,13 +67,21 @@ namespace AmbilightEngine.Controls
             InitializeComponent();
         }
 
+        // Rejestruje kartę w kontenerze. Musi być wywołane dla WSZYSTKICH kart PRZED
+        // wywołaniem ApplyInitialLayout - kolejność rejestracji jest używana jako domyślny
+        // układ, gdy zapisane ustawienia nie zawierają jeszcze danego CardId (np. nowa karta
+        // dodana w aktualizacji aplikacji, której poprzednia wersja settings.json nie znała).
         public void RegisterCard(string cardId, Border cardBorder)
         {
             if (string.IsNullOrWhiteSpace(cardId))
             {
-                throw new ArgumentException("cardId nie moze byc pusty.", nameof(cardId));
+                throw new ArgumentException("cardId nie może być pusty.", nameof(cardId));
             }
 
+            // Karta pochodzi z niewidocznego kontenera-źrodła zdefiniowanego w XAML strony
+            // (np. HiddenCardSourcePanel) i wciąż ma tam rodzica. Panel.Children.Add w innym
+            // miejscu (ApplyInitialLayout) wymaga, aby element nie miał aktualnie rodzica -
+            // usuwamy go tutaj z oryginalnego kontenera, zanim trafi do bufora pendingCards.
             if (cardBorder.Parent is Panel currentParent)
             {
                 currentParent.Children.Remove(cardBorder);
@@ -57,6 +90,10 @@ namespace AmbilightEngine.Controls
             pendingCards.Add(new CardEntry { CardId = cardId, CardBorder = cardBorder });
         }
 
+        // Rozmieszcza zarejestrowane karty w dwóch kolumnach zgodnie z savedOrder (lista
+        // CardId w zapisanej kolejności). Karty spoza savedOrder (nowe, nieznane wcześniej)
+        // są dopisywane na koniec w kolejności rejestracji. Musi być wywołane raz, po
+        // zarejestrowaniu wszystkich kart strony.
         public void ApplyInitialLayout(IReadOnlyList<string>? savedOrder)
         {
             leftColumnCards.Clear();
@@ -66,6 +103,12 @@ namespace AmbilightEngine.Controls
 
             List<CardEntry> orderedCards = ResolveEffectiveOrder(savedOrder);
 
+            // Algorytm masonry uproszczony: karty trafiają na przemian do lewej/prawej
+            // kolumny w kolejności z listy - to nie mierzy realnej wysokości px (WinUI 3
+            // nie daje tej informacji przed pierwszym layout passem), ale zachowuje
+            // przewidywalność: użytkownik widzi kartę "po lewej" i "po prawej" zgodnie
+            // z tym, jak sam je poprzednio poukładał (co jest zapisywane jako sekwencja
+            // przeplotu przy każdym przeniesieniu - patrz CompleteDrag).
             for (int i = 0; i < orderedCards.Count; i++)
             {
                 CardEntry entry = orderedCards[i];
@@ -113,6 +156,8 @@ namespace AmbilightEngine.Controls
                 }
             }
 
+            // Karty nieobecne w zapisanej kolejności (nowe od czasu ostatniego zapisu) -
+            // dopisywane na koniec w kolejności rejestracji, żeby nigdy nie zniknęły z widoku.
             foreach (CardEntry remaining in pendingCards.Where(c => byId.ContainsKey(c.CardId)))
             {
                 ordered.Add(remaining);
@@ -121,6 +166,9 @@ namespace AmbilightEngine.Controls
             return ordered;
         }
 
+        // Zwraca aktualną kolejność CardId (lewa kolumna, potem prawa) - wywoływane przez
+        // stronę-właściciela z LayoutChanged, ale też dostępne do odczytu na żądanie
+        // (np. przy zamykaniu strony, jako dodatkowe zabezpieczenie zapisu).
         public IReadOnlyList<string> GetCurrentOrder()
         {
             return leftColumnCards.Concat(rightColumnCards).Select(c => c.CardId).ToList();
@@ -130,7 +178,7 @@ namespace AmbilightEngine.Controls
         {
             isEditModeActive = !isEditModeActive;
 
-            ToggleEditModeButton.Content = isEditModeActive ? "Zakoncz edycje" : "Dostosuj uklad";
+            ToggleEditModeButton.Content = isEditModeActive ? "✅ Zakończ edycję" : "🔧 Dostosuj układ";
             EditModeHintText.Visibility = isEditModeActive ? Visibility.Visible : Visibility.Collapsed;
 
             foreach (CardEntry entry in leftColumnCards.Concat(rightColumnCards))
@@ -146,6 +194,22 @@ namespace AmbilightEngine.Controls
             }
         }
 
+        // Wstawia uchwyt przeciągania jako PIERWSZY element wewnątrz karty. Zakładamy, że
+        // bezpośrednim dzieckiem Border jest Panel (StackPanel/Grid) z co najmniej jednym
+        // dzieckiem - wzorzec konsekwentnie używany we wszystkich kartach aplikacji. Jeśli
+        // struktura się nie zgadza, po prostu nie dodajemy uchwytu (karta zachowuje się jak
+        // w trybie normalnym) - błąd defensywnie ignorowany, nie wywala UI.
+        //
+        // WAŻNE: uchwyt to Border, nie Button. ButtonBase w WinUI 3 ma własną wewnętrzną
+        // maszynę stanów wizualnych (Normal/PointerOver/Pressed), która dla LEWEGO przycisku
+        // myszy przejmuje kontrolę nad wskaźnikiem przed naszym kodem - PointerPressed owszem
+        // odpala się, ale kolejne PointerMoved bywają "zjadane" przez logikę Buttona, więc
+        // CapturePointer w praktyce nie daje ciągłego strumienia zdarzeń. Środkowy/prawy
+        // przycisk nie aktywują tej maszyny stanów, więc tam capture działał poprawnie - stąd
+        // zgłoszona asymetria (lewy nie reaguje, środkowy/prawy przeciągają).
+        //
+        // Border (w odróżnieniu od Control) nie eksponuje właściwości Foreground - kolor
+        // ikony "⠿" jest więc ustawiany bezpośrednio na wewnętrznym TextBlock.
         private void AttachDragHandle(CardEntry entry)
         {
             if (entry.DragHandle is not null)
@@ -205,6 +269,13 @@ namespace AmbilightEngine.Controls
                 return;
             }
 
+            // Filtrowanie przycisku myszy: drag&drop reaguje WYŁĄCZNIE na lewy przycisk,
+            // zgodnie ze standardowym zachowaniem systemowym Windows. Środkowy i prawy
+            // przycisk są tutaj świadomie ignorowane (args.Handled pozostaje false, żeby
+            // np. menu kontekstowe pod prawym przyciskiem wciąż mogło zadziałać gdzie indziej).
+            //
+            // PointerPoint w WinUI 3 (nie UWP) żyje w przestrzeni nazw Microsoft.UI.Input,
+            // nie Windows.UI.Input/Windows.UI.Core - stąd using na początku pliku.
             PointerPoint point = args.GetCurrentPoint(entry.DragHandle);
             if (!point.Properties.IsLeftButtonPressed)
             {
@@ -220,10 +291,14 @@ namespace AmbilightEngine.Controls
             bool captured = entry.DragHandle.CapturePointer(args.Pointer);
             if (!captured)
             {
+                // Capture się nie powiodło (np. pointer już przechwycony przez inny element) -
+                // wychodzimy z trybu drag, żeby nie zostać w niekonsystentnym stanie.
                 draggedCard = null;
                 return;
             }
 
+            // Podnosimy kartę na wierch Z-order w obrębie własnego panelu, żeby podczas
+            // przeciągania wizualnie przechodziła NAD sąsiadującymi kartami, a nie pod nimi.
             entry.CardBorder.Translation = new System.Numerics.Vector3(0, 0, 32);
 
             args.Handled = true;
@@ -250,6 +325,8 @@ namespace AmbilightEngine.Controls
 
                 dragThresholdExceeded = true;
 
+                // Podniesienie karty wizualnie (cień + lekkie przezroczystość), żeby dać
+                // jasny sygnał, że przeciąganie faktycznie się zaczęło.
                 entry.CardBorder.Opacity = 0.85;
                 entry.CardBorder.RenderTransform = new TranslateTransform();
 
@@ -269,6 +346,10 @@ namespace AmbilightEngine.Controls
             args.Handled = true;
         }
 
+        // Rozsuwa wizualnie karty sąsiadujące w kolumnie docelowej, dając w czasie rzeczywistym
+        // podgląd, gdzie trafi przeciągana karta po puszczeniu przycisku (analogicznie do
+        // znanych bibliotek drag&drop typu masonry). Nie zmienia jeszcze faktycznej kolejności
+        // w drzewie XAML - to dzieje się dopiero w CompleteDrag po puszczeniu przycisku.
         private void UpdateLiveReorderPreview(CardEntry draggedEntry, Point pointerPosition)
         {
             bool overLeftColumn = IsPointOverColumn(LeftColumnPanel, pointerPosition);
@@ -289,6 +370,8 @@ namespace AmbilightEngine.Controls
             }
             else
             {
+                // Wskaźnik jest poza obiema kolumnami - zerujemy podgląd, karty sąsiadów
+                // wracają na swoje neutralne pozycje.
                 ClearNeighborShiftPreview();
                 return;
             }
@@ -303,6 +386,9 @@ namespace AmbilightEngine.Controls
             {
                 CardEntry candidate = otherCards[i];
 
+                // Karty PRZED miejscem wstawienia zostają na miejscu (offset 0), karty PO
+                // miejscu wstawienia przesuwają się o wysokość przeciąganej karty + odstęp,
+                // robiąc jej fizyczne miejsce w kolumnie.
                 double targetOffsetY = i >= previewIndex
                     ? draggedEntry.CardBorder.ActualHeight + targetPanel.RowSpacingOrDefault()
                     : 0;
@@ -310,6 +396,8 @@ namespace AmbilightEngine.Controls
                 AnimateNeighborOffset(candidate.CardBorder, targetOffsetY);
             }
 
+            // Sąsiadujące karty w KOLUMNIE, z której przeciągana karta odjeżdża (jeśli inna
+            // niż docelowa), wracają do neutralnej pozycji.
             List<CardEntry> otherColumn = targetColumn == leftColumnCards ? rightColumnCards : leftColumnCards;
             if (!ReferenceEquals(otherColumn, targetColumn))
             {
@@ -396,6 +484,15 @@ namespace AmbilightEngine.Controls
             entry.CardBorder.Translation = System.Numerics.Vector3.Zero;
         }
 
+        // Ustala nową pozycję przeciąganej karty na podstawie tego, nad którą kolumną i
+        // nad którą sąsiadującą kartą znajdował się punkt puszczenia (dropPosition, we
+        // współrzędnych całego kontenera - stąd TransformToVisual(this) dla każdej kandydatki).
+        //
+        // Kolejność operacji jest tu kluczowa dla naprawy zgłoszonego bugu "kafel wraca na
+        // swoje miejsce": najpierw fizycznie przenosimy Border w drzewie XAML (Children.Insert),
+        // a DOPIERO w PointerReleased (po powrocie z tej metody) resetujemy RenderTransform.
+        // Dzięki temu w momencie zerowania transformacji karta już stoi na nowej, docelowej
+        // pozycji w layoucie - nie ma więc żadnego "skoku z powrotem" do starego miejsca.
         private void CompleteDrag(CardEntry draggedEntry, Point dropPosition)
         {
             bool dropInLeftColumn = IsPointOverColumn(LeftColumnPanel, dropPosition);
@@ -403,6 +500,8 @@ namespace AmbilightEngine.Controls
 
             if (!dropInLeftColumn && !dropInRightColumn)
             {
+                // Puszczono poza obiema kolumnami (np. nad przyciskiem "Dostosuj układ") -
+                // brak zmiany, karta wraca na swoje miejsce.
                 return;
             }
 
@@ -441,11 +540,16 @@ namespace AmbilightEngine.Controls
             Point bottomRight = transform.TransformPoint(
                 new Point(columnPanel.ActualWidth, Math.Max(columnPanel.ActualHeight, 1)));
 
+            // Szerokość kolumny bywa 0 przy pustej kolumnie (brak dzieci) - dajemy minimalny
+            // obszar wykrywania (200px), żeby wciąż można było upuścić pierwszą kartę.
             double effectiveRight = bottomRight.X > topLeft.X ? bottomRight.X : topLeft.X + 200;
 
             return pointInHostCoordinates.X >= topLeft.X && pointInHostCoordinates.X <= effectiveRight;
         }
 
+        // Znajduje indeks wstawienia w kolumnie docelowej na podstawie środków Y istniejących
+        // kart - przeciągana karta trafia PRZED pierwszą kartą, której środek jest niżej niż
+        // punkt upuszczenia (klasyczny algorytm "insert before nearest lower midpoint").
         private int FindInsertIndex(List<CardEntry> targetColumnList, Point dropPosition)
         {
             for (int i = 0; i < targetColumnList.Count; i++)
@@ -465,6 +569,10 @@ namespace AmbilightEngine.Controls
         }
     }
 
+    // Drobny helper na potrzeby UpdateLiveReorderPreview - StackPanel nie eksponuje
+    // publicznie swojego Spacing w starszych wersjach WinUI jako prostej właściwości
+    // odczytywalnej z bazowego typu Panel, więc podajemy bezpieczną wartość domyślną
+    // zgodną z odstępem 24px zdefiniowanym w RearrangeableCardHost.xaml (Spacing="24").
     internal static class PanelExtensions
     {
         public static double RowSpacingOrDefault(this Panel panel)

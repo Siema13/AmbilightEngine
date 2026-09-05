@@ -7,6 +7,21 @@
     mc:Ignorable="d">
 
     <UserControl.Resources>
+        <!-- Uchwyt przeciągania (ikona ⠿) - widoczny tylko w trybie edycji, nakładany na
+             każdą kartę jako pierwszy element jej wewnętrznego StackPanel/Grid. Duży obszar
+             dotykowy (36x36) mimo małej ikony, żeby łatwo złapać uchwyt myszką/dotykiem.
+
+             UWAGA: to Border, NIE Button. ButtonBase w WinUI 3 przechwytuje wewnętrznie
+             stany PointerPressed/PointerMoved dla lewego przycisku myszy na potrzeby własnej
+             maszyny stanów wizualnych (Normal/PointerOver/Pressed), co blokowało ciągły
+             strumień zdarzeń potrzebny do drag&drop (zgłoszony bug: lewy przycisk nie
+             reagował). Border nie ma takiej logiki, więc PointerPressed/Moved/Released
+             działają identycznie dla każdego przycisku myszy - filtrowanie tylko do lewego
+             przycisku jest teraz świadomą decyzją w code-behind (DragHandle_PointerPressed).
+
+             Border (w odróżnieniu od Control) nie eksponuje właściwości Foreground ani
+             Cursor - kolor ikony "⠿" jest więc ustawiany bezpośrednio na TextBlock w
+             code-behind (AttachDragHandle), a kursor pozostaje systemowym domyślnym. -->
         <Style x:Key="DragHandleBorderStyle" TargetType="Border">
             <Setter Property="Width" Value="36" />
             <Setter Property="Height" Value="36" />
@@ -23,6 +38,8 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
+        <!-- Przycisk trybu edycji - zawsze widoczny w prawym górnym rogu obszaru kart.
+             W trybie edycji zmienia treść/styl, żeby jasno sygnalizować aktywny stan. -->
         <StackPanel
             Grid.Row="0"
             Orientation="Horizontal"
@@ -32,18 +49,23 @@
 
             <TextBlock
                 x:Name="EditModeHintText"
-                Text="Przeciagaj karty za uchwyt, aby zmienic uklad."
+                Text="Przeciągaj karty za uchwyt ⠿, aby zmienić układ."
                 Style="{StaticResource SectionSubTextStyle}"
                 VerticalAlignment="Center"
                 Visibility="Collapsed" />
 
             <Button
                 x:Name="ToggleEditModeButton"
-                Content="Dostosuj uklad"
+                Content="🔧 Dostosuj układ"
                 Click="ToggleEditModeButton_Click"
                 Style="{StaticResource MaterialTonalButtonStyle}" />
         </StackPanel>
 
+        <!-- Dwie kolumny "masonry" - każda to StackPanel, do którego karty (Border) są
+             przenoszone programowo (Children.Add/Remove/Insert) z zewnętrznej listy przekazanej
+             przez stronę-właściciela. Karty zachowują naturalną wysokość zawartości. -->
+        <!-- Proporcje kolumn (3*/2*) zgodne z pierwotnym układem Dashboardu - stałe, bo
+             zmiana proporcji kolumn nie jest częścią personalizacji (tylko kolejność/przypisanie kart). -->
         <Grid Grid.Row="1" ColumnSpacing="20">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="3*" />
