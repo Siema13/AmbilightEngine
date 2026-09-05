@@ -233,6 +233,10 @@
                             <StackPanel x:Name="AudioReactivePanel" Spacing="12" Visibility="Collapsed">
                                 <TextBlock Text="Efekt audio-reaktywny" FontWeight="SemiBold" />
 
+                                <TextBlock
+                                    Style="{StaticResource SectionSubTextStyle}"
+                                    Text="Źródło dźwięku: system (WASAPI loopback). Zestaw efektów inspirowany LedFx." />
+
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <RadioButton
                                         x:Name="AudioVuMeterRadio"
@@ -254,18 +258,134 @@
                                         GroupName="AudioReactiveEffectGroup"
                                         Checked="AudioReactiveEffectRadio_Checked"
                                         Tag="BeatPulse" />
+
+                                    <RadioButton
+                                        x:Name="AudioEnergyRadio"
+                                        Content="Energy"
+                                        GroupName="AudioReactiveEffectGroup"
+                                        Checked="AudioReactiveEffectRadio_Checked"
+                                        Tag="Energy" />
                                 </StackPanel>
 
-                                <TextBlock
-                                    Style="{StaticResource SectionSubTextStyle}"
-                                    Text="Źródło dźwięku: system (WASAPI loopback). VU Meter i Beat Pulse używają koloru z zakładki Static Color." />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <RadioButton
+                                        x:Name="AudioWaveRadio"
+                                        Content="Wave"
+                                        GroupName="AudioReactiveEffectGroup"
+                                        Checked="AudioReactiveEffectRadio_Checked"
+                                        Tag="Wave" />
 
-                                <TextBlock Text="Kolor bazowy (VU Meter / Beat Pulse)" FontWeight="SemiBold" />
-                                <ColorPicker
-                                    x:Name="AudioReactiveColorPicker"
-                                    ColorChanged="AudioReactiveColorPicker_ColorChanged"
-                                    IsAlphaEnabled="False"
-                                    IsMoreButtonVisible="False" />
+                                    <RadioButton
+                                        x:Name="AudioBassStrobeRadio"
+                                        Content="Bass Strobe"
+                                        GroupName="AudioReactiveEffectGroup"
+                                        Checked="AudioReactiveEffectRadio_Checked"
+                                        Tag="BassStrobe" />
+
+                                    <RadioButton
+                                        x:Name="AudioMultiColorSpectrumRadio"
+                                        Content="Multi Color"
+                                        GroupName="AudioReactiveEffectGroup"
+                                        Checked="AudioReactiveEffectRadio_Checked"
+                                        Tag="MultiColorSpectrum" />
+                                </StackPanel>
+
+                                <!-- Rozwijany panel konfiguracji - pod radiobuttonami wyboru efektu, zgodnie
+                                     z ustaloną lokalizacją UI (nie osobna strona). Expander z Fluent Design
+                                     (zaokrąglone rogi, natywna animacja rozwijania) zamiast ręcznego przełączania
+                                     Visibility, żeby zachować spójność z resztą aplikacji Windows 11. -->
+                                <controls:Expander x:Name="AudioReactiveConfigExpander"
+                                                    Header="Konfiguracja efektu"
+                                                    HorizontalAlignment="Stretch"
+                                                    HorizontalContentAlignment="Stretch"
+                                                    IsExpanded="False">
+                                    <StackPanel Spacing="12" Padding="4,8,4,4">
+
+                                        <Grid ColumnSpacing="12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="60" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="Czułość (Sensitivity)" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                            <TextBlock x:Name="AudioSensitivityValueText" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.0" />
+                                        </Grid>
+                                        <Slider x:Name="AudioSensitivitySlider" Minimum="0.1" Maximum="5.0" StepFrequency="0.1"
+                                                ValueChanged="AudioSensitivitySlider_ValueChanged" />
+                                        <TextBlock
+                                            Text="Wzmocnienie sygnału audio przed analizą - zwiększ, jeśli efekt jest zbyt słaby przy niskiej głośności systemowej."
+                                            Style="{StaticResource SectionSubTextStyle}" />
+
+                                        <Grid ColumnSpacing="12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="60" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="Szybkość zanikania (Decay)" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                            <TextBlock x:Name="AudioDecayValueText" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.90" />
+                                        </Grid>
+                                        <Slider x:Name="AudioDecaySlider" Minimum="0.50" Maximum="0.995" StepFrequency="0.005"
+                                                ValueChanged="AudioDecaySlider_ValueChanged" />
+                                        <TextBlock
+                                            Text="Jak szybko gasną błyski/pulsy (Beat Pulse, Bass Strobe) - niżej = dłuższe wygaszanie."
+                                            Style="{StaticResource SectionSubTextStyle}" />
+
+                                        <Grid ColumnSpacing="12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="60" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="Próg wykrycia beatu" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                            <TextBlock x:Name="AudioBeatThresholdValueText" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.22" />
+                                        </Grid>
+                                        <Slider x:Name="AudioBeatThresholdSlider" Minimum="0.01" Maximum="1.0" StepFrequency="0.01"
+                                                ValueChanged="AudioBeatThresholdSlider_ValueChanged" />
+                                        <TextBlock
+                                            Text="Jak duży skok energii basu jest wymagany, by uznać go za uderzenie rytmu - niżej = częstsze wykrycia."
+                                            Style="{StaticResource SectionSubTextStyle}" />
+
+                                        <TextBlock Text="Kolor podstawowy (Primary)" FontWeight="SemiBold" />
+                                        <ColorPicker
+                                            x:Name="AudioPrimaryColorPicker"
+                                            ColorChanged="AudioReactiveColorPicker_ColorChanged"
+                                            IsAlphaEnabled="False"
+                                            IsMoreButtonVisible="False" />
+
+                                        <TextBlock Text="Kolor dodatkowy (Secondary)" FontWeight="SemiBold" />
+                                        <TextBlock
+                                            Text="Używany jako tło/drugi biegun gradientu w Energy, Wave i Bass Strobe."
+                                            Style="{StaticResource SectionSubTextStyle}" />
+                                        <ColorPicker
+                                            x:Name="AudioSecondaryColorPicker"
+                                            ColorChanged="AudioReactiveColorPicker_ColorChanged"
+                                            IsAlphaEnabled="False"
+                                            IsMoreButtonVisible="False" />
+
+                                        <!-- Kolory per-pasmo - widoczne tylko dla Multi Color Spectrum, analogicznie
+                                             do Custom1Panel/Custom2Panel/Custom3Panel w panelu WLED Effects. -->
+                                        <StackPanel x:Name="AudioBandColorsPanel" Spacing="12" Visibility="Collapsed">
+                                            <TextBlock Text="Kolor basu (Bass)" FontWeight="SemiBold" />
+                                            <ColorPicker
+                                                x:Name="AudioBassColorPicker"
+                                                ColorChanged="AudioReactiveColorPicker_ColorChanged"
+                                                IsAlphaEnabled="False"
+                                                IsMoreButtonVisible="False" />
+
+                                            <TextBlock Text="Kolor średnich tonów (Mid)" FontWeight="SemiBold" />
+                                            <ColorPicker
+                                                x:Name="AudioMidColorPicker"
+                                                ColorChanged="AudioReactiveColorPicker_ColorChanged"
+                                                IsAlphaEnabled="False"
+                                                IsMoreButtonVisible="False" />
+
+                                            <TextBlock Text="Kolor wysokich tonów (Treble)" FontWeight="SemiBold" />
+                                            <ColorPicker
+                                                x:Name="AudioTrebleColorPicker"
+                                                ColorChanged="AudioReactiveColorPicker_ColorChanged"
+                                                IsAlphaEnabled="False"
+                                                IsMoreButtonVisible="False" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </controls:Expander>
                             </StackPanel>
                         </StackPanel>
                     </Border>

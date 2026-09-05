@@ -137,12 +137,13 @@ namespace AmbilightEngine.Core.Pipeline
         private AudioSpectrumFrame latestAudioFrame = AudioSpectrumFrame.Silence(AudioAnalyzer.SpectrumBinCount);
         private readonly object audioFrameLock = new object();
 
-        // Aktualny tryb generatora i kolor bazowy - mutowalne w locie przez
-        // UpdateAudioReactiveParameters, dzięki czemu zmiana wyboru w UI (np. VuMeter ->
-        // SpectrumBar) nie wymaga zatrzymania i ponownego uruchomienia capture WASAPI/analizatora.
-        // Pętla wysyłki w EnterAudioReactiveMode odczytuje te pola przy każdej wysłanej ramce.
+        // Aktualny tryb generatora i pełna konfiguracja (czułość, decay, próg beatu, kolory) -
+        // mutowalne w locie przez UpdateAudioReactiveParameters, dzięki czemu zmiana wyboru w UI
+        // (np. VuMeter -> SpectrumBar, zmiana koloru, przesunięcie slidera czułości) nie wymaga
+        // zatrzymania i ponownego uruchomienia capture WASAPI/analizatora. Pętla wysyłki w
+        // EnterAudioReactiveMode odczytuje te pola przy każdej wysłanej ramce.
         private volatile AudioReactiveMode currentAudioMode = AudioReactiveMode.VuMeter;
-        private RgbColor currentAudioBaseColor = new RgbColor(255, 255, 255);
+        private AudioReactiveSettings currentAudioSettings = new AudioReactiveSettings();
 
         public bool IsAudioReactiveModeActive => isAudioReactiveModeActive;
 
@@ -657,14 +658,14 @@ namespace AmbilightEngine.Core.Pipeline
         // działa), analizator FFT i cykliczne wysyłanie ramek LED w rytm dźwięku systemowego.
         // Podobnie jak Static Color/Video Sync, ustawia ActiveDisplayMode i utrzymuje sesję
         // "live" WLED aktywną, bo audio też jest strumieniem DDP (tak jak Video Sync/Static Color).
-        public void EnterAudioReactiveMode(AudioReactiveMode mode, byte baseColorR, byte baseColorG, byte baseColorB)
+        public void EnterAudioReactiveMode(AudioReactiveMode mode, AudioReactiveSettings audioSettings)
         {
             if (isAudioReactiveModeActive)
             {
                 // Tryb już aktywny - to jest tylko zmiana parametrów (np. wybór innego efektu
                 // w UI), nie pełny restart. Unikamy zatrzymywania capture WASAPI, żeby nie
                 // wprowadzać słyszalnych/widocznych przerw przy przełączaniu efektów.
-                UpdateAudioReactiveParameters(mode, baseColorR, baseColorG, baseColorB);
+                UpdateAudioReactiveParameters(mode, audioSettings);
                 return;
             }
 
@@ -693,8 +694,9 @@ namespace AmbilightEngine.Core.Pipeline
             currentAudioMode = mode;
             lock (audioFrameLock)
             {
-                currentAudioBaseColor = new RgbColor(baseColorR, baseColorG, baseColorB);
+                currentAudioSettings = audioSettings;
             }
+            audioAnalyzer.SetLiveParameters(audioSettings.Sensitivity, audioSettings.BeatThreshold);
 
             isAudioReactiveModeActive = true;
             audioCaptureService.Start();
@@ -708,16 +710,16 @@ namespace AmbilightEngine.Core.Pipeline
                     {
                         AudioSpectrumFrame frameSnapshot;
                         AudioReactiveMode modeSnapshot;
-                        RgbColor colorSnapshot;
+                        AudioReactiveSettings settingsSnapshot;
                         lock (audioFrameLock)
                         {
                             frameSnapshot = latestAudioFrame;
-                            colorSnapshot = currentAudioBaseColor;
+                            settingsSnapshot = currentAudioSettings;
                         }
 
                         modeSnapshot = currentAudioMode;
 
-                        RgbColor[] ledFrame = audioEffectGenerator!.GenerateFrame(frameSnapshot, modeSnapshot, colorSnapshot);
+                        RgbColor[] ledFrame = audioEffectGenerator!.GenerateFrame(frameSnapshot, modeSnapshot, settingsSnapshot);
                         SendAndRememberFrame(ledFrame);
 
                         await Task.Delay(AudioReactiveFrameIntervalMs, token).ConfigureAwait(false);
@@ -752,15 +754,32 @@ namespace AmbilightEngine.Core.Pipeline
             Debug.WriteLine($"[DIAG] PipelineManager: uruchomiono Audio Reactive, tryb={mode}.");
         }
 
-        // Aktualizuje tryb efektu i/lub kolor bazowy bez restartu capture WASAPI - wywoływane
-        // gdy użytkownik zmienia wybór w UI podczas gdy Audio Reactive jest już aktywny.
-        public void UpdateAudioReactiveParameters(AudioReactiveMode mode, byte baseColorR, byte baseColorG, byte baseColorB)
+        // Aktualizuje tryb efektu i/lub pełną konfigurację (kolory, czułość, decay, próg
+        // beatu) bez restartu capture WASAPI - wywoływane gdy użytkownik zmienia wybór w UI
+        // (np. przesuwa slider) podczas gdy Audio Reactive jest już aktywny.
+        public void UpdateAudioReactiveParameters(AudioReactiveMode mode, AudioReactiveSettings audioSettings)
         {
             currentAudioMode = mode;
 
             lock (audioFrameLock)
             {
-                currentAudioBaseColor = new RgbColor(baseColorR, baseColorG, baseColorB);
+                currentAudioSettings = audioSettings;
+            }
+
+            // Sensitivity/BeatThreshold żyją wewnątrz AudioAnalyzer (nie w PipelineManager),
+            // bo to on wykonuje analizę RMS/FFT/beat na własnym wątku NAudio - muszą być
+            // propagowane osobnym wywołaniem, nie tylko zapisane w currentAudioSettings.
+            audioAnalyzer?.SetLiveParameters(audioSettings.Sensitivity, audioSettings.BeatThreshold);
+        }
+
+        // Publiczny getter aktualnego stanu Audio Reactive - używany przez UI (DashboardPage)
+        // do odczytania "na żywo" ostatnio ustawionych parametrów (np. po powrocie na stronę
+        // Dashboard, gdy tryb był już aktywny wcześniej w tej sesji aplikacji).
+        public AudioReactiveSettings GetCurrentAudioReactiveSettings()
+        {
+            lock (audioFrameLock)
+            {
+                return currentAudioSettings;
             }
         }
 

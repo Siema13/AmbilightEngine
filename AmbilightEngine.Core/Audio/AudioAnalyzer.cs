@@ -27,8 +27,15 @@ namespace AmbilightEngine.Core.Audio
 
         // Współczynnik opadania szczytu auto-gain między kolejnymi blokami - bliski 1.0 oznacza
         // bardzo wolne "zapominanie" poprzednich głośnych fragmentów, żeby ciche pasaże utworu
-        // nie powodowały gwałtownego przesterowania efektu do maksimum.
+        // nie powodowały gwałtownego przesterowania efektu do maksimum. Stała niezależna od
+        // Sensitivity użytkownika - to osobny mechanizm (auto-gain vs ręczne wzmocnienie).
         private const float PeakDecayFactor = 0.992f;
+
+        // Domyślny próg wzrostu energii basu wymagany do wykrycia beatu - używany, gdy wywołujący
+        // nie ustawił jawnie BeatThreshold (patrz właściwość BeatThreshold poniżej). Ta sama
+        // wartość co domyślna AudioReactiveSettings.BeatThreshold - zachowuje poprzednie
+        // zachowanie dla każdego kodu, który jeszcze nie ustawia tego pola.
+        private const float DefaultBeatThreshold = 0.22f;
 
         // Minimalna wartość szczytu auto-gain - zabezpiecza przed dzieleniem przez ~0 w ciszy
         // (co powodowałoby, że najmniejszy szum tła wygląda jak pełna głośność).
@@ -47,6 +54,26 @@ namespace AmbilightEngine.Core.Audio
         // "czy ten blok jest istotnie głośniejszy niż niedawna przeszłość" (nie tylko niż próg 0).
         private float previousBassNormalized;
         private DateTime lastBeatAt = DateTime.MinValue;
+
+        // Wzmocnienie sygnału audio przed analizą RMS/FFT i próg detekcji beatu - ustawiane
+        // "na żywo" z UI (AudioReactiveSettings.Sensitivity/BeatThreshold) bez restartu capture
+        // WASAPI/analizatora. UWAGA: 'volatile' NIE jest dozwolone na float/double w C# (CS0677),
+        // dlatego te pola są chronione tym samym stateLock co reszta stanu analizatora - patrz
+        // SetLiveParameters oraz początek OnSamplesAvailable/AnalyzeFilledBuffer.
+        private float sensitivity = 1.0f;
+        private float beatThreshold = DefaultBeatThreshold;
+
+        // Jedyny bezpieczny wątkowo sposób aktualizacji Sensitivity/BeatThreshold z zewnątrz -
+        // wywoływane z PipelineManager.UpdateAudioReactiveParameters (wątek UI) równolegle do
+        // OnSamplesAvailable (wątek NAudio), dlatego wymaga tego samego locka.
+        public void SetLiveParameters(float newSensitivity, float newBeatThreshold)
+        {
+            lock (stateLock)
+            {
+                sensitivity = newSensitivity > 0f ? newSensitivity : 0.01f;
+                beatThreshold = Math.Clamp(newBeatThreshold, 0.01f, 1.0f);
+            }
+        }
 
         // Minimalny odstęp między wykrytymi beatami - zapobiega "podwójnym" wykryciom na tym
         // samym uderzeniu basu przy typowym tempie muzyki (nawet bardzo szybkie utwory rzadko
@@ -91,13 +118,21 @@ namespace AmbilightEngine.Core.Audio
         {
             var complexBuffer = new Complex[FftSize];
 
+            // Odczyt Sensitivity POD tym samym stateLock, który już obejmuje całą tę metodę
+            // (wywoływaną wyłącznie z OnSamplesAvailable) - zapewnia konsystentny odczyt bez
+            // dodatkowego zagnieżdzonego locka.
+            float sensitivityGain = sensitivity;
+
             // Okno Hanna redukuje przeciek widmowy (spectral leakage) wynikający z analizy
             // skończonego, nieokresowego wycinka sygnału - bez niego granice bloku FFT
             // wprowadzałyby sztuczne, szerokopasmowe "szumy" w widmie.
             double rmsAccumulator = 0.0;
             for (int i = 0; i < FftSize; i++)
             {
-                float sample = monoBuffer[i];
+                // Wzmocnienie (Sensitivity) stosowane PRZED oknem Hanna i FFT - wpływa
+                // równomiernie na RMS i wszystkie biny widma, dokładnie jak regulacja "gain"
+                // we wzmacniaczu analogowym, zamiast późniejszego przeskalowania wyników.
+                float sample = monoBuffer[i] * sensitivityGain;
                 rmsAccumulator += sample * sample;
 
                 double window = 0.5 * (1.0 - Math.Cos(2.0 * Math.PI * i / (FftSize - 1)));
@@ -163,11 +198,14 @@ namespace AmbilightEngine.Core.Audio
             // wysoka wartość absolutna - to odróżnia uderzenie od utrzymującego się głośnego basu),
             // powyżej minimalnego progu głośności (żeby nie łapać "beatów" w ciszy) i z zachowaniem
             // minimalnego odstępu czasowego.
-            const float RiseThreshold = 0.22f;
+            // RiseThreshold jest teraz konfigurowalne (pole beatThreshold, ustawiane przez
+            // SetLiveParameters) - MinimumLevel pozostaje stałe, bo to zabezpieczenie przed
+            // łapaniem "beatów" w ciszy, niezależne od preferencji czułości użytkownika.
+            float riseThreshold = beatThreshold;
             const float MinimumLevel = 0.35f;
 
             if (normalizedBass < MinimumLevel) return false;
-            if (normalizedBass - previousBassNormalized < RiseThreshold) return false;
+            if (normalizedBass - previousBassNormalized < riseThreshold) return false;
 
             var now = DateTime.UtcNow;
             if (now - lastBeatAt < MinBeatInterval) return false;

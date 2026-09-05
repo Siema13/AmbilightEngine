@@ -95,13 +95,8 @@ public sealed partial class DashboardPage : Page
                 mainWindow.Settings.StaticColorG,
                 mainWindow.Settings.StaticColorB);
 
-            AudioReactiveColorPicker.Color = Windows.UI.Color.FromArgb(
-                255,
-                mainWindow.Settings.StaticColorR,
-                mainWindow.Settings.StaticColorG,
-                mainWindow.Settings.StaticColorB);
-
             ApplyAudioReactiveEffectToUi(mainWindow.Settings.AudioReactiveMode);
+            ApplyAudioReactiveSettingsToUi(mainWindow.Settings.AudioReactiveSettings);
 
             RefreshScenesList();
             if (mainWindow.Settings.ActiveDisplayMode == DisplayMode.WledEffects)
@@ -188,11 +183,108 @@ public sealed partial class DashboardPage : Page
                 AudioBeatPulseRadio.IsChecked = true;
                 break;
 
+            case AudioReactiveMode.Energy:
+                AudioEnergyRadio.IsChecked = true;
+                break;
+
+            case AudioReactiveMode.Wave:
+                AudioWaveRadio.IsChecked = true;
+                break;
+
+            case AudioReactiveMode.BassStrobe:
+                AudioBassStrobeRadio.IsChecked = true;
+                break;
+
+            case AudioReactiveMode.MultiColorSpectrum:
+                AudioMultiColorSpectrumRadio.IsChecked = true;
+                break;
+
             case AudioReactiveMode.VuMeter:
             default:
                 AudioVuMeterRadio.IsChecked = true;
                 break;
         }
+
+        // Panel kolorów per-pasmo (Bass/Mid/Treble) ma sens tylko dla Multi Color Spectrum -
+        // dla pozostałych trybów tylko zajmowałby miejsce bez żadnego efektu.
+        UpdateAudioBandColorsPanelVisibility(mode);
+    }
+
+    // Ładuje wszystkie kontrolki rozwijanego panelu konfiguracji (slidery + kolory) z zapisanego
+    // AudioReactiveSettings - wywoływane raz przy starcie strony, PRZED podłączeniem handlerów
+    // ValueChanged/ColorChanged do stanu "isLoadingUi", żeby ustawienie wartości początkowych
+    // nie wywołało niepotrzebnego zapisu/restartu Audio Reactive.
+    private void ApplyAudioReactiveSettingsToUi(AudioReactiveSettings audioSettings)
+    {
+        AudioSensitivitySlider.Value = audioSettings.Sensitivity;
+        AudioSensitivityValueText.Text = audioSettings.Sensitivity.ToString("F1");
+
+        AudioDecaySlider.Value = audioSettings.Decay;
+        AudioDecayValueText.Text = audioSettings.Decay.ToString("F2");
+
+        AudioBeatThresholdSlider.Value = audioSettings.BeatThreshold;
+        AudioBeatThresholdValueText.Text = audioSettings.BeatThreshold.ToString("F2");
+
+        AudioPrimaryColorPicker.Color = Windows.UI.Color.FromArgb(
+            255, audioSettings.PrimaryColorR, audioSettings.PrimaryColorG, audioSettings.PrimaryColorB);
+
+        AudioSecondaryColorPicker.Color = Windows.UI.Color.FromArgb(
+            255, audioSettings.SecondaryColorR, audioSettings.SecondaryColorG, audioSettings.SecondaryColorB);
+
+        AudioBassColorPicker.Color = Windows.UI.Color.FromArgb(
+            255, audioSettings.BassColorR, audioSettings.BassColorG, audioSettings.BassColorB);
+
+        AudioMidColorPicker.Color = Windows.UI.Color.FromArgb(
+            255, audioSettings.MidColorR, audioSettings.MidColorG, audioSettings.MidColorB);
+
+        AudioTrebleColorPicker.Color = Windows.UI.Color.FromArgb(
+            255, audioSettings.TrebleColorR, audioSettings.TrebleColorG, audioSettings.TrebleColorB);
+    }
+
+    private void UpdateAudioBandColorsPanelVisibility(AudioReactiveMode mode)
+    {
+        AudioBandColorsPanel.Visibility = mode == AudioReactiveMode.MultiColorSpectrum
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    // Odczytuje AudioReactiveSettings z aktualnego stanu kontrolek UI - jedyne miejsce, które
+    // "zna" mapowanie kontrolka->pole, żeby handlery ValueChanged/ColorChanged (wiele miejsc)
+    // nie duplikowały tej samej konstrukcji obiektu.
+    private AudioReactiveSettings ReadAudioReactiveSettingsFromUi()
+    {
+        return new AudioReactiveSettings
+        {
+            Sensitivity = (float)AudioSensitivitySlider.Value,
+            Decay = (float)AudioDecaySlider.Value,
+            BeatThreshold = (float)AudioBeatThresholdSlider.Value,
+            PrimaryColorR = AudioPrimaryColorPicker.Color.R,
+            PrimaryColorG = AudioPrimaryColorPicker.Color.G,
+            PrimaryColorB = AudioPrimaryColorPicker.Color.B,
+            SecondaryColorR = AudioSecondaryColorPicker.Color.R,
+            SecondaryColorG = AudioSecondaryColorPicker.Color.G,
+            SecondaryColorB = AudioSecondaryColorPicker.Color.B,
+            BassColorR = AudioBassColorPicker.Color.R,
+            BassColorG = AudioBassColorPicker.Color.G,
+            BassColorB = AudioBassColorPicker.Color.B,
+            MidColorR = AudioMidColorPicker.Color.R,
+            MidColorG = AudioMidColorPicker.Color.G,
+            MidColorB = AudioMidColorPicker.Color.B,
+            TrebleColorR = AudioTrebleColorPicker.Color.R,
+            TrebleColorG = AudioTrebleColorPicker.Color.G,
+            TrebleColorB = AudioTrebleColorPicker.Color.B
+        };
+    }
+
+    private AudioReactiveMode ReadSelectedAudioReactiveModeFromUi()
+    {
+        if (AudioSpectrumBarRadio.IsChecked == true) return AudioReactiveMode.SpectrumBar;
+        if (AudioBeatPulseRadio.IsChecked == true) return AudioReactiveMode.BeatPulse;
+        if (AudioEnergyRadio.IsChecked == true) return AudioReactiveMode.Energy;
+        if (AudioWaveRadio.IsChecked == true) return AudioReactiveMode.Wave;
+        if (AudioBassStrobeRadio.IsChecked == true) return AudioReactiveMode.BassStrobe;
+        if (AudioMultiColorSpectrumRadio.IsChecked == true) return AudioReactiveMode.MultiColorSpectrum;
+        return AudioReactiveMode.VuMeter;
     }
 
     private void FpsTimerTick(object? sender, object e)
@@ -350,9 +442,7 @@ public sealed partial class DashboardPage : Page
                 case DisplayMode.AudioReactive:
                     await mainWindow.EngineHost.ApplyAudioReactiveModeAsync(
                         mainWindow.Settings.AudioReactiveMode,
-                        mainWindow.Settings.StaticColorR,
-                        mainWindow.Settings.StaticColorG,
-                        mainWindow.Settings.StaticColorB);
+                        mainWindow.Settings.AudioReactiveSettings);
 
                     break;
 
@@ -406,10 +496,10 @@ public sealed partial class DashboardPage : Page
         await LoadWledEffectsAsync();
     }
 
-    // Zmiana wybranego efektu audio-reaktywnego (VU Meter / Spectrum Bar / Beat Pulse).
-    // Jeśli tryb Audio Reactive jest już aktywny, aktualizujemy parametry "na żywo" bez
-    // restartu przechwytywania dźwięku (patrz PipelineManager.UpdateAudioReactiveParameters);
-    // w przeciwnym razie tylko zapisujemy wybór do ustawień na później.
+    // Zmiana wybranego efektu audio-reaktywnego (7 trybów). Jeśli tryb Audio Reactive jest
+    // już aktywny, aktualizujemy parametry "na żywo" bez restartu przechwytywania dźwięku
+    // (patrz PipelineManager.UpdateAudioReactiveParameters); w przeciwnym razie tylko
+    // zapisujemy wybór do ustawień na później.
     private void AudioReactiveEffectRadio_Checked(object sender, RoutedEventArgs e)
     {
         if (isLoadingUi || mainWindow is null)
@@ -417,17 +507,14 @@ public sealed partial class DashboardPage : Page
             return;
         }
 
-        if (sender is not RadioButton radio || radio.Tag is not string modeTag)
+        if (sender is not RadioButton)
         {
             return;
         }
 
-        AudioReactiveMode selectedMode = modeTag switch
-        {
-            "SpectrumBar" => AudioReactiveMode.SpectrumBar,
-            "BeatPulse" => AudioReactiveMode.BeatPulse,
-            _ => AudioReactiveMode.VuMeter
-        };
+        AudioReactiveMode selectedMode = ReadSelectedAudioReactiveModeFromUi();
+
+        UpdateAudioBandColorsPanelVisibility(selectedMode);
 
         mainWindow.Settings.AudioReactiveMode = selectedMode;
         mainWindow.SettingsService.Save(mainWindow.Settings);
@@ -439,14 +526,40 @@ public sealed partial class DashboardPage : Page
 
         mainWindow.EngineHost.UpdateAudioReactiveParameters(
             selectedMode,
-            mainWindow.Settings.StaticColorR,
-            mainWindow.Settings.StaticColorG,
-            mainWindow.Settings.StaticColorB);
+            mainWindow.Settings.AudioReactiveSettings);
     }
 
-    // Kolor bazowy dla VU Meter/Beat Pulse jest współdzielony ze Static Color
-    // (StaticColorR/G/B w ustawieniach) - zapisujemy go w tym samym miejscu, żadnej
-    // dodatkowej pary pól w AmbilightSettings.
+    // Wspólny handler dla wszystkich sliderów konfiguracji Audio Reactive (Sensitivity/Decay/
+    // BeatThreshold) - każdy slider ma osobny handler XAML (żaden wspólny "tag routing" jak
+    // przy radio buttonach, bo Slider nie ma własnego pola Tag używanego gdzie indziej), ale
+    // wszystkie delegują do tej samej metody zapisu/propagacji.
+    private void AudioReactiveSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (isLoadingUi || mainWindow is null)
+        {
+            return;
+        }
+
+        AudioSensitivityValueText.Text = AudioSensitivitySlider.Value.ToString("F1");
+        AudioDecayValueText.Text = AudioDecaySlider.Value.ToString("F2");
+        AudioBeatThresholdValueText.Text = AudioBeatThresholdSlider.Value.ToString("F2");
+
+        PersistAndApplyAudioReactiveSettings();
+    }
+
+    private void AudioSensitivitySlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e) =>
+        AudioReactiveSlider_ValueChanged(sender, e);
+
+    private void AudioDecaySlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e) =>
+        AudioReactiveSlider_ValueChanged(sender, e);
+
+    private void AudioBeatThresholdSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e) =>
+        AudioReactiveSlider_ValueChanged(sender, e);
+
+    // Każdy z 5 ColorPickerów panelu Audio Reactive (Primary/Secondary/Bass/Mid/Treble) używa
+    // TEGO SAMEGO handlera - to jest właśnie fix bugu "miga na biało": kolory Audio Reactive
+    // mają teraz własne, niezależne pola w AudioReactiveSettings i NIE nadpisują już
+    // StaticColorR/G/B używanych przez tryb Static Color.
     private void AudioReactiveColorPicker_ColorChanged(
         ColorPicker sender,
         ColorChangedEventArgs args)
@@ -456,10 +569,21 @@ public sealed partial class DashboardPage : Page
             return;
         }
 
-        mainWindow.Settings.StaticColorR = args.NewColor.R;
-        mainWindow.Settings.StaticColorG = args.NewColor.G;
-        mainWindow.Settings.StaticColorB = args.NewColor.B;
+        PersistAndApplyAudioReactiveSettings();
+    }
 
+    // Wspólny punkt zapisu: odczytuje cały stan kontrolek panelu Audio Reactive, zapisuje do
+    // AmbilightSettings i - jeśli tryb jest aktywny - propaguje "na żywo" do silnika. Wywoływane
+    // przez wszystkie slidery i wszystkie ColorPickery panelu konfiguracji.
+    private void PersistAndApplyAudioReactiveSettings()
+    {
+        if (mainWindow is null)
+        {
+            return;
+        }
+
+        AudioReactiveSettings audioSettings = ReadAudioReactiveSettingsFromUi();
+        mainWindow.Settings.AudioReactiveSettings = audioSettings;
         mainWindow.SettingsService.Save(mainWindow.Settings);
 
         if (mainWindow.Settings.ActiveDisplayMode != DisplayMode.AudioReactive)
@@ -469,9 +593,7 @@ public sealed partial class DashboardPage : Page
 
         mainWindow.EngineHost.UpdateAudioReactiveParameters(
             mainWindow.Settings.AudioReactiveMode,
-            args.NewColor.R,
-            args.NewColor.G,
-            args.NewColor.B);
+            audioSettings);
     }
     private async Task LoadPresetsAutomaticallyAsync()
     {
@@ -1428,13 +1550,8 @@ public sealed partial class DashboardPage : Page
 
                     if (mainWindow.Settings.ActiveDisplayMode == DisplayMode.AudioReactive)
                     {
-                        AudioReactiveColorPicker.Color = Windows.UI.Color.FromArgb(
-                            255,
-                            mainWindow.Settings.StaticColorR,
-                            mainWindow.Settings.StaticColorG,
-                            mainWindow.Settings.StaticColorB);
-
                         ApplyAudioReactiveEffectToUi(mainWindow.Settings.AudioReactiveMode);
+                        ApplyAudioReactiveSettingsToUi(mainWindow.Settings.AudioReactiveSettings);
                     }
                 }
                 finally

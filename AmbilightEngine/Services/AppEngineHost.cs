@@ -1242,9 +1242,7 @@ namespace AmbilightEngine
         // capture WASAPI bez działającego PipelineManager nie miałby dokąd wysłać ramek.
         public async Task<bool> ApplyAudioReactiveModeAsync(
             AudioReactiveMode mode,
-            byte baseColorR,
-            byte baseColorG,
-            byte baseColorB,
+            AudioReactiveSettings audioSettings,
             CancellationToken cancellationToken = default)
         {
             if (pipelineManager is null)
@@ -1267,8 +1265,9 @@ namespace AmbilightEngine
 
                 settings.ActiveDisplayMode = DisplayMode.AudioReactive;
                 settings.AudioReactiveMode = mode;
+                settings.AudioReactiveSettings = audioSettings;
 
-                pipelineManager.EnterAudioReactiveMode(mode, baseColorR, baseColorG, baseColorB);
+                pipelineManager.EnterAudioReactiveMode(mode, audioSettings);
 
                 return true;
             }
@@ -1283,17 +1282,16 @@ namespace AmbilightEngine
             }
         }
 
-        // Aktualizuje tylko wybrany tryb efektu/kolor bazowy bez ponownego przechodzenia przez
-        // wyłączanie realtime override - używane, gdy Audio Reactive jest już aktywny i użytkownik
-        // tylko zmienia efekt (np. z VU Meter na Spectrum Bar) w tym samym miejscu w UI.
+        // Aktualizuje tylko wybrany tryb efektu/pełną konfigurację bez ponownego przechodzenia
+        // przez wyłączanie realtime override - używane, gdy Audio Reactive jest już aktywny i
+        // użytkownik tylko zmienia efekt lub przesuwa slider w tym samym miejscu w UI.
         public void UpdateAudioReactiveParameters(
             AudioReactiveMode mode,
-            byte baseColorR,
-            byte baseColorG,
-            byte baseColorB)
+            AudioReactiveSettings audioSettings)
         {
             settings.AudioReactiveMode = mode;
-            pipelineManager?.UpdateAudioReactiveParameters(mode, baseColorR, baseColorG, baseColorB);
+            settings.AudioReactiveSettings = audioSettings;
+            pipelineManager?.UpdateAudioReactiveParameters(mode, audioSettings);
         }
 
         public bool IsAudioReactiveModeActive => pipelineManager?.IsAudioReactiveModeActive ?? false;
@@ -2041,6 +2039,35 @@ public Task<bool> DecreaseMasterBrightnessAsync(
         // Nie modyfikuje żadnej istniejącej metody - wyłącznie dodaje trzy nowe.
         // ============================================================================
 
+        // Tworzy niezależną kopię AudioReactiveSettings do zapisu w scenie - jeśli scena
+        // przechowywałaby tę SAMĄ referencję co settings.AudioReactiveSettings, późniejsza
+        // zmiana suwaka na Dashboardzie (która mutuje settings.AudioReactiveSettings) niechcący
+        // zmodyfikowałaby również już zapisaną scenę.
+        private static AudioReactiveSettings CloneAudioReactiveSettings(AudioReactiveSettings source)
+        {
+            return new AudioReactiveSettings
+            {
+                Sensitivity = source.Sensitivity,
+                Decay = source.Decay,
+                BeatThreshold = source.BeatThreshold,
+                PrimaryColorR = source.PrimaryColorR,
+                PrimaryColorG = source.PrimaryColorG,
+                PrimaryColorB = source.PrimaryColorB,
+                SecondaryColorR = source.SecondaryColorR,
+                SecondaryColorG = source.SecondaryColorG,
+                SecondaryColorB = source.SecondaryColorB,
+                BassColorR = source.BassColorR,
+                BassColorG = source.BassColorG,
+                BassColorB = source.BassColorB,
+                MidColorR = source.MidColorR,
+                MidColorG = source.MidColorG,
+                MidColorB = source.MidColorB,
+                TrebleColorR = source.TrebleColorR,
+                TrebleColorG = source.TrebleColorG,
+                TrebleColorB = source.TrebleColorB
+            };
+        }
+
         /// <summary>
         /// Zapisuje bieżący stan wyświetlania (tryb + parametry Static Color / WLED Effect +
         /// Master Brightness + opcjonalny preset bieli aktywnego profilu) jako nazwaną scenę
@@ -2083,6 +2110,7 @@ public Task<bool> DecreaseMasterBrightnessAsync(
                 StaticColorB = settings.StaticColorB,
 
                 AudioReactiveMode = settings.AudioReactiveMode,
+                AudioReactiveSettings = CloneAudioReactiveSettings(settings.AudioReactiveSettings),
 
                 WledEffectId = settings.LastWledEffectId,
                 WledPaletteId = settings.LastWledPaletteId,
@@ -2202,9 +2230,7 @@ public Task<bool> DecreaseMasterBrightnessAsync(
                     case DisplayMode.AudioReactive:
                         modeApplied = await ApplyAudioReactiveModeAsync(
                             scene.AudioReactiveMode,
-                            scene.StaticColorR,
-                            scene.StaticColorG,
-                            scene.StaticColorB,
+                            scene.AudioReactiveSettings,
                             cancellationToken);
                         break;
 

@@ -32,9 +32,11 @@ namespace AmbilightEngine.Core.Models
         public byte StaticColorB { get; set; } = 255;
 
         // --- Audio Reactive ---
-        // Kolor bazowy dla tego trybu jest współdzielony z StaticColorR/G/B powyżej -
-        // sceny nie duplikują osobnego koloru tylko dla Audio Reactive.
+        // Pełna, niezależna konfiguracja (kolory Primary/Secondary/Bass/Mid/Treble, czułość,
+        // decay, próg beatu) - każda scena Quick Palette może zapamiętać własny, kompletny
+        // zestaw parametrów Audio Reactive, niezależnie od Static Color.
         public AudioReactiveMode AudioReactiveMode { get; set; } = AudioReactiveMode.VuMeter;
+        public AudioReactiveSettings AudioReactiveSettings { get; set; } = new();
 
         // --- WLED Effect ---
         public int WledEffectId { get; set; }
