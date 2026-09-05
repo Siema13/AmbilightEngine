@@ -196,4 +196,37 @@
         <Setter Property="BorderBrush" Value="{ThemeResource M3OutlineBrush}" />
     </Style>
 
+    <!-- NOWOŚĆ (porządkowanie UI): przycisk-"swatch" koloru - zastępuje pełnowymiarowy ColorPicker
+         (spektrum + slidery RGB widoczne na stałe, ~250-300px wysokości) małym kwadratem wypełnionym
+         aktualnym kolorem. Pełny ColorPicker pozostaje dostępny, ale ukryty w Flyout otwieranym po
+         kliknięciu - identyczna funkcjonalność, drastycznie mniej zajętej przestrzeni w karcie. -->
+    <Style x:Key="ColorSwatchButtonStyle" TargetType="Button">
+        <Setter Property="Width" Value="48" />
+        <Setter Property="Height" Value="32" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="BorderBrush" Value="{ThemeResource M3OutlineBrush}" />
+        <Setter Property="BorderThickness" Value="1.5" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+    </Style>
+
+    <!-- NOWOŚĆ (porządkowanie UI): styl dla wiersza "etykieta + wartość liczbowa" nad każdym
+         Sliderem - ujednolica 9 wcześniej powielonych bloków Grid (ColumnDefinitions */60,
+         TextBlock SemiBold + TextBlock z wartością wyrównaną do prawej). Redukuje duplikację
+         XAML bez zmiany zachowania runtime - te sam Grid, tylko nazwany. -->
+    <Style x:Key="SliderLabelRowGridStyle" TargetType="Grid">
+        <Setter Property="ColumnSpacing" Value="12" />
+    </Style>
+
+    <Style x:Key="SliderValueTextStyle" TargetType="TextBlock">
+        <Setter Property="Grid.Column" Value="1" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="HorizontalAlignment" Value="Right" />
+    </Style>
+
+    <Style x:Key="SliderLabelTextStyle" TargetType="TextBlock">
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
 </ResourceDictionary>

@@ -11,6 +11,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Media;
 using WinRT.Interop;
 using AmbilightEngine.Core.Hardware;
 using AmbilightEngine.Core.Models;
@@ -19,6 +20,16 @@ namespace AmbilightEngine.Pages;
 
 public sealed partial class DashboardPage : Page
 {
+    // NOWOŚĆ (porządkowanie UI): każdy ColorPicker na tej stronie jest teraz schowany w Flyout
+    // otwieranym z małego przycisku-"swatcha" wypełnionego aktualnym kolorem. Ta metoda ustawia
+    // tło swatcha na podany kolor - wywoływana zarówno przy pierwszym wczytaniu ustawień do UI,
+    // jak i w każdym handlerze ColorChanged, żeby swatch zawsze odzwierciedlał aktualny wybór
+    // bez potrzeby otwierania Flyout.
+    private static void SyncColorSwatchButton(Button swatchButton, Windows.UI.Color color)
+    {
+        swatchButton.Background = new SolidColorBrush(color);
+    }
+
     private List<string> loadedWledEffects = new();
     private List<string> loadedWledPalettes = new();
     private List<WledEffectMetadata> loadedEffectMetadata = new();
@@ -94,6 +105,7 @@ public sealed partial class DashboardPage : Page
                 mainWindow.Settings.StaticColorR,
                 mainWindow.Settings.StaticColorG,
                 mainWindow.Settings.StaticColorB);
+            SyncColorSwatchButton(StaticColorSwatchButton, StaticColorPicker.Color);
 
             ApplyAudioReactiveEffectToUi(mainWindow.Settings.AudioReactiveMode);
             ApplyAudioReactiveSettingsToUi(mainWindow.Settings.AudioReactiveSettings);
@@ -227,18 +239,23 @@ public sealed partial class DashboardPage : Page
 
         AudioPrimaryColorPicker.Color = Windows.UI.Color.FromArgb(
             255, audioSettings.PrimaryColorR, audioSettings.PrimaryColorG, audioSettings.PrimaryColorB);
+        SyncColorSwatchButton(AudioPrimaryColorSwatchButton, AudioPrimaryColorPicker.Color);
 
         AudioSecondaryColorPicker.Color = Windows.UI.Color.FromArgb(
             255, audioSettings.SecondaryColorR, audioSettings.SecondaryColorG, audioSettings.SecondaryColorB);
+        SyncColorSwatchButton(AudioSecondaryColorSwatchButton, AudioSecondaryColorPicker.Color);
 
         AudioBassColorPicker.Color = Windows.UI.Color.FromArgb(
             255, audioSettings.BassColorR, audioSettings.BassColorG, audioSettings.BassColorB);
+        SyncColorSwatchButton(AudioBassColorSwatchButton, AudioBassColorPicker.Color);
 
         AudioMidColorPicker.Color = Windows.UI.Color.FromArgb(
             255, audioSettings.MidColorR, audioSettings.MidColorG, audioSettings.MidColorB);
+        SyncColorSwatchButton(AudioMidColorSwatchButton, AudioMidColorPicker.Color);
 
         AudioTrebleColorPicker.Color = Windows.UI.Color.FromArgb(
             255, audioSettings.TrebleColorR, audioSettings.TrebleColorG, audioSettings.TrebleColorB);
+        SyncColorSwatchButton(AudioTrebleColorSwatchButton, AudioTrebleColorPicker.Color);
     }
 
     private void UpdateAudioBandColorsPanelVisibility(AudioReactiveMode mode)
@@ -469,6 +486,8 @@ public sealed partial class DashboardPage : Page
         ColorPicker sender,
         ColorChangedEventArgs args)
     {
+        SyncColorSwatchButton(StaticColorSwatchButton, args.NewColor);
+
         if (mainWindow is null || isLoadingUi || isApplyingDisplayMode)
         {
             return;
@@ -564,6 +583,23 @@ public sealed partial class DashboardPage : Page
         ColorPicker sender,
         ColorChangedEventArgs args)
     {
+        // Wspólny handler obsługuje 5 różnych ColorPickerów - mapujemy sender na jego własny
+        // przycisk-swatch, żeby nie trzeba pisać 5 osobnych metod tylko po to, by zaktualizować tło.
+        Button? matchingSwatch = sender.Name switch
+        {
+            nameof(AudioPrimaryColorPicker) => AudioPrimaryColorSwatchButton,
+            nameof(AudioSecondaryColorPicker) => AudioSecondaryColorSwatchButton,
+            nameof(AudioBassColorPicker) => AudioBassColorSwatchButton,
+            nameof(AudioMidColorPicker) => AudioMidColorSwatchButton,
+            nameof(AudioTrebleColorPicker) => AudioTrebleColorSwatchButton,
+            _ => null
+        };
+
+        if (matchingSwatch is not null)
+        {
+            SyncColorSwatchButton(matchingSwatch, args.NewColor);
+        }
+
         if (mainWindow is null || isLoadingUi || isApplyingDisplayMode)
         {
             return;
@@ -830,12 +866,14 @@ public sealed partial class DashboardPage : Page
             settings.LastWledPrimaryColorR,
             settings.LastWledPrimaryColorG,
             settings.LastWledPrimaryColorB);
+        SyncColorSwatchButton(EffectPrimaryColorSwatchButton, EffectPrimaryColorPicker.Color);
 
         EffectSecondaryColorPicker.Color = Windows.UI.Color.FromArgb(
             255,
             settings.LastWledSecondaryColorR,
             settings.LastWledSecondaryColorG,
             settings.LastWledSecondaryColorB);
+        SyncColorSwatchButton(EffectSecondaryColorSwatchButton, EffectSecondaryColorPicker.Color);
 
         ApplyEffectMetadataToUi();
 
@@ -1290,6 +1328,8 @@ public sealed partial class DashboardPage : Page
         ColorPicker sender,
         ColorChangedEventArgs args)
     {
+        SyncColorSwatchButton(EffectPrimaryColorSwatchButton, args.NewColor);
+
         if (isLoadingUi || mainWindow is null)
         {
             return;
@@ -1302,6 +1342,8 @@ public sealed partial class DashboardPage : Page
         ColorPicker sender,
         ColorChangedEventArgs args)
     {
+        SyncColorSwatchButton(EffectSecondaryColorSwatchButton, args.NewColor);
+
         if (isLoadingUi || mainWindow is null)
         {
             return;
@@ -1546,6 +1588,7 @@ public sealed partial class DashboardPage : Page
                             mainWindow.Settings.StaticColorR,
                             mainWindow.Settings.StaticColorG,
                             mainWindow.Settings.StaticColorB);
+                        SyncColorSwatchButton(StaticColorSwatchButton, StaticColorPicker.Color);
                     }
 
                     if (mainWindow.Settings.ActiveDisplayMode == DisplayMode.AudioReactive)

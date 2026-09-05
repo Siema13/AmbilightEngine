@@ -10,8 +10,8 @@
 
         <ScrollViewer HorizontalScrollBarVisibility="Disabled">
             <Grid
-                HorizontalAlignment="Left"
-                MaxWidth="960"
+                HorizontalAlignment="Stretch"
+                MaxWidth="1440"
                 Padding="32,24,32,32">
 
                 <StackPanel
@@ -38,578 +38,634 @@
                         Message=""
                         Margin="0,0,0,4" />
 
-                    <Border Style="{StaticResource CardStyle}">
-                        <StackPanel Spacing="12">
-                            <TextBlock
-                                Text="Tryb wyświetlania"
-                                Style="{StaticResource SectionHeaderTextStyle}" />
-
-                            <TextBlock
-                                Text="Wybierz, jak diody LED mają się zachowywać."
-                                Style="{StaticResource SectionSubTextStyle}" />
-
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <RadioButton
-                                    x:Name="VideoSyncModeRadio"
-                                    Content="Video Sync"
-                                    GroupName="DisplayModeGroup"
-                                    Checked="DisplayModeRadio_Checked"
-                                    Tag="VideoSync" />
-
-                                <RadioButton
-                                    x:Name="StaticColorModeRadio"
-                                    Content="Static Color"
-                                    GroupName="DisplayModeGroup"
-                                    Checked="DisplayModeRadio_Checked"
-                                    Tag="StaticColor" />
-
-                                <RadioButton
-                                    x:Name="WledEffectsModeRadio"
-                                    Content="WLED Effects"
-                                    GroupName="DisplayModeGroup"
-                                    Checked="DisplayModeRadio_Checked"
-                                    Tag="WledEffects" />
-
-                                <RadioButton
-                                    x:Name="AudioReactiveModeRadio"
-                                    Content="Audio Reactive"
-                                    GroupName="DisplayModeGroup"
-                                    Checked="DisplayModeRadio_Checked"
-                                    Tag="AudioReactive" />
-                            </StackPanel>
-
-                            <StackPanel x:Name="WledEffectsPanel" Spacing="12" Visibility="Collapsed">
-                                <TextBlock Text="Wybierz efekt WLED" FontWeight="SemiBold" />
-
-                                <ComboBox x:Name="WledEffectComboBox"
-          HorizontalAlignment="Stretch"
-          PlaceholderText="Wczytywanie efektów..."
-          DropDownOpened="EffectComboBox_DropDownOpened"
-          SelectionChanged="WledEffectComboBox_SelectionChanged" />
-
-                                <TextBlock
-                                    Text="Lista efektów wczytywana bezpośrednio z urządzenia WLED. Wybór natychmiast uruchamia efekt na diodach."
-                                    Style="{StaticResource SectionSubTextStyle}" />
-
-                                <controls:InfoBar x:Name="Matrix2DWarningBar"
-                                         IsOpen="False"
-                                         IsClosable="False"
-                                         Severity="Warning"
-                                         Title="Efekt wymaga matrycy 2D"
-                                         Message="Ten efekt może wyglądać niepoprawnie na zwykłym pasku LED." />
-
-                                <!-- Podgląd na żywo (WLED Peek) - przeniesiony pod listę efektów, żeby był widoczny
-                                     od razu podczas przeglądania i konfigurowania efektu, niezależnie od stanu silnika Ambilight. -->
-                                <preview:LedStripPreviewControl x:Name="WledPreviewControl" Margin="0,4,0,4" />
-
-                                <Grid ColumnSpacing="12">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="60" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Prędkość animacji" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                    <TextBlock x:Name="EffectSpeedValueText" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Text="128" />
-                                </Grid>
-                                <Slider x:Name="EffectSpeedSlider" Minimum="0" Maximum="255" StepFrequency="1"
-                                        ValueChanged="EffectSpeedSlider_ValueChanged" />
-                                <TextBlock
-                                    Text="Jak szybko zmienia się animacja efektu (0 = bardzo wolno, 255 = bardzo szybko)."
-                                    Style="{StaticResource SectionSubTextStyle}" />
-
-                                <Grid ColumnSpacing="12">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="60" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Intensywność" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                    <TextBlock x:Name="EffectIntensityValueText" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Text="128" />
-                                </Grid>
-                                <Slider x:Name="EffectIntensitySlider" Minimum="0" Maximum="255" StepFrequency="1"
-                                        ValueChanged="EffectIntensitySlider_ValueChanged" />
-                                <TextBlock
-                                    Text="Nasycenie/wyrazistość efektu - znaczenie zależy od wybranego efektu (np. gęstość iskier, szerokość paska)."
-                                    Style="{StaticResource SectionSubTextStyle}" />
-
-                                <StackPanel x:Name="Custom1Panel" Spacing="8" Visibility="Collapsed">
-                                    <Grid ColumnSpacing="12">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="60" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock x:Name="Custom1Label" Text="Custom 1" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                        <TextBlock x:Name="Custom1ValueText" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Text="128" />
-                                    </Grid>
-                                    <Slider x:Name="Custom1Slider" Minimum="0" Maximum="255" StepFrequency="1"
-                                            ValueChanged="Custom1Slider_ValueChanged" />
-                                </StackPanel>
-
-                                <StackPanel x:Name="Custom2Panel" Spacing="8" Visibility="Collapsed">
-                                    <Grid ColumnSpacing="12">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="60" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock x:Name="Custom2Label" Text="Custom 2" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                        <TextBlock x:Name="Custom2ValueText" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Text="128" />
-                                    </Grid>
-                                    <Slider x:Name="Custom2Slider" Minimum="0" Maximum="255" StepFrequency="1"
-                                            ValueChanged="Custom2Slider_ValueChanged" />
-                                </StackPanel>
-
-                                <StackPanel x:Name="Custom3Panel" Spacing="8" Visibility="Collapsed">
-                                    <Grid ColumnSpacing="12">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="60" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock x:Name="Custom3Label" Text="Custom 3" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                        <TextBlock x:Name="Custom3ValueText" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0" />
-                                    </Grid>
-                                    <Slider x:Name="Custom3Slider" Minimum="0" Maximum="31" StepFrequency="1"
-                                            ValueChanged="Custom3Slider_ValueChanged" />
-                                </StackPanel>
-
-                                <StackPanel x:Name="CheckboxesPanel" Orientation="Horizontal" Spacing="16">
-                                    <CheckBox x:Name="Check1CheckBox" Content="Opcja 1" Visibility="Collapsed" Checked="CheckBox_Changed" Unchecked="CheckBox_Changed" />
-                                    <CheckBox x:Name="Check2CheckBox" Content="Opcja 2" Visibility="Collapsed" Checked="CheckBox_Changed" Unchecked="CheckBox_Changed" />
-                                    <CheckBox x:Name="Check3CheckBox" Content="Opcja 3" Visibility="Collapsed" Checked="CheckBox_Changed" Unchecked="CheckBox_Changed" />
-                                </StackPanel>
-
-                                <TextBlock Text="Paleta kolorów" FontWeight="SemiBold" />
-                                <ComboBox x:Name="WledPaletteComboBox"
-          HorizontalAlignment="Stretch"
-          PlaceholderText="Wybierz paletę..."
-          DropDownOpened="PaletteComboBox_DropDownOpened"
-          SelectionChanged="WledPaletteComboBox_SelectionChanged" />
-                                <TextBlock
-                                    Text="Zestaw kolorów używany przez efekty gradientowe (ignorowane przez efekty jednokolorowe)."
-                                    Style="{StaticResource SectionSubTextStyle}" />
-
-                                <TextBlock Text="Kolor podstawowy" FontWeight="SemiBold" />
-                                <TextBlock
-                                    Text="Główny kolor używany przez efekt (dla efektów jednokolorowych to jedyny używany kolor)."
-                                    Style="{StaticResource SectionSubTextStyle}" />
-                                <ColorPicker x:Name="EffectPrimaryColorPicker"
-                                             ColorChanged="EffectPrimaryColorPicker_ColorChanged"
-                                             IsAlphaEnabled="False"
-                                             IsMoreButtonVisible="False" />
-
-                                <TextBlock Text="Kolor dodatkowy" FontWeight="SemiBold" />
-                                <TextBlock
-                                    Text="Drugi kolor używany w efektach dwukolorowych/gradientowych. Ignorowany przez wiele efektów jednokolorowych."
-                                    Style="{StaticResource SectionSubTextStyle}" />
-                                <ColorPicker x:Name="EffectSecondaryColorPicker"
-                                             ColorChanged="EffectSecondaryColorPicker_ColorChanged"
-                                             IsAlphaEnabled="False"
-                                             IsMoreButtonVisible="False" />
-
-                                <Grid ColumnSpacing="12">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="60" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Jasność" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                    <TextBlock x:Name="EffectBrightnessValueText" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Text="255" />
-                                </Grid>
-                                <Slider x:Name="EffectBrightnessSlider"
-                                        Minimum="0" Maximum="255" StepFrequency="1"
-                                        ValueChanged="EffectBrightnessSlider_ValueChanged" />
-                                <TextBlock
-                                    Text="Ogólna jasność diod podczas wyświetlania efektu."
-                                    Style="{StaticResource SectionSubTextStyle}" />
-
-                                <Button x:Name="RefreshEffectsButton" Content="Odśwież listę efektów" Click="RefreshEffectsButton_Click" HorizontalAlignment="Left" />
-                            </StackPanel>
-
-                            <StackPanel x:Name="StaticColorPanel" Spacing="8" Visibility="Collapsed">
-                                <TextBlock Text="Kolor stały" FontWeight="SemiBold" />
-                                <ColorPicker
-                                    x:Name="StaticColorPicker"
-                                    ColorChanged="StaticColorPicker_ColorChanged"
-                                    IsAlphaEnabled="False"
-                                    IsMoreButtonVisible="False" />
-                            </StackPanel>
-
-                            <StackPanel x:Name="AudioReactivePanel" Spacing="12" Visibility="Collapsed">
-                                <TextBlock Text="Efekt audio-reaktywny" FontWeight="SemiBold" />
-
-                                <TextBlock
-                                    Style="{StaticResource SectionSubTextStyle}"
-                                    Text="Źródło dźwięku: system (WASAPI loopback). Zestaw efektów inspirowany LedFx." />
-
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <RadioButton
-                                        x:Name="AudioVuMeterRadio"
-                                        Content="VU Meter"
-                                        GroupName="AudioReactiveEffectGroup"
-                                        Checked="AudioReactiveEffectRadio_Checked"
-                                        Tag="VuMeter" />
-
-                                    <RadioButton
-                                        x:Name="AudioSpectrumBarRadio"
-                                        Content="Spectrum Bar"
-                                        GroupName="AudioReactiveEffectGroup"
-                                        Checked="AudioReactiveEffectRadio_Checked"
-                                        Tag="SpectrumBar" />
-
-                                    <RadioButton
-                                        x:Name="AudioBeatPulseRadio"
-                                        Content="Beat Pulse"
-                                        GroupName="AudioReactiveEffectGroup"
-                                        Checked="AudioReactiveEffectRadio_Checked"
-                                        Tag="BeatPulse" />
-
-                                    <RadioButton
-                                        x:Name="AudioEnergyRadio"
-                                        Content="Energy"
-                                        GroupName="AudioReactiveEffectGroup"
-                                        Checked="AudioReactiveEffectRadio_Checked"
-                                        Tag="Energy" />
-                                </StackPanel>
-
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <RadioButton
-                                        x:Name="AudioWaveRadio"
-                                        Content="Wave"
-                                        GroupName="AudioReactiveEffectGroup"
-                                        Checked="AudioReactiveEffectRadio_Checked"
-                                        Tag="Wave" />
-
-                                    <RadioButton
-                                        x:Name="AudioBassStrobeRadio"
-                                        Content="Bass Strobe"
-                                        GroupName="AudioReactiveEffectGroup"
-                                        Checked="AudioReactiveEffectRadio_Checked"
-                                        Tag="BassStrobe" />
-
-                                    <RadioButton
-                                        x:Name="AudioMultiColorSpectrumRadio"
-                                        Content="Multi Color"
-                                        GroupName="AudioReactiveEffectGroup"
-                                        Checked="AudioReactiveEffectRadio_Checked"
-                                        Tag="MultiColorSpectrum" />
-                                </StackPanel>
-
-                                <!-- Rozwijany panel konfiguracji - pod radiobuttonami wyboru efektu, zgodnie
-                                     z ustaloną lokalizacją UI (nie osobna strona). Expander z Fluent Design
-                                     (zaokrąglone rogi, natywna animacja rozwijania) zamiast ręcznego przełączania
-                                     Visibility, żeby zachować spójność z resztą aplikacji Windows 11. -->
-                                <controls:Expander x:Name="AudioReactiveConfigExpander"
-                                                    Header="Konfiguracja efektu"
-                                                    HorizontalAlignment="Stretch"
-                                                    HorizontalContentAlignment="Stretch"
-                                                    IsExpanded="False">
-                                    <StackPanel Spacing="12" Padding="4,8,4,4">
-
-                                        <Grid ColumnSpacing="12">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="60" />
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock Text="Czułość (Sensitivity)" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                            <TextBlock x:Name="AudioSensitivityValueText" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Text="1.0" />
-                                        </Grid>
-                                        <Slider x:Name="AudioSensitivitySlider" Minimum="0.1" Maximum="5.0" StepFrequency="0.1"
-                                                ValueChanged="AudioSensitivitySlider_ValueChanged" />
-                                        <TextBlock
-                                            Text="Wzmocnienie sygnału audio przed analizą - zwiększ, jeśli efekt jest zbyt słaby przy niskiej głośności systemowej."
-                                            Style="{StaticResource SectionSubTextStyle}" />
-
-                                        <Grid ColumnSpacing="12">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="60" />
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock Text="Szybkość zanikania (Decay)" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                            <TextBlock x:Name="AudioDecayValueText" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.90" />
-                                        </Grid>
-                                        <Slider x:Name="AudioDecaySlider" Minimum="0.50" Maximum="0.995" StepFrequency="0.005"
-                                                ValueChanged="AudioDecaySlider_ValueChanged" />
-                                        <TextBlock
-                                            Text="Jak szybko gasną błyski/pulsy (Beat Pulse, Bass Strobe) - niżej = dłuższe wygaszanie."
-                                            Style="{StaticResource SectionSubTextStyle}" />
-
-                                        <Grid ColumnSpacing="12">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="60" />
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock Text="Próg wykrycia beatu" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                            <TextBlock x:Name="AudioBeatThresholdValueText" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Text="0.22" />
-                                        </Grid>
-                                        <Slider x:Name="AudioBeatThresholdSlider" Minimum="0.01" Maximum="1.0" StepFrequency="0.01"
-                                                ValueChanged="AudioBeatThresholdSlider_ValueChanged" />
-                                        <TextBlock
-                                            Text="Jak duży skok energii basu jest wymagany, by uznać go za uderzenie rytmu - niżej = częstsze wykrycia."
-                                            Style="{StaticResource SectionSubTextStyle}" />
-
-                                        <TextBlock Text="Kolor podstawowy (Primary)" FontWeight="SemiBold" />
-                                        <ColorPicker
-                                            x:Name="AudioPrimaryColorPicker"
-                                            ColorChanged="AudioReactiveColorPicker_ColorChanged"
-                                            IsAlphaEnabled="False"
-                                            IsMoreButtonVisible="False" />
-
-                                        <TextBlock Text="Kolor dodatkowy (Secondary)" FontWeight="SemiBold" />
-                                        <TextBlock
-                                            Text="Używany jako tło/drugi biegun gradientu w Energy, Wave i Bass Strobe."
-                                            Style="{StaticResource SectionSubTextStyle}" />
-                                        <ColorPicker
-                                            x:Name="AudioSecondaryColorPicker"
-                                            ColorChanged="AudioReactiveColorPicker_ColorChanged"
-                                            IsAlphaEnabled="False"
-                                            IsMoreButtonVisible="False" />
-
-                                        <!-- Kolory per-pasmo - widoczne tylko dla Multi Color Spectrum, analogicznie
-                                             do Custom1Panel/Custom2Panel/Custom3Panel w panelu WLED Effects. -->
-                                        <StackPanel x:Name="AudioBandColorsPanel" Spacing="12" Visibility="Collapsed">
-                                            <TextBlock Text="Kolor basu (Bass)" FontWeight="SemiBold" />
-                                            <ColorPicker
-                                                x:Name="AudioBassColorPicker"
-                                                ColorChanged="AudioReactiveColorPicker_ColorChanged"
-                                                IsAlphaEnabled="False"
-                                                IsMoreButtonVisible="False" />
-
-                                            <TextBlock Text="Kolor średnich tonów (Mid)" FontWeight="SemiBold" />
-                                            <ColorPicker
-                                                x:Name="AudioMidColorPicker"
-                                                ColorChanged="AudioReactiveColorPicker_ColorChanged"
-                                                IsAlphaEnabled="False"
-                                                IsMoreButtonVisible="False" />
-
-                                            <TextBlock Text="Kolor wysokich tonów (Treble)" FontWeight="SemiBold" />
-                                            <ColorPicker
-                                                x:Name="AudioTrebleColorPicker"
-                                                ColorChanged="AudioReactiveColorPicker_ColorChanged"
-                                                IsAlphaEnabled="False"
-                                                IsMoreButtonVisible="False" />
-                                        </StackPanel>
-                                    </StackPanel>
-                                </controls:Expander>
-                            </StackPanel>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- NOWOŚĆ: Quick Palette - zapisane sceny (tryb + parametry + Master Brightness +
-                         opcjonalny preset bieli), uruchamiane jednym kliknięciem z Dashboardu. -->
-                    <Border Style="{StaticResource CardStyle}">
-                        <StackPanel Spacing="12">
-                            <Grid ColumnSpacing="12">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-
-                                <TextBlock Text="Quick Palette"
-                                           Style="{StaticResource SectionHeaderTextStyle}"
-                                           VerticalAlignment="Center" />
-
-                                <Button x:Name="SaveSceneButton"
-                                        Grid.Column="1"
-                                        Content="Zapisz bieżącą scenę"
-                                        Click="SaveSceneButton_Click"
-                                        Style="{StaticResource AccentButtonStyle}" />
-                            </Grid>
-
-                            <TextBlock
-                                Text="Zapisane sceny łączą tryb wyświetlania, kolory lub efekt WLED, jasność bazową, Master Brightness i opcjonalny preset bieli. Uruchom scenę jednym kliknięciem."
-                                Style="{StaticResource SectionSubTextStyle}"
-                                TextWrapping="Wrap" />
-
-                            <TextBlock x:Name="NoScenesText"
-                                       Text="Brak zapisanych scen. Skonfiguruj wygląd LED i kliknij „Zapisz bieżącą scenę”."
-                                       Style="{StaticResource SectionSubTextStyle}"
-                                       Visibility="Collapsed" />
-
-                            <ItemsControl x:Name="ScenesItemsControl">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <StackPanel Spacing="8" />
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate x:DataType="models:SceneProfile">
-                                        <Border
-                                            Background="{ThemeResource M3NavigationPanelBrush}"
-                                            CornerRadius="8"
-                                            Padding="12,10">
-                                            <Grid ColumnSpacing="8">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-
-                                                <TextBlock
-                                                    Grid.Column="0"
-                                                    Text="{x:Bind Name}"
-                                                    VerticalAlignment="Center"
-                                                    FontWeight="SemiBold"
-                                                    TextTrimming="CharacterEllipsis" />
-
-                                                <Button
-                                                    Grid.Column="1"
-                                                    Content="Uruchom"
-                                                    Tag="{x:Bind SceneId}"
-                                                    Click="RunSceneButton_Click" />
-
-                                                <Button
-                                                    Grid.Column="2"
-                                                    Content="Usuń"
-                                                    Tag="{x:Bind SceneId}"
-                                                    Click="DeleteSceneButton_Click" />
-                                            </Grid>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </StackPanel>
-                    </Border>
-                    <Border Style="{StaticResource CardStyle}">
-                        <StackPanel Spacing="12">
-                            <TextBlock
-            Text="Presety i playlisty WLED"
-            Style="{StaticResource SectionHeaderTextStyle}" />
-
-                            <TextBlock
-            Text="Wybierz zapisany w aplikacji webowej WLED preset albo playlistę. Aktywacja działa niezależnie od trybu wyświetlania Ambilight."
-            Style="{StaticResource SectionSubTextStyle}"
-            TextWrapping="Wrap" />
-
-                            <controls:InfoBar x:Name="PresetsInfoBar"
-                          IsOpen="False"
-                          IsClosable="False"
-                          Severity="Informational"
-                          Title="Presety WLED"
-                          Message="" />
-
-                            <ComboBox x:Name="WledPresetComboBox"
-                  HorizontalAlignment="Stretch"
-                  PlaceholderText="Kliknij „Wczytaj presety”, aby pobrać listę z urządzenia"
-                  DisplayMemberPath="DisplayLabel"
-                  SelectionChanged="WledPresetComboBox_SelectionChanged" />
-
-                            <StackPanel Orientation="Horizontal" Spacing="12">
-                                <Button x:Name="LoadPresetsButton"
-                    Content="Wczytaj presety"
-                    Click="LoadPresetsButton_Click" />
-
-                                <Button x:Name="ActivatePresetButton"
-                    Content="Aktywuj wybrany"
-                    Style="{StaticResource AccentButtonStyle}"
-                    IsEnabled="False"
-                    Click="ActivatePresetButton_Click" />
-                            </StackPanel>
-
-                            <TextBlock x:Name="SelectedPresetDetailsText"
-                   Style="{StaticResource SectionSubTextStyle}"
-                   TextWrapping="Wrap"
-                   Text="" />
-                        </StackPanel>
-                    </Border>
-                    <Border Style="{StaticResource CardStyle}">
-                        <StackPanel Spacing="10">
-                            <Grid ColumnSpacing="12">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-
-                                <TextBlock Text="Jasność główna"
-                       Style="{StaticResource SectionHeaderTextStyle}"
-                       VerticalAlignment="Center" />
-
-                                <TextBlock x:Name="MasterBrightnessValueText"
-                       Grid.Column="1"
-                       FontSize="16"
-                       FontWeight="SemiBold"
-                       VerticalAlignment="Center"
-                       Text="100%" />
-                            </Grid>
-
-                            <TextBlock Text="Globalny poziom światła dla Video Sync, Static Color i WLED Effects. Nie zmienia jasności zapisanej w profilu ani w wybranym efekcie."
-                   Style="{StaticResource SectionSubTextStyle}"
-                   TextWrapping="Wrap" />
-
-                            <Slider x:Name="MasterBrightnessSlider"
-                Minimum="0"
-                Maximum="100"
-                StepFrequency="1"
-                ValueChanged="MasterBrightnessSlider_ValueChanged" />
-                        </StackPanel>
-                    </Border>
-                    <Grid
-                        ColumnSpacing="16"
-                        RowSpacing="16">
+                    <!-- Główny układ 2-kolumnowy: lewa = tryb wyświetlania i jego konfiguracja (szersza,
+                         bo zawiera najwięcej kontrolek), prawa = status/wydajność/quick palette/presety.
+                         Obie kolumny są top-aligned, aby różna wysokość zawartości nie rozciągała kart. -->
+                    <Grid ColumnSpacing="20">
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="3*" />
                             <ColumnDefinition Width="2*" />
-                            <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
 
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
+                        <StackPanel Grid.Column="0" Spacing="24" VerticalAlignment="Top">
 
-                        <Border
-                            Grid.Row="0"
-                            Grid.Column="0"
-                            Style="{StaticResource CardStyle}">
-                            <StackPanel Spacing="10">
-                                <TextBlock
-                                    Text="Status silnika"
-                                    Style="{StaticResource SectionHeaderTextStyle}" />
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel Spacing="12">
+                                    <TextBlock
+                                        Text="Tryb wyświetlania"
+                                        Style="{StaticResource SectionHeaderTextStyle}" />
 
-                                <TextBlock
-                                    x:Name="StatusText"
-                                    Style="{StaticResource SectionSubTextStyle}"
-                                    Text="Status: Gotowy do startu." />
+                                    <TextBlock
+                                        Text="Wybierz, jak diody LED mają się zachowywać."
+                                        Style="{StaticResource SectionSubTextStyle}" />
 
-                                <Button
-                                    x:Name="ToggleButton"
-                                    Content="Wybierz monitor i uruchom Ambilight"
-                                    Click="ToggleButtonClick"
-                                    Style="{StaticResource AccentButtonStyle}" />
-                            </StackPanel>
-                        </Border>
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <RadioButton
+                                            x:Name="VideoSyncModeRadio"
+                                            Content="Video Sync"
+                                            GroupName="DisplayModeGroup"
+                                            Checked="DisplayModeRadio_Checked"
+                                            Tag="VideoSync" />
 
-                        <Border
-                            Grid.Row="0"
-                            Grid.Column="1"
-                            Style="{StaticResource CardStyle}">
-                            <StackPanel Spacing="10">
-                                <TextBlock
-                                    Text="Wydajność"
-                                    Style="{StaticResource SectionHeaderTextStyle}" />
+                                        <RadioButton
+                                            x:Name="StaticColorModeRadio"
+                                            Content="Static Color"
+                                            GroupName="DisplayModeGroup"
+                                            Checked="DisplayModeRadio_Checked"
+                                            Tag="StaticColor" />
 
-                                <TextBlock
-                                    Text="Bieżący FPS przechwytywania i wysyłania."
-                                    Style="{StaticResource SectionSubTextStyle}" />
+                                        <RadioButton
+                                            x:Name="WledEffectsModeRadio"
+                                            Content="WLED Effects"
+                                            GroupName="DisplayModeGroup"
+                                            Checked="DisplayModeRadio_Checked"
+                                            Tag="WledEffects" />
 
-                                <TextBlock
-                                    x:Name="FpsText"
-                                    FontSize="14"
-                                    FontWeight="SemiBold"
-                                    Text="FPS --" />
-                            </StackPanel>
-                        </Border>
+                                        <RadioButton
+                                            x:Name="AudioReactiveModeRadio"
+                                            Content="Audio Reactive"
+                                            GroupName="DisplayModeGroup"
+                                            Checked="DisplayModeRadio_Checked"
+                                            Tag="AudioReactive" />
+                                    </StackPanel>
 
-                        <Border
-                            Grid.Row="1"
-                            Grid.Column="0"
-                            Grid.ColumnSpan="2"
-                            Style="{StaticResource CardStyle}">
-                            <StackPanel Spacing="8">
-                                <TextBlock
-                                    Text="Szybkie informacje"
-                                    Style="{StaticResource SectionHeaderTextStyle}" />
+                                    <StackPanel x:Name="WledEffectsPanel" Spacing="12" Visibility="Collapsed">
+                                        <TextBlock Text="Wybierz efekt WLED" FontWeight="SemiBold" />
 
-                                <TextBlock
-                                    Style="{StaticResource SectionSubTextStyle}"
-                                    Text="Uruchom Ambilight przyciskiem powyżej. Aktualny stan silnika i FPS są odświeżane automatycznie." />
-                            </StackPanel>
-                        </Border>
+                                        <ComboBox x:Name="WledEffectComboBox"
+                                                  HorizontalAlignment="Stretch"
+                                                  PlaceholderText="Wczytywanie efektów..."
+                                                  DropDownOpened="EffectComboBox_DropDownOpened"
+                                                  SelectionChanged="WledEffectComboBox_SelectionChanged" />
+
+                                        <TextBlock
+                                            Text="Lista efektów wczytywana bezpośrednio z urządzenia WLED. Wybór natychmiast uruchamia efekt na diodach."
+                                            Style="{StaticResource SectionSubTextStyle}" />
+
+                                        <controls:InfoBar x:Name="Matrix2DWarningBar"
+                                                 IsOpen="False"
+                                                 IsClosable="False"
+                                                 Severity="Warning"
+                                                 Title="Efekt wymaga matrycy 2D"
+                                                 Message="Ten efekt może wyglądać niepoprawnie na zwykłym pasku LED." />
+
+                                        <!-- Podgląd na żywo (WLED Peek) - przeniesiony pod listę efektów, żeby był widoczny
+                                             od razu podczas przeglądania i konfigurowania efektu, niezależnie od stanu silnika Ambilight. -->
+                                        <preview:LedStripPreviewControl x:Name="WledPreviewControl" Margin="0,4,0,4" />
+
+                                        <Grid Style="{StaticResource SliderLabelRowGridStyle}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="60" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="Prędkość animacji" Style="{StaticResource SliderLabelTextStyle}" />
+                                            <TextBlock x:Name="EffectSpeedValueText" Style="{StaticResource SliderValueTextStyle}" Text="128" />
+                                        </Grid>
+                                        <Slider x:Name="EffectSpeedSlider" Minimum="0" Maximum="255" StepFrequency="1"
+                                                ValueChanged="EffectSpeedSlider_ValueChanged" />
+                                        <TextBlock
+                                            Text="Jak szybko zmienia się animacja efektu (0 = bardzo wolno, 255 = bardzo szybko)."
+                                            Style="{StaticResource SectionSubTextStyle}" />
+
+                                        <Grid Style="{StaticResource SliderLabelRowGridStyle}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="60" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="Intensywność" Style="{StaticResource SliderLabelTextStyle}" />
+                                            <TextBlock x:Name="EffectIntensityValueText" Style="{StaticResource SliderValueTextStyle}" Text="128" />
+                                        </Grid>
+                                        <Slider x:Name="EffectIntensitySlider" Minimum="0" Maximum="255" StepFrequency="1"
+                                                ValueChanged="EffectIntensitySlider_ValueChanged" />
+                                        <TextBlock
+                                            Text="Nasycenie/wyrazistość efektu - znaczenie zależy od wybranego efektu (np. gęstość iskier, szerokość paska)."
+                                            Style="{StaticResource SectionSubTextStyle}" />
+
+                                        <StackPanel x:Name="Custom1Panel" Spacing="8" Visibility="Collapsed">
+                                            <Grid Style="{StaticResource SliderLabelRowGridStyle}">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="60" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock x:Name="Custom1Label" Text="Custom 1" Style="{StaticResource SliderLabelTextStyle}" />
+                                                <TextBlock x:Name="Custom1ValueText" Style="{StaticResource SliderValueTextStyle}" Text="128" />
+                                            </Grid>
+                                            <Slider x:Name="Custom1Slider" Minimum="0" Maximum="255" StepFrequency="1"
+                                                    ValueChanged="Custom1Slider_ValueChanged" />
+                                        </StackPanel>
+
+                                        <StackPanel x:Name="Custom2Panel" Spacing="8" Visibility="Collapsed">
+                                            <Grid Style="{StaticResource SliderLabelRowGridStyle}">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="60" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock x:Name="Custom2Label" Text="Custom 2" Style="{StaticResource SliderLabelTextStyle}" />
+                                                <TextBlock x:Name="Custom2ValueText" Style="{StaticResource SliderValueTextStyle}" Text="128" />
+                                            </Grid>
+                                            <Slider x:Name="Custom2Slider" Minimum="0" Maximum="255" StepFrequency="1"
+                                                    ValueChanged="Custom2Slider_ValueChanged" />
+                                        </StackPanel>
+
+                                        <StackPanel x:Name="Custom3Panel" Spacing="8" Visibility="Collapsed">
+                                            <Grid Style="{StaticResource SliderLabelRowGridStyle}">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="60" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock x:Name="Custom3Label" Text="Custom 3" Style="{StaticResource SliderLabelTextStyle}" />
+                                                <TextBlock x:Name="Custom3ValueText" Style="{StaticResource SliderValueTextStyle}" Text="0" />
+                                            </Grid>
+                                            <Slider x:Name="Custom3Slider" Minimum="0" Maximum="31" StepFrequency="1"
+                                                    ValueChanged="Custom3Slider_ValueChanged" />
+                                        </StackPanel>
+
+                                        <StackPanel x:Name="CheckboxesPanel" Orientation="Horizontal" Spacing="16">
+                                            <CheckBox x:Name="Check1CheckBox" Content="Opcja 1" Visibility="Collapsed" Checked="CheckBox_Changed" Unchecked="CheckBox_Changed" />
+                                            <CheckBox x:Name="Check2CheckBox" Content="Opcja 2" Visibility="Collapsed" Checked="CheckBox_Changed" Unchecked="CheckBox_Changed" />
+                                            <CheckBox x:Name="Check3CheckBox" Content="Opcja 3" Visibility="Collapsed" Checked="CheckBox_Changed" Unchecked="CheckBox_Changed" />
+                                        </StackPanel>
+
+                                        <TextBlock Text="Paleta kolorów" FontWeight="SemiBold" />
+                                        <ComboBox x:Name="WledPaletteComboBox"
+                                                  HorizontalAlignment="Stretch"
+                                                  PlaceholderText="Wybierz paletę..."
+                                                  DropDownOpened="PaletteComboBox_DropDownOpened"
+                                                  SelectionChanged="WledPaletteComboBox_SelectionChanged" />
+                                        <TextBlock
+                                            Text="Zestaw kolorów używany przez efekty gradientowe (ignorowane przez efekty jednokolorowe)."
+                                            Style="{StaticResource SectionSubTextStyle}" />
+
+                                        <TextBlock Text="Kolor podstawowy" FontWeight="SemiBold" />
+                                        <TextBlock
+                                            Text="Główny kolor używany przez efekt (dla efektów jednokolorowych to jedyny używany kolor)."
+                                            Style="{StaticResource SectionSubTextStyle}" />
+                                        <Button x:Name="EffectPrimaryColorSwatchButton" Style="{StaticResource ColorSwatchButtonStyle}">
+                                            <Button.Flyout>
+                                                <Flyout Placement="Bottom">
+                                                    <ColorPicker x:Name="EffectPrimaryColorPicker"
+                                                                 ColorChanged="EffectPrimaryColorPicker_ColorChanged"
+                                                                 IsAlphaEnabled="False"
+                                                                 IsMoreButtonVisible="False" />
+                                                </Flyout>
+                                            </Button.Flyout>
+                                        </Button>
+
+                                        <TextBlock Text="Kolor dodatkowy" FontWeight="SemiBold" />
+                                        <TextBlock
+                                            Text="Drugi kolor używany w efektach dwukolorowych/gradientowych. Ignorowany przez wiele efektów jednokolorowych."
+                                            Style="{StaticResource SectionSubTextStyle}" />
+                                        <Button x:Name="EffectSecondaryColorSwatchButton" Style="{StaticResource ColorSwatchButtonStyle}">
+                                            <Button.Flyout>
+                                                <Flyout Placement="Bottom">
+                                                    <ColorPicker x:Name="EffectSecondaryColorPicker"
+                                                                 ColorChanged="EffectSecondaryColorPicker_ColorChanged"
+                                                                 IsAlphaEnabled="False"
+                                                                 IsMoreButtonVisible="False" />
+                                                </Flyout>
+                                            </Button.Flyout>
+                                        </Button>
+
+                                        <Grid Style="{StaticResource SliderLabelRowGridStyle}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="60" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="Jasność" Style="{StaticResource SliderLabelTextStyle}" />
+                                            <TextBlock x:Name="EffectBrightnessValueText" Style="{StaticResource SliderValueTextStyle}" Text="255" />
+                                        </Grid>
+                                        <Slider x:Name="EffectBrightnessSlider"
+                                                Minimum="0" Maximum="255" StepFrequency="1"
+                                                ValueChanged="EffectBrightnessSlider_ValueChanged" />
+                                        <TextBlock
+                                            Text="Ogólna jasność diod podczas wyświetlania efektu."
+                                            Style="{StaticResource SectionSubTextStyle}" />
+
+                                        <Button x:Name="RefreshEffectsButton" Content="Odśwież listę efektów" Click="RefreshEffectsButton_Click" HorizontalAlignment="Left" />
+                                    </StackPanel>
+
+                                    <StackPanel x:Name="StaticColorPanel" Spacing="8" Visibility="Collapsed">
+                                        <TextBlock Text="Kolor stały" FontWeight="SemiBold" />
+                                        <Button x:Name="StaticColorSwatchButton" Style="{StaticResource ColorSwatchButtonStyle}">
+                                            <Button.Flyout>
+                                                <Flyout Placement="Bottom">
+                                                    <ColorPicker
+                                                        x:Name="StaticColorPicker"
+                                                        ColorChanged="StaticColorPicker_ColorChanged"
+                                                        IsAlphaEnabled="False"
+                                                        IsMoreButtonVisible="False" />
+                                                </Flyout>
+                                            </Button.Flyout>
+                                        </Button>
+                                    </StackPanel>
+
+                                    <StackPanel x:Name="AudioReactivePanel" Spacing="12" Visibility="Collapsed">
+                                        <TextBlock Text="Efekt audio-reaktywny" FontWeight="SemiBold" />
+
+                                        <TextBlock
+                                            Style="{StaticResource SectionSubTextStyle}"
+                                            Text="Źródło dźwięku: system (WASAPI loopback). Zestaw efektów inspirowany LedFx." />
+
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <RadioButton
+                                                x:Name="AudioVuMeterRadio"
+                                                Content="VU Meter"
+                                                GroupName="AudioReactiveEffectGroup"
+                                                Checked="AudioReactiveEffectRadio_Checked"
+                                                Tag="VuMeter" />
+
+                                            <RadioButton
+                                                x:Name="AudioSpectrumBarRadio"
+                                                Content="Spectrum Bar"
+                                                GroupName="AudioReactiveEffectGroup"
+                                                Checked="AudioReactiveEffectRadio_Checked"
+                                                Tag="SpectrumBar" />
+
+                                            <RadioButton
+                                                x:Name="AudioBeatPulseRadio"
+                                                Content="Beat Pulse"
+                                                GroupName="AudioReactiveEffectGroup"
+                                                Checked="AudioReactiveEffectRadio_Checked"
+                                                Tag="BeatPulse" />
+
+                                            <RadioButton
+                                                x:Name="AudioEnergyRadio"
+                                                Content="Energy"
+                                                GroupName="AudioReactiveEffectGroup"
+                                                Checked="AudioReactiveEffectRadio_Checked"
+                                                Tag="Energy" />
+                                        </StackPanel>
+
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <RadioButton
+                                                x:Name="AudioWaveRadio"
+                                                Content="Wave"
+                                                GroupName="AudioReactiveEffectGroup"
+                                                Checked="AudioReactiveEffectRadio_Checked"
+                                                Tag="Wave" />
+
+                                            <RadioButton
+                                                x:Name="AudioBassStrobeRadio"
+                                                Content="Bass Strobe"
+                                                GroupName="AudioReactiveEffectGroup"
+                                                Checked="AudioReactiveEffectRadio_Checked"
+                                                Tag="BassStrobe" />
+
+                                            <RadioButton
+                                                x:Name="AudioMultiColorSpectrumRadio"
+                                                Content="Multi Color"
+                                                GroupName="AudioReactiveEffectGroup"
+                                                Checked="AudioReactiveEffectRadio_Checked"
+                                                Tag="MultiColorSpectrum" />
+                                        </StackPanel>
+
+                                        <!-- Rozwijany panel konfiguracji - pod radiobuttonami wyboru efektu, zgodnie
+                                             z ustaloną lokalizacją UI (nie osobna strona). Expander z Fluent Design
+                                             (zaokrąglone rogi, natywna animacja rozwijania) zamiast ręcznego przełączania
+                                             Visibility, żeby zachować spójność z resztą aplikacji Windows 11. -->
+                                        <controls:Expander x:Name="AudioReactiveConfigExpander"
+                                                            Header="Konfiguracja efektu"
+                                                            HorizontalAlignment="Stretch"
+                                                            HorizontalContentAlignment="Stretch"
+                                                            IsExpanded="False">
+                                            <StackPanel Spacing="12" Padding="4,8,4,4">
+
+                                                <Grid Style="{StaticResource SliderLabelRowGridStyle}">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="60" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="Czułość (Sensitivity)" Style="{StaticResource SliderLabelTextStyle}" />
+                                                    <TextBlock x:Name="AudioSensitivityValueText" Style="{StaticResource SliderValueTextStyle}" Text="1.0" />
+                                                </Grid>
+                                                <Slider x:Name="AudioSensitivitySlider" Minimum="0.1" Maximum="5.0" StepFrequency="0.1"
+                                                        ValueChanged="AudioSensitivitySlider_ValueChanged" />
+                                                <TextBlock
+                                                    Text="Wzmocnienie sygnału audio przed analizą - zwiększ, jeśli efekt jest zbyt słaby przy niskiej głośności systemowej."
+                                                    Style="{StaticResource SectionSubTextStyle}" />
+
+                                                <Grid Style="{StaticResource SliderLabelRowGridStyle}">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="60" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="Szybkość zanikania (Decay)" Style="{StaticResource SliderLabelTextStyle}" />
+                                                    <TextBlock x:Name="AudioDecayValueText" Style="{StaticResource SliderValueTextStyle}" Text="0.90" />
+                                                </Grid>
+                                                <Slider x:Name="AudioDecaySlider" Minimum="0.50" Maximum="0.995" StepFrequency="0.005"
+                                                        ValueChanged="AudioDecaySlider_ValueChanged" />
+                                                <TextBlock
+                                                    Text="Jak szybko gasną błyski/pulsy (Beat Pulse, Bass Strobe) - niżej = dłuższe wygaszanie."
+                                                    Style="{StaticResource SectionSubTextStyle}" />
+
+                                                <Grid Style="{StaticResource SliderLabelRowGridStyle}">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="60" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="Próg wykrycia beatu" Style="{StaticResource SliderLabelTextStyle}" />
+                                                    <TextBlock x:Name="AudioBeatThresholdValueText" Style="{StaticResource SliderValueTextStyle}" Text="0.22" />
+                                                </Grid>
+                                                <Slider x:Name="AudioBeatThresholdSlider" Minimum="0.01" Maximum="1.0" StepFrequency="0.01"
+                                                        ValueChanged="AudioBeatThresholdSlider_ValueChanged" />
+                                                <TextBlock
+                                                    Text="Jak duży skok energii basu jest wymagany, by uznać go za uderzenie rytmu - niżej = częstsze wykrycia."
+                                                    Style="{StaticResource SectionSubTextStyle}" />
+
+                                                <TextBlock Text="Kolor podstawowy (Primary)" FontWeight="SemiBold" />
+                                                <Button x:Name="AudioPrimaryColorSwatchButton" Style="{StaticResource ColorSwatchButtonStyle}">
+                                                    <Button.Flyout>
+                                                        <Flyout Placement="Bottom">
+                                                            <ColorPicker
+                                                                x:Name="AudioPrimaryColorPicker"
+                                                                ColorChanged="AudioReactiveColorPicker_ColorChanged"
+                                                                IsAlphaEnabled="False"
+                                                                IsMoreButtonVisible="False" />
+                                                        </Flyout>
+                                                    </Button.Flyout>
+                                                </Button>
+
+                                                <TextBlock Text="Kolor dodatkowy (Secondary)" FontWeight="SemiBold" />
+                                                <TextBlock
+                                                    Text="Używany jako tło/drugi biegun gradientu w Energy, Wave i Bass Strobe."
+                                                    Style="{StaticResource SectionSubTextStyle}" />
+                                                <Button x:Name="AudioSecondaryColorSwatchButton" Style="{StaticResource ColorSwatchButtonStyle}">
+                                                    <Button.Flyout>
+                                                        <Flyout Placement="Bottom">
+                                                            <ColorPicker
+                                                                x:Name="AudioSecondaryColorPicker"
+                                                                ColorChanged="AudioReactiveColorPicker_ColorChanged"
+                                                                IsAlphaEnabled="False"
+                                                                IsMoreButtonVisible="False" />
+                                                        </Flyout>
+                                                    </Button.Flyout>
+                                                </Button>
+
+                                                <!-- Kolory per-pasmo - widoczne tylko dla Multi Color Spectrum, analogicznie
+                                                     do Custom1Panel/Custom2Panel/Custom3Panel w panelu WLED Effects. Układ
+                                                     poziomy (Orientation=Horizontal) - trzy małe swatche w jednym wierszu
+                                                     zamiast trzech pełnowymiarowych ColorPickerów ułożonych jeden pod drugim. -->
+                                                <StackPanel x:Name="AudioBandColorsPanel" Spacing="8" Visibility="Collapsed">
+                                                    <StackPanel Orientation="Horizontal" Spacing="20">
+                                                        <StackPanel Spacing="6">
+                                                            <TextBlock Text="Bas (Bass)" Style="{StaticResource CaptionTextStyle}" />
+                                                            <Button x:Name="AudioBassColorSwatchButton" Style="{StaticResource ColorSwatchButtonStyle}">
+                                                                <Button.Flyout>
+                                                                    <Flyout Placement="Bottom">
+                                                                        <ColorPicker
+                                                                            x:Name="AudioBassColorPicker"
+                                                                            ColorChanged="AudioReactiveColorPicker_ColorChanged"
+                                                                            IsAlphaEnabled="False"
+                                                                            IsMoreButtonVisible="False" />
+                                                                    </Flyout>
+                                                                </Button.Flyout>
+                                                            </Button>
+                                                        </StackPanel>
+
+                                                        <StackPanel Spacing="6">
+                                                            <TextBlock Text="Średnie (Mid)" Style="{StaticResource CaptionTextStyle}" />
+                                                            <Button x:Name="AudioMidColorSwatchButton" Style="{StaticResource ColorSwatchButtonStyle}">
+                                                                <Button.Flyout>
+                                                                    <Flyout Placement="Bottom">
+                                                                        <ColorPicker
+                                                                            x:Name="AudioMidColorPicker"
+                                                                            ColorChanged="AudioReactiveColorPicker_ColorChanged"
+                                                                            IsAlphaEnabled="False"
+                                                                            IsMoreButtonVisible="False" />
+                                                                    </Flyout>
+                                                                </Button.Flyout>
+                                                            </Button>
+                                                        </StackPanel>
+
+                                                        <StackPanel Spacing="6">
+                                                            <TextBlock Text="Wysokie (Treble)" Style="{StaticResource CaptionTextStyle}" />
+                                                            <Button x:Name="AudioTrebleColorSwatchButton" Style="{StaticResource ColorSwatchButtonStyle}">
+                                                                <Button.Flyout>
+                                                                    <Flyout Placement="Bottom">
+                                                                        <ColorPicker
+                                                                            x:Name="AudioTrebleColorPicker"
+                                                                            ColorChanged="AudioReactiveColorPicker_ColorChanged"
+                                                                            IsAlphaEnabled="False"
+                                                                            IsMoreButtonVisible="False" />
+                                                                    </Flyout>
+                                                                </Button.Flyout>
+                                                            </Button>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </controls:Expander>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                        </StackPanel>
+
+                        <!-- Prawa kolumna: status silnika, wydajność, quick palette, presety WLED i jasność
+                             główna - elementy pomocnicze/monitorujące, oddzielone od głównej konfiguracji trybu. -->
+                        <StackPanel Grid.Column="1" Spacing="24" VerticalAlignment="Top">
+
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel Spacing="10">
+                                    <TextBlock
+                                        Text="Status silnika"
+                                        Style="{StaticResource SectionHeaderTextStyle}" />
+
+                                    <TextBlock
+                                        x:Name="StatusText"
+                                        Style="{StaticResource SectionSubTextStyle}"
+                                        Text="Status: Gotowy do startu." />
+
+                                    <Button
+                                        x:Name="ToggleButton"
+                                        Content="Wybierz monitor i uruchom Ambilight"
+                                        Click="ToggleButtonClick"
+                                        Style="{StaticResource AccentButtonStyle}"
+                                        HorizontalAlignment="Stretch" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel Spacing="10">
+                                    <TextBlock
+                                        Text="Wydajność"
+                                        Style="{StaticResource SectionHeaderTextStyle}" />
+
+                                    <TextBlock
+                                        Text="Bieżący FPS przechwytywania i wysyłania."
+                                        Style="{StaticResource SectionSubTextStyle}" />
+
+                                    <TextBlock
+                                        x:Name="FpsText"
+                                        FontSize="14"
+                                        FontWeight="SemiBold"
+                                        Text="FPS --" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel Spacing="8">
+                                    <TextBlock
+                                        Text="Szybkie informacje"
+                                        Style="{StaticResource SectionHeaderTextStyle}" />
+
+                                    <TextBlock
+                                        Style="{StaticResource SectionSubTextStyle}"
+                                        Text="Uruchom Ambilight przyciskiem powyżej. Aktualny stan silnika i FPS są odświeżane automatycznie." />
+                                </StackPanel>
+                            </Border>
+
+                            <!-- NOWOŚĆ: Quick Palette - zapisane sceny (tryb + parametry + Master Brightness +
+                                 opcjonalny preset bieli), uruchamiane jednym kliknięciem z Dashboardu. -->
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel Spacing="12">
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBlock Text="Quick Palette"
+                                                   Style="{StaticResource SectionHeaderTextStyle}"
+                                                   VerticalAlignment="Center" />
+
+                                        <Button x:Name="SaveSceneButton"
+                                                Grid.Column="1"
+                                                Content="Zapisz bieżącą scenę"
+                                                Click="SaveSceneButton_Click"
+                                                Style="{StaticResource AccentButtonStyle}" />
+                                    </Grid>
+
+                                    <TextBlock
+                                        Text="Zapisane sceny łączą tryb wyświetlania, kolory lub efekt WLED, jasność bazową, Master Brightness i opcjonalny preset bieli. Uruchom scenę jednym kliknięciem."
+                                        Style="{StaticResource SectionSubTextStyle}"
+                                        TextWrapping="Wrap" />
+
+                                    <TextBlock x:Name="NoScenesText"
+                                               Text="Brak zapisanych scen. Skonfiguruj wygląd LED i kliknij „Zapisz bieżącą scenę”."
+                                               Style="{StaticResource SectionSubTextStyle}"
+                                               Visibility="Collapsed" />
+
+                                    <ItemsControl x:Name="ScenesItemsControl">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <StackPanel Spacing="8" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="models:SceneProfile">
+                                                <Border
+                                                    Background="{ThemeResource M3NavigationPanelBrush}"
+                                                    CornerRadius="8"
+                                                    Padding="12,10">
+                                                    <Grid ColumnSpacing="8">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+
+                                                        <TextBlock
+                                                            Grid.Column="0"
+                                                            Text="{x:Bind Name}"
+                                                            VerticalAlignment="Center"
+                                                            FontWeight="SemiBold"
+                                                            TextTrimming="CharacterEllipsis" />
+
+                                                        <Button
+                                                            Grid.Column="1"
+                                                            Content="Uruchom"
+                                                            Tag="{x:Bind SceneId}"
+                                                            Click="RunSceneButton_Click" />
+
+                                                        <Button
+                                                            Grid.Column="2"
+                                                            Content="Usuń"
+                                                            Tag="{x:Bind SceneId}"
+                                                            Click="DeleteSceneButton_Click" />
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel Spacing="12">
+                                    <TextBlock
+                                        Text="Presety i playlisty WLED"
+                                        Style="{StaticResource SectionHeaderTextStyle}" />
+
+                                    <TextBlock
+                                        Text="Wybierz zapisany w aplikacji webowej WLED preset albo playlistę. Aktywacja działa niezależnie od trybu wyświetlania Ambilight."
+                                        Style="{StaticResource SectionSubTextStyle}"
+                                        TextWrapping="Wrap" />
+
+                                    <controls:InfoBar x:Name="PresetsInfoBar"
+                                                       IsOpen="False"
+                                                       IsClosable="False"
+                                                       Severity="Informational"
+                                                       Title="Presety WLED"
+                                                       Message="" />
+
+                                    <ComboBox x:Name="WledPresetComboBox"
+                                              HorizontalAlignment="Stretch"
+                                              PlaceholderText="Kliknij „Wczytaj presety”, aby pobrać listę z urządzenia"
+                                              DisplayMemberPath="DisplayLabel"
+                                              SelectionChanged="WledPresetComboBox_SelectionChanged" />
+
+                                    <StackPanel Orientation="Horizontal" Spacing="12">
+                                        <Button x:Name="LoadPresetsButton"
+                                                Content="Wczytaj presety"
+                                                Click="LoadPresetsButton_Click" />
+
+                                        <Button x:Name="ActivatePresetButton"
+                                                Content="Aktywuj wybrany"
+                                                Style="{StaticResource AccentButtonStyle}"
+                                                IsEnabled="False"
+                                                Click="ActivatePresetButton_Click" />
+                                    </StackPanel>
+
+                                    <TextBlock x:Name="SelectedPresetDetailsText"
+                                               Style="{StaticResource SectionSubTextStyle}"
+                                               TextWrapping="Wrap"
+                                               Text="" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel Spacing="10">
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBlock Text="Jasność główna"
+                                                   Style="{StaticResource SectionHeaderTextStyle}"
+                                                   VerticalAlignment="Center" />
+
+                                        <TextBlock x:Name="MasterBrightnessValueText"
+                                                   Grid.Column="1"
+                                                   FontSize="16"
+                                                   FontWeight="SemiBold"
+                                                   VerticalAlignment="Center"
+                                                   Text="100%" />
+                                    </Grid>
+
+                                    <TextBlock Text="Globalny poziom światła dla Video Sync, Static Color i WLED Effects. Nie zmienia jasności zapisanej w profilu ani w wybranym efekcie."
+                                               Style="{StaticResource SectionSubTextStyle}"
+                                               TextWrapping="Wrap" />
+
+                                    <Slider x:Name="MasterBrightnessSlider"
+                                            Minimum="0"
+                                            Maximum="100"
+                                            StepFrequency="1"
+                                            ValueChanged="MasterBrightnessSlider_ValueChanged" />
+                                </StackPanel>
+                            </Border>
+
+                        </StackPanel>
                     </Grid>
                 </StackPanel>
             </Grid>
