@@ -53,7 +53,12 @@ namespace AmbilightEngine.Core.Audio
         private RgbColor[] GenerateSpectrumBarFrame(AudioSpectrumFrame audioFrame)
         {
             var frame = new RgbColor[ledCount];
-            int spectrumLength = audioFrame.Spectrum.Length;
+
+            // FIX (defense-in-depth): Spectrum może teoretycznie być null, jeśli ktoś w przyszłości
+            // stworzy AudioSpectrumFrame przez default(...) zamiast AudioSpectrumFrame.Silence(...).
+            // Bez tej ochrony wyjątek tutaj cicho zabija pętlę wysyłki ramek w PipelineManager
+            // (patrz komentarz przy polu latestAudioFrame) - lepiej zwrócić czarną klatkę.
+            int spectrumLength = audioFrame.Spectrum?.Length ?? 0;
 
             if (spectrumLength == 0)
             {

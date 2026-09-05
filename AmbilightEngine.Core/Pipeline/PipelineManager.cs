@@ -127,7 +127,14 @@ namespace AmbilightEngine.Core.Pipeline
         private AudioReactiveEffectGenerator? audioEffectGenerator;
         private CancellationTokenSource? audioReactiveCts;
         private volatile bool isAudioReactiveModeActive;
-        private AudioSpectrumFrame latestAudioFrame;
+        // FIX: inicjalizacja przez AudioSpectrumFrame.Silence(...), NIE domyślny default(struct).
+        // AudioSpectrumFrame jest strukturą z polem Spectrum typu float[] - domyślna wartość
+        // struktury zeruje to pole do null. Zanim WASAPI capture dostarczy pierwszą realną ramkę
+        // (kilkadziesiąt milisekund po starcie), pętla wysyłki w EnterAudioReactiveMode już działa
+        // i dla trybu SpectrumBar odwołuje się do audioFrame.Spectrum.Length - z null-em rzucało
+        // to NullReferenceException, który ogólny catch w pętli Task.Run wyciszal (tylko log do
+        // Debug.WriteLine) i trwale zatrzymywał wysyłkę ramek - efekt: "Audio Reactive nic nie robi".
+        private AudioSpectrumFrame latestAudioFrame = AudioSpectrumFrame.Silence(AudioAnalyzer.SpectrumBinCount);
         private readonly object audioFrameLock = new object();
 
         // Aktualny tryb generatora i kolor bazowy - mutowalne w locie przez
@@ -695,9 +702,9 @@ namespace AmbilightEngine.Core.Pipeline
 
             _ = Task.Run(async () =>
             {
-                try
+                while (!token.IsCancellationRequested)
                 {
-                    while (!token.IsCancellationRequested)
+                    try
                     {
                         AudioSpectrumFrame frameSnapshot;
                         AudioReactiveMode modeSnapshot;
@@ -715,14 +722,30 @@ namespace AmbilightEngine.Core.Pipeline
 
                         await Task.Delay(AudioReactiveFrameIntervalMs, token).ConfigureAwait(false);
                     }
-                }
-                catch (OperationCanceledException)
-                {
-                    // Oczekiwane zakończenie przy ExitAudioReactiveMode/Dispose.
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"[DIAG] AudioReactive: pętla wysyłki ramek zakończona błędem: {ex.Message}");
+                    catch (OperationCanceledException)
+                    {
+                        // Oczekiwane zakończenie przy ExitAudioReactiveMode/Dispose - wychodzimy
+                        // z pętli całkowicie (jedyny akceptowalny "koniec na dobre").
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        // FIX: try/catch jest teraz WEWNĄTRZ pętli while, nie wokół niej - pojedyncza
+                        // niespodziewana klatka z wyjątkiem (np. przyszły błąd w generatorze efektu)
+                        // już nie zabija trwale całej wysyłki Audio Reactive na cichym błędzie. Krótkie
+                        // opóźnienie zapobiega "busy loop" logowania w razie błędu powtarzającego się
+                        // w każdej iteracji.
+                        Debug.WriteLine($"[DIAG] AudioReactive: błąd w pętli wysyłki ramek (kontynuuję): {ex.Message}");
+
+                        try
+                        {
+                            await Task.Delay(AudioReactiveFrameIntervalMs, token).ConfigureAwait(false);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            break;
+                        }
+                    }
                 }
             }, token);
 

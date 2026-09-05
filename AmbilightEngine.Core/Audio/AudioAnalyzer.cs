@@ -20,6 +20,11 @@ namespace AmbilightEngine.Core.Audio
         // częstotliwościową (48000/2048 ≈ 23Hz na "słupek" FFT) do rozróżnienia basu od reszty.
         private const int FftSize = 2048;
 
+        // Liczba używalnych binów FFT (FftSize / 2) - publiczna, żeby PipelineManager mógł
+        // zainicjalizować startową (ciszę) ramkę AudioSpectrumFrame.Silence(...) z tablicą
+        // Spectrum o właściwej długości, zanim pierwsza realna analiza FFT nadejdzie.
+        public const int SpectrumBinCount = FftSize / 2;
+
         // Współczynnik opadania szczytu auto-gain między kolejnymi blokami - bliski 1.0 oznacza
         // bardzo wolne "zapominanie" poprzednich głośnych fragmentów, żeby ciche pasaże utworu
         // nie powodowały gwałtownego przesterowania efektu do maksimum.
@@ -103,7 +108,7 @@ namespace AmbilightEngine.Core.Audio
 
             FastFourierTransform.Transform(complexBuffer);
 
-            int usableBins = FftSize / 2;
+            int usableBins = SpectrumBinCount;
             var magnitudes = new float[usableBins];
             float rawSpectrumPeak = MinPeakFloor;
 
