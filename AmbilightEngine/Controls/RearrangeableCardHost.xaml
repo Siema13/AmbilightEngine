@@ -1,0 +1,74 @@
+<UserControl
+    x:Class="AmbilightEngine.Controls.RearrangeableCardHost"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <!-- Uchwyt przeciągania (ikona ⠿) - widoczny tylko w trybie edycji, nakładany na
+             każdą kartę jako pierwszy element jej wewnętrznego StackPanel/Grid. Duży obszar
+             dotykowy (36x36) mimo małej ikony, żeby łatwo złapać uchwyt myszką/dotykiem. -->
+        <Style x:Key="DragHandleButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="36" />
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Background" Value="{ThemeResource M3SecondaryContainerBrush}" />
+            <Setter Property="Foreground" Value="{ThemeResource M3OnSecondaryContainerBrush}" />
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+            <!-- ManipulationMode ustawiany na Ignore w code-behind podczas ManipulationStarting nie jest
+                 potrzebny tutaj - Button domyślnie przechwytuje PointerPressed, obsługa drag zaczyna się
+                 na Border rodzica karty (patrz RearrangeableCardHost.xaml.cs) nasłuchując na tym uchwycie. -->
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Przycisk trybu edycji - zawsze widoczny w prawym górnym rogu obszaru kart.
+             W trybie edycji zmienia treść/styl, żeby jasno sygnalizować aktywny stan. -->
+        <StackPanel
+            Grid.Row="0"
+            Orientation="Horizontal"
+            HorizontalAlignment="Right"
+            Spacing="8"
+            Margin="0,0,0,12">
+
+            <TextBlock
+                x:Name="EditModeHintText"
+                Text="Przeciągaj karty za uchwyt ⠿, aby zmienić układ."
+                Style="{StaticResource SectionSubTextStyle}"
+                VerticalAlignment="Center"
+                Visibility="Collapsed" />
+
+            <Button
+                x:Name="ToggleEditModeButton"
+                Content="🔧 Dostosuj układ"
+                Click="ToggleEditModeButton_Click"
+                Style="{StaticResource MaterialTonalButtonStyle}" />
+        </StackPanel>
+
+        <!-- Dwie kolumny "masonry" - każda to StackPanel, do którego karty (Border) są
+             przenoszone programowo (Children.Add/Remove/Insert) z zewnętrznej listy przekazanej
+             przez stronę-właściciela. Karty zachowują naturalną wysokość zawartości. -->
+        <!-- Proporcje kolumn (3*/2*) zgodne z pierwotnym układem Dashboardu - stałe, bo
+             zmiana proporcji kolumn nie jest częścią personalizacji (tylko kolejność/przypisanie kart). -->
+        <Grid Grid.Row="1" ColumnSpacing="20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="3*" />
+                <ColumnDefinition Width="2*" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel x:Name="LeftColumnPanel" Grid.Column="0" Spacing="24" VerticalAlignment="Top" />
+            <StackPanel x:Name="RightColumnPanel" Grid.Column="1" Spacing="24" VerticalAlignment="Top" />
+        </Grid>
+    </Grid>
+</UserControl>

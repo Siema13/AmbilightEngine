@@ -30,6 +30,57 @@ public sealed partial class DashboardPage : Page
         swatchButton.Background = new SolidColorBrush(color);
     }
 
+    // Klucz strony w AmbilightSettings.CardLayout.PageCardOrders - musi być unikalny w skali
+    // całej aplikacji, bo mapa jest wspólna dla wszystkich stron z przestawialnymi kartami.
+    private const string CardLayoutPageKey = "Dashboard";
+
+    // Rejestruje wszystkie karty Dashboardu (zdefiniowane w XAML wewnątrz niewidocznego
+    // HiddenCardSourcePanel) w RearrangeableCardHost, wczytuje zapisaną kolejność z ustawień
+    // (lub domyślną - kolejność deklaracji w XAML, jeśli użytkownik nigdy jeszcze nie
+    // przestawiał kart) i podłącza zapis przy każdej zmianie układu. Wywoływane raz przy
+    // każdym załadowaniu strony - HiddenCardSourcePanel.Children jest opróżniany przy
+    // rejestracji (Border trafia do DashboardCardHost), więc wielokrotne wywołanie tej metody
+    // w ramach jednego załadowania strony byłoby bezpieczne, ale niepotrzebne.
+    private void InitializeDashboardCardLayout()
+    {
+        if (mainWindow is null)
+        {
+            return;
+        }
+
+        DashboardCardHost.RegisterCard(nameof(DisplayModeCard), DisplayModeCard);
+        DashboardCardHost.RegisterCard(nameof(EngineStatusCard), EngineStatusCard);
+        DashboardCardHost.RegisterCard(nameof(PerformanceCard), PerformanceCard);
+        DashboardCardHost.RegisterCard(nameof(QuickInfoCard), QuickInfoCard);
+        DashboardCardHost.RegisterCard(nameof(QuickPaletteCard), QuickPaletteCard);
+        DashboardCardHost.RegisterCard(nameof(WledPresetsCard), WledPresetsCard);
+        DashboardCardHost.RegisterCard(nameof(MasterBrightnessCard), MasterBrightnessCard);
+
+        IReadOnlyList<string>? savedOrder =
+            mainWindow.Settings.CardLayout.PageCardOrders.TryGetValue(CardLayoutPageKey, out List<string>? order)
+                ? order
+                : null;
+
+        DashboardCardHost.ApplyInitialLayout(savedOrder);
+
+        DashboardCardHost.LayoutChanged -= DashboardCardHost_LayoutChanged;
+        DashboardCardHost.LayoutChanged += DashboardCardHost_LayoutChanged;
+    }
+
+    // Zapisuje nową kolejność kart natychmiast po każdym przeciągnięciu - podobnie jak
+    // wszystkie inne ustawienia Dashboardu (slidery, kolory), żeby układ przetrwał ponowne
+    // uruchomienie aplikacji bez wymagania osobnego przycisku "Zapisz".
+    private void DashboardCardHost_LayoutChanged(IReadOnlyList<string> newOrder)
+    {
+        if (mainWindow is null)
+        {
+            return;
+        }
+
+        mainWindow.Settings.CardLayout.PageCardOrders[CardLayoutPageKey] = newOrder.ToList();
+        mainWindow.SettingsService.Save(mainWindow.Settings);
+    }
+
     private List<string> loadedWledEffects = new();
     private List<string> loadedWledPalettes = new();
     private List<WledEffectMetadata> loadedEffectMetadata = new();
@@ -78,6 +129,8 @@ public sealed partial class DashboardPage : Page
         mainWindow.EngineHost.StatusChanged += OnStatusChanged;
 
         ApplyStatus(mainWindow.EngineHost.CurrentStatus);
+
+        InitializeDashboardCardLayout();
 
         WledPreviewControl.Configure(mainWindow.Settings);
 

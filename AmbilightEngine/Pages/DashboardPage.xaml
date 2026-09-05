@@ -38,18 +38,20 @@
                         Message=""
                         Margin="0,0,0,4" />
 
-                    <!-- Główny układ 2-kolumnowy: lewa = tryb wyświetlania i jego konfiguracja (szersza,
-                         bo zawiera najwięcej kontrolek), prawa = status/wydajność/quick palette/presety.
-                         Obie kolumny są top-aligned, aby różna wysokość zawartości nie rozciągała kart. -->
-                    <Grid ColumnSpacing="20">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="3*" />
-                            <ColumnDefinition Width="2*" />
-                        </Grid.ColumnDefinitions>
+                    <!-- Karty są rozmieszczane i przestawialne (drag&drop w trybie edycji) przez
+                         RearrangeableCardHost. Kolejność początkowa = kolejność rejestracji w
+                         DashboardPage.xaml.cs (OnLoaded), odpowiadająca dawnemu statycznemu układowi
+                         2-kolumnowemu - użytkownik może ją trwale zmienić (zapis w AmbilightSettings.CardLayout). -->
+                    <preview:RearrangeableCardHost x:Name="DashboardCardHost" />
 
-                        <StackPanel Grid.Column="0" Spacing="24" VerticalAlignment="Top">
+                    <!-- Zbiór źródłowy kart - NIEWIDOCZNY kontener przechowujący oryginalne Border z całą
+                         zawartością (identyczną jak wcześniej). Przy ładowaniu strony każdy Border jest
+                         PROGRAMOWO przenoszony do DashboardCardHost (patrz InitializeDashboardCardLayout w .xaml.cs) -
+                         wszystkie x:Name kontrolek WEWNĄTRZ kart (StatusText, ToggleButton itd.) działają
+                         bez zmian, bo x:Name wiąże pole klasy niezależnie od miejsca w drzewie wizualnym. -->
+                    <StackPanel x:Name="HiddenCardSourcePanel" Visibility="Collapsed">
 
-                            <Border Style="{StaticResource CardStyle}">
+                            <Border x:Name="DisplayModeCard" Style="{StaticResource CardStyle}">
                                 <StackPanel Spacing="12">
                                     <TextBlock
                                         Text="Tryb wyświetlania"
@@ -552,13 +554,7 @@
                                 </StackPanel>
                             </Border>
 
-                        </StackPanel>
-
-                        <!-- Prawa kolumna: status silnika, wydajność, quick palette, presety WLED i jasność
-                             główna - elementy pomocnicze/monitorujące, oddzielone od głównej konfiguracji trybu. -->
-                        <StackPanel Grid.Column="1" Spacing="24" VerticalAlignment="Top">
-
-                            <Border Style="{StaticResource CardStyle}">
+                            <Border x:Name="EngineStatusCard" Style="{StaticResource CardStyle}">
                                 <StackPanel Spacing="10">
                                     <TextBlock
                                         Text="Status silnika"
@@ -578,7 +574,7 @@
                                 </StackPanel>
                             </Border>
 
-                            <Border Style="{StaticResource CardStyle}">
+                            <Border x:Name="PerformanceCard" Style="{StaticResource CardStyle}">
                                 <StackPanel Spacing="10">
                                     <TextBlock
                                         Text="Wydajność"
@@ -596,7 +592,7 @@
                                 </StackPanel>
                             </Border>
 
-                            <Border Style="{StaticResource CardStyle}">
+                            <Border x:Name="QuickInfoCard" Style="{StaticResource CardStyle}">
                                 <StackPanel Spacing="8">
                                     <TextBlock
                                         Text="Szybkie informacje"
@@ -610,7 +606,7 @@
 
                             <!-- NOWOŚĆ: Quick Palette - zapisane sceny (tryb + parametry + Master Brightness +
                                  opcjonalny preset bieli), uruchamiane jednym kliknięciem z Dashboardu. -->
-                            <Border Style="{StaticResource CardStyle}">
+                            <Border x:Name="QuickPaletteCard" Style="{StaticResource CardStyle}">
                                 <StackPanel Spacing="12">
                                     <Grid ColumnSpacing="12">
                                         <Grid.ColumnDefinitions>
@@ -684,7 +680,7 @@
                                     </ItemsControl>
                                 </StackPanel>
                             </Border>
-                            <Border Style="{StaticResource CardStyle}">
+                            <Border x:Name="WledPresetsCard" Style="{StaticResource CardStyle}">
                                 <StackPanel Spacing="12">
                                     <TextBlock
                                         Text="Presety i playlisty WLED"
@@ -726,7 +722,7 @@
                                                Text="" />
                                 </StackPanel>
                             </Border>
-                            <Border Style="{StaticResource CardStyle}">
+                            <Border x:Name="MasterBrightnessCard" Style="{StaticResource CardStyle}">
                                 <StackPanel Spacing="10">
                                     <Grid ColumnSpacing="12">
                                         <Grid.ColumnDefinitions>
@@ -758,8 +754,7 @@
                                 </StackPanel>
                             </Border>
 
-                        </StackPanel>
-                    </Grid>
+                    </StackPanel>
                 </StackPanel>
             </Grid>
         </ScrollViewer>

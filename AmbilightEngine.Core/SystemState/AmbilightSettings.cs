@@ -312,6 +312,10 @@ namespace AmbilightEngine.Core.SystemState
         // --- Shortcuts ---
         public HotkeySettings Hotkeys { get; set; } = HotkeySettings.CreateDefault();
 
+        // --- Personalizacja układu kart (drag&drop) ---
+        // Jeden globalny układ dla całej aplikacji, niezależny od aktywnego profilu WLED.
+        public DashboardLayoutSettings CardLayout { get; set; } = new();
+
         // --- Profile ---
         public List<AppProfile> Profiles { get; set; } = new();
 
