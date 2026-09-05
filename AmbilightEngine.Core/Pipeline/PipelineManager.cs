@@ -526,6 +526,21 @@ namespace AmbilightEngine.Core.Pipeline
                             continue;
                         }
 
+                        // FIX (root cause "biały stroboskop"): Audio Reactive ma WŁASNĄ, niezależną
+                        // pętlę wysyłki klatek (Task.Run w EnterAudioReactiveMode, sterowaną analizą
+                        // FFT/RMS). Bez tego warunku klatki z przechwytywania ekranu (WGC) - które
+                        // nadal płyną przez ten kanał, bo capture nigdy nie jest zatrzymywane przy
+                        // przełączeniu na Audio Reactive - byłyby JEDNOCZEŚNIE wysyłane do tego
+                        // samego urządzenia DDP przez SendAndRememberFrame poniżej. Dwie niezależne
+                        // pętle walczące o to samo urządzenie w losowej kolejności dawały efekt
+                        // migającego, białego "stroboskopu" (kolor z jasnego fragmentu ekranu)
+                        // nałożonego na kolory generowane przez AudioReactiveEffectGenerator.
+                        if (activeMode == DisplayMode.AudioReactive)
+                        {
+                            Interlocked.Increment(ref framesSent);
+                            continue;
+                        }
+
                         if (settings.EnableBlackBarDetection)
                         {
                             BlackBarInsets insets = blackBarDetector.Detect(
