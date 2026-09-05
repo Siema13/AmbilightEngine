@@ -4,7 +4,8 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:Microsoft.UI.Xaml.Controls"
     xmlns:preview="using:AmbilightEngine.Controls"
-    xmlns:models="using:AmbilightEngine.Core.Models">
+    xmlns:models="using:AmbilightEngine.Core.Models"
+    NavigationCacheMode="Required">
 
     <Grid HorizontalAlignment="Stretch" Background="{ThemeResource M3SurfaceContainerBrush}">
 
@@ -44,7 +45,7 @@
                          2-kolumnowemu - użytkownik może ją trwale zmienić (zapis w AmbilightSettings.CardLayout). -->
                     <preview:RearrangeableCardHost x:Name="DashboardCardHost" />
 
-                    <!-- Zbiór źródłowy kart - NIEWIDOCZNY kontener przechowujący oryginalne Border z całą
+                    <!-- Zbiór źrodłowy kart - NIEWIDOCZNY kontener przechowujący oryginalne Border z całą
                          zawartością (identyczną jak wcześniej). Przy ładowaniu strony każdy Border jest
                          PROGRAMOWO przenoszony do DashboardCardHost (patrz InitializeDashboardCardLayout w .xaml.cs) -
                          wszystkie x:Name kontrolek WEWNĄTRZ kart (StatusText, ToggleButton itd.) działają
@@ -266,7 +267,7 @@
 
                                         <TextBlock
                                             Style="{StaticResource SectionSubTextStyle}"
-                                            Text="Źródło dźwięku: system (WASAPI loopback). Zestaw efektów inspirowany LedFx." />
+                                            Text="Żródło dźwięku: system (WASAPI loopback). Zestaw efektów inspirowany LedFx." />
 
                                         <StackPanel Orientation="Horizontal" Spacing="8">
                                             <RadioButton
@@ -362,7 +363,7 @@
 
                                         <!-- Rozwijany panel konfiguracji - pod radiobuttonami wyboru efektu, zgodnie
                                              z ustaloną lokalizacją UI (nie osobna strona). Expander z Fluent Design
-                                             (zaokrąglone rogi, natywna animacja rozwijania) zamiast ręcznego przełączania
+                                             (zaokrąglone rogi, natywna animacja rozwijania) zamiast ręcznego przetaczania
                                              Visibility, żeby zachować spójność z resztą aplikacji Windows 11. -->
                                         <controls:Expander x:Name="AudioReactiveConfigExpander"
                                                             Header="Konfiguracja efektu"
@@ -553,7 +554,6 @@
                                     </StackPanel>
                                 </StackPanel>
                             </Border>
-
                             <Border x:Name="EngineStatusCard" Style="{StaticResource CardStyle}">
                                 <StackPanel Spacing="10">
                                     <TextBlock
