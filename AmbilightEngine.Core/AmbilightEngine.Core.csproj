@@ -21,6 +21,7 @@
 		<PackageReference Include="Microsoft.Win32.SystemEvents" Version="8.0.0" />
 		<PackageReference Include="Vortice.Direct3D11" Version="*" />
 		<PackageReference Include="Vortice.DXGI" Version="*" />
+		<PackageReference Include="NAudio" Version="2.2.1" />
 	</ItemGroup>
 
 </Project>

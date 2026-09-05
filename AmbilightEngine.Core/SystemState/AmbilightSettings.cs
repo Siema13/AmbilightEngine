@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using AmbilightEngine.Core.Audio;
 using AmbilightEngine.Core.Models;
 using AmbilightEngine.Core.Processing;
 using AmbilightEngine.Models;
@@ -220,6 +221,14 @@ namespace AmbilightEngine.Core.SystemState
         public byte StaticColorR { get; set; } = 255;
         public byte StaticColorG { get; set; } = 255;
         public byte StaticColorB { get; set; } = 255;
+
+        // --- Audio Reactive ---
+        // Zapamiętany ostatnio wybrany tryb generatora efektów audio-reaktywnych
+        // (VuMeter/SpectrumBar/BeatPulse), przywracany przy ponownym włączeniu tego trybu
+        // wyświetlania po restarcie aplikacji. Kolor bazowy dla VuMeter/BeatPulse jest
+        // celowo współdzielony ze Static Color (StaticColorR/G/B) - unikamy duplikowania
+        // osobnego wyboru koloru tylko dla tego trybu.
+        public AudioReactiveMode AudioReactiveMode { get; set; } = AudioReactiveMode.VuMeter;
 
         // --- Preset temperatury światła (Static Color) ---
         // Pamięta pozycję w cyklu 2700K/4000K/5000K/6500K/9300K używanym przez skrót

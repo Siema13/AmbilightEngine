@@ -1,4 +1,5 @@
 ﻿using System;
+using AmbilightEngine.Core.Audio;
 using AmbilightEngine.Core.SystemState;
 
 namespace AmbilightEngine.Core.Models
@@ -29,6 +30,11 @@ namespace AmbilightEngine.Core.Models
         public byte StaticColorR { get; set; } = 255;
         public byte StaticColorG { get; set; } = 255;
         public byte StaticColorB { get; set; } = 255;
+
+        // --- Audio Reactive ---
+        // Kolor bazowy dla tego trybu jest współdzielony z StaticColorR/G/B powyżej -
+        // sceny nie duplikują osobnego koloru tylko dla Audio Reactive.
+        public AudioReactiveMode AudioReactiveMode { get; set; } = AudioReactiveMode.VuMeter;
 
         // --- WLED Effect ---
         public int WledEffectId { get; set; }

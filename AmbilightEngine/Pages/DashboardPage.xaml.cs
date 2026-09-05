@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using AmbilightEngine.Core.Audio;
 using AmbilightEngine.Core.Hardware;
 using AmbilightEngine.Core.Models;
 using AmbilightEngine.Core.SystemState;
@@ -87,6 +88,21 @@ public sealed partial class DashboardPage : Page
             MasterBrightnessValueText.Text =
                 $"{mainWindow.Settings.MasterBrightnessPercent}%";
             ApplyDisplayModeToUi(mainWindow.Settings.ActiveDisplayMode);
+
+            StaticColorPicker.Color = Windows.UI.Color.FromArgb(
+                255,
+                mainWindow.Settings.StaticColorR,
+                mainWindow.Settings.StaticColorG,
+                mainWindow.Settings.StaticColorB);
+
+            AudioReactiveColorPicker.Color = Windows.UI.Color.FromArgb(
+                255,
+                mainWindow.Settings.StaticColorR,
+                mainWindow.Settings.StaticColorG,
+                mainWindow.Settings.StaticColorB);
+
+            ApplyAudioReactiveEffectToUi(mainWindow.Settings.AudioReactiveMode);
+
             RefreshScenesList();
             if (mainWindow.Settings.ActiveDisplayMode == DisplayMode.WledEffects)
             {
@@ -133,12 +149,21 @@ public sealed partial class DashboardPage : Page
                 StaticColorModeRadio.IsChecked = true;
                 StaticColorPanel.Visibility = Visibility.Visible;
                 WledEffectsPanel.Visibility = Visibility.Collapsed;
+                AudioReactivePanel.Visibility = Visibility.Collapsed;
                 break;
 
             case DisplayMode.WledEffects:
                 WledEffectsModeRadio.IsChecked = true;
                 StaticColorPanel.Visibility = Visibility.Collapsed;
                 WledEffectsPanel.Visibility = Visibility.Visible;
+                AudioReactivePanel.Visibility = Visibility.Collapsed;
+                break;
+
+            case DisplayMode.AudioReactive:
+                AudioReactiveModeRadio.IsChecked = true;
+                StaticColorPanel.Visibility = Visibility.Collapsed;
+                WledEffectsPanel.Visibility = Visibility.Collapsed;
+                AudioReactivePanel.Visibility = Visibility.Visible;
                 break;
 
             case DisplayMode.VideoSync:
@@ -146,6 +171,26 @@ public sealed partial class DashboardPage : Page
                 VideoSyncModeRadio.IsChecked = true;
                 StaticColorPanel.Visibility = Visibility.Collapsed;
                 WledEffectsPanel.Visibility = Visibility.Collapsed;
+                AudioReactivePanel.Visibility = Visibility.Collapsed;
+                break;
+        }
+    }
+
+    private void ApplyAudioReactiveEffectToUi(AudioReactiveMode mode)
+    {
+        switch (mode)
+        {
+            case AudioReactiveMode.SpectrumBar:
+                AudioSpectrumBarRadio.IsChecked = true;
+                break;
+
+            case AudioReactiveMode.BeatPulse:
+                AudioBeatPulseRadio.IsChecked = true;
+                break;
+
+            case AudioReactiveMode.VuMeter:
+            default:
+                AudioVuMeterRadio.IsChecked = true;
                 break;
         }
     }
@@ -260,6 +305,7 @@ public sealed partial class DashboardPage : Page
         {
             "StaticColor" => DisplayMode.StaticColor,
             "WledEffects" => DisplayMode.WledEffects,
+            "AudioReactive" => DisplayMode.AudioReactive,
             _ => DisplayMode.VideoSync
         };
 
@@ -280,6 +326,10 @@ public sealed partial class DashboardPage : Page
                 ? Visibility.Visible
                 : Visibility.Collapsed;
 
+            AudioReactivePanel.Visibility = selectedMode == DisplayMode.AudioReactive
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+
             switch (selectedMode)
             {
                 case DisplayMode.StaticColor:
@@ -295,6 +345,15 @@ public sealed partial class DashboardPage : Page
                     mainWindow.EngineHost.NotifyDisplayModeChanged();
 
                     await LoadWledEffectsAsync();
+                    break;
+
+                case DisplayMode.AudioReactive:
+                    await mainWindow.EngineHost.ApplyAudioReactiveModeAsync(
+                        mainWindow.Settings.AudioReactiveMode,
+                        mainWindow.Settings.StaticColorR,
+                        mainWindow.Settings.StaticColorG,
+                        mainWindow.Settings.StaticColorB);
+
                     break;
 
                 case DisplayMode.VideoSync:
@@ -345,6 +404,74 @@ public sealed partial class DashboardPage : Page
     private async void RefreshEffectsButton_Click(object sender, RoutedEventArgs e)
     {
         await LoadWledEffectsAsync();
+    }
+
+    // Zmiana wybranego efektu audio-reaktywnego (VU Meter / Spectrum Bar / Beat Pulse).
+    // Jeśli tryb Audio Reactive jest już aktywny, aktualizujemy parametry "na żywo" bez
+    // restartu przechwytywania dźwięku (patrz PipelineManager.UpdateAudioReactiveParameters);
+    // w przeciwnym razie tylko zapisujemy wybór do ustawień na później.
+    private void AudioReactiveEffectRadio_Checked(object sender, RoutedEventArgs e)
+    {
+        if (isLoadingUi || mainWindow is null)
+        {
+            return;
+        }
+
+        if (sender is not RadioButton radio || radio.Tag is not string modeTag)
+        {
+            return;
+        }
+
+        AudioReactiveMode selectedMode = modeTag switch
+        {
+            "SpectrumBar" => AudioReactiveMode.SpectrumBar,
+            "BeatPulse" => AudioReactiveMode.BeatPulse,
+            _ => AudioReactiveMode.VuMeter
+        };
+
+        mainWindow.Settings.AudioReactiveMode = selectedMode;
+        mainWindow.SettingsService.Save(mainWindow.Settings);
+
+        if (mainWindow.Settings.ActiveDisplayMode != DisplayMode.AudioReactive)
+        {
+            return;
+        }
+
+        mainWindow.EngineHost.UpdateAudioReactiveParameters(
+            selectedMode,
+            mainWindow.Settings.StaticColorR,
+            mainWindow.Settings.StaticColorG,
+            mainWindow.Settings.StaticColorB);
+    }
+
+    // Kolor bazowy dla VU Meter/Beat Pulse jest współdzielony ze Static Color
+    // (StaticColorR/G/B w ustawieniach) - zapisujemy go w tym samym miejscu, żadnej
+    // dodatkowej pary pól w AmbilightSettings.
+    private void AudioReactiveColorPicker_ColorChanged(
+        ColorPicker sender,
+        ColorChangedEventArgs args)
+    {
+        if (mainWindow is null || isLoadingUi || isApplyingDisplayMode)
+        {
+            return;
+        }
+
+        mainWindow.Settings.StaticColorR = args.NewColor.R;
+        mainWindow.Settings.StaticColorG = args.NewColor.G;
+        mainWindow.Settings.StaticColorB = args.NewColor.B;
+
+        mainWindow.SettingsService.Save(mainWindow.Settings);
+
+        if (mainWindow.Settings.ActiveDisplayMode != DisplayMode.AudioReactive)
+        {
+            return;
+        }
+
+        mainWindow.EngineHost.UpdateAudioReactiveParameters(
+            mainWindow.Settings.AudioReactiveMode,
+            args.NewColor.R,
+            args.NewColor.G,
+            args.NewColor.B);
     }
     private async Task LoadPresetsAutomaticallyAsync()
     {
@@ -1297,6 +1424,17 @@ public sealed partial class DashboardPage : Page
                             mainWindow.Settings.StaticColorR,
                             mainWindow.Settings.StaticColorG,
                             mainWindow.Settings.StaticColorB);
+                    }
+
+                    if (mainWindow.Settings.ActiveDisplayMode == DisplayMode.AudioReactive)
+                    {
+                        AudioReactiveColorPicker.Color = Windows.UI.Color.FromArgb(
+                            255,
+                            mainWindow.Settings.StaticColorR,
+                            mainWindow.Settings.StaticColorG,
+                            mainWindow.Settings.StaticColorB);
+
+                        ApplyAudioReactiveEffectToUi(mainWindow.Settings.AudioReactiveMode);
                     }
                 }
                 finally

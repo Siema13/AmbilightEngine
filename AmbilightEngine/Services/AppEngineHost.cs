@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using AmbilightEngine.Core.Audio;
 using AmbilightEngine.Core.Automation;
 using AmbilightEngine.Core.Capture;
 using AmbilightEngine.Core.Hardware;
@@ -1234,6 +1235,68 @@ namespace AmbilightEngine
             if (ledSender == null) return false;
             return await ledSender.DisableRealtimeOverrideAsync(cancellationToken);
         }
+
+        // Metoda kanoniczna dla przełączenia w Audio Reactive - analogiczna do
+        // SetStaticColorWithTransitionAsync. Jeśli pipeline nie istnieje (silnik nigdy nie
+        // uruchomiony/monitor nie wybrany), informuje o tym i nie przełącza trybu, bo
+        // capture WASAPI bez działającego PipelineManager nie miałby dokąd wysłać ramek.
+        public async Task<bool> ApplyAudioReactiveModeAsync(
+            AudioReactiveMode mode,
+            byte baseColorR,
+            byte baseColorG,
+            byte baseColorB,
+            CancellationToken cancellationToken = default)
+        {
+            if (pipelineManager is null)
+            {
+                SetStatus(EngineStatusInfo.Running(
+                    "Audio Reactive wymaga wybrania monitora i uruchomienia silnika."));
+
+                return false;
+            }
+
+            try
+            {
+                bool overrideDisabled = await DisableWledRealtimeOverrideAsync(cancellationToken);
+
+                if (!overrideDisabled)
+                {
+                    Debug.WriteLine(
+                        "[DIAG] Audio Reactive: nie udało się wyłączyć realtime override.");
+                }
+
+                settings.ActiveDisplayMode = DisplayMode.AudioReactive;
+                settings.AudioReactiveMode = mode;
+
+                pipelineManager.EnterAudioReactiveMode(mode, baseColorR, baseColorG, baseColorB);
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[DIAG] Audio Reactive: aktywacja nie powiodła się: {ex.Message}");
+
+                SetStatus(EngineStatusInfo.Error(
+                    $"Nie udało się uruchomić Audio Reactive: {ex.Message}"));
+
+                return false;
+            }
+        }
+
+        // Aktualizuje tylko wybrany tryb efektu/kolor bazowy bez ponownego przechodzenia przez
+        // wyłączanie realtime override - używane, gdy Audio Reactive jest już aktywny i użytkownik
+        // tylko zmienia efekt (np. z VU Meter na Spectrum Bar) w tym samym miejscu w UI.
+        public void UpdateAudioReactiveParameters(
+            AudioReactiveMode mode,
+            byte baseColorR,
+            byte baseColorG,
+            byte baseColorB)
+        {
+            settings.AudioReactiveMode = mode;
+            pipelineManager?.UpdateAudioReactiveParameters(mode, baseColorR, baseColorG, baseColorB);
+        }
+
+        public bool IsAudioReactiveModeActive => pipelineManager?.IsAudioReactiveModeActive ?? false;
         private async Task RestoreVideoSyncAfterProfileAsync(
     PipelineManager pipeline,
     string profileName,
@@ -2019,6 +2082,8 @@ public Task<bool> DecreaseMasterBrightnessAsync(
                 StaticColorG = settings.StaticColorG,
                 StaticColorB = settings.StaticColorB,
 
+                AudioReactiveMode = settings.AudioReactiveMode,
+
                 WledEffectId = settings.LastWledEffectId,
                 WledPaletteId = settings.LastWledPaletteId,
                 WledSpeed = settings.LastWledSpeed,
@@ -2132,6 +2197,15 @@ public Task<bool> DecreaseMasterBrightnessAsync(
                             cancellationToken);
 
                         pipelineManager?.NotifyDisplayModeChanged();
+                        break;
+
+                    case DisplayMode.AudioReactive:
+                        modeApplied = await ApplyAudioReactiveModeAsync(
+                            scene.AudioReactiveMode,
+                            scene.StaticColorR,
+                            scene.StaticColorG,
+                            scene.StaticColorB,
+                            cancellationToken);
                         break;
 
                     case DisplayMode.VideoSync:

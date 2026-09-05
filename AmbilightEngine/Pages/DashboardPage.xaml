@@ -69,6 +69,13 @@
                                     GroupName="DisplayModeGroup"
                                     Checked="DisplayModeRadio_Checked"
                                     Tag="WledEffects" />
+
+                                <RadioButton
+                                    x:Name="AudioReactiveModeRadio"
+                                    Content="Audio Reactive"
+                                    GroupName="DisplayModeGroup"
+                                    Checked="DisplayModeRadio_Checked"
+                                    Tag="AudioReactive" />
                             </StackPanel>
 
                             <StackPanel x:Name="WledEffectsPanel" Spacing="12" Visibility="Collapsed">
@@ -219,6 +226,44 @@
                                 <ColorPicker
                                     x:Name="StaticColorPicker"
                                     ColorChanged="StaticColorPicker_ColorChanged"
+                                    IsAlphaEnabled="False"
+                                    IsMoreButtonVisible="False" />
+                            </StackPanel>
+
+                            <StackPanel x:Name="AudioReactivePanel" Spacing="12" Visibility="Collapsed">
+                                <TextBlock Text="Efekt audio-reaktywny" FontWeight="SemiBold" />
+
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <RadioButton
+                                        x:Name="AudioVuMeterRadio"
+                                        Content="VU Meter"
+                                        GroupName="AudioReactiveEffectGroup"
+                                        Checked="AudioReactiveEffectRadio_Checked"
+                                        Tag="VuMeter" />
+
+                                    <RadioButton
+                                        x:Name="AudioSpectrumBarRadio"
+                                        Content="Spectrum Bar"
+                                        GroupName="AudioReactiveEffectGroup"
+                                        Checked="AudioReactiveEffectRadio_Checked"
+                                        Tag="SpectrumBar" />
+
+                                    <RadioButton
+                                        x:Name="AudioBeatPulseRadio"
+                                        Content="Beat Pulse"
+                                        GroupName="AudioReactiveEffectGroup"
+                                        Checked="AudioReactiveEffectRadio_Checked"
+                                        Tag="BeatPulse" />
+                                </StackPanel>
+
+                                <TextBlock
+                                    Style="{StaticResource SectionSubTextStyle}"
+                                    Text="Źródło dźwięku: system (WASAPI loopback). VU Meter i Beat Pulse używają koloru z zakładki Static Color." />
+
+                                <TextBlock Text="Kolor bazowy (VU Meter / Beat Pulse)" FontWeight="SemiBold" />
+                                <ColorPicker
+                                    x:Name="AudioReactiveColorPicker"
+                                    ColorChanged="AudioReactiveColorPicker_ColorChanged"
                                     IsAlphaEnabled="False"
                                     IsMoreButtonVisible="False" />
                             </StackPanel>

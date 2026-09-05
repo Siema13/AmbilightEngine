@@ -4,6 +4,7 @@
     {
         VideoSync,
         StaticColor,
-        WledEffects
+        WledEffects,
+        AudioReactive
     }
 }

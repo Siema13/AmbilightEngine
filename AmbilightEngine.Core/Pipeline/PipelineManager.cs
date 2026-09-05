@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using AmbilightEngine.Core.Audio;
 using AmbilightEngine.Core.Capture;
 using AmbilightEngine.Core.Hardware;
 using AmbilightEngine.Core.Processing;
@@ -116,6 +117,33 @@ namespace AmbilightEngine.Core.Pipeline
         public double CurrentCaptureFps { get; private set; }
         public double CurrentSendFps { get; private set; }
 
+        // Podsystem audio-reaktywny - działa CAŁKOWICIE równolegle do głównego potoku
+        // Capture->Process->Send (analogicznie do trybu ambientowego, patrz EnterAmbientMode),
+        // ponieważ jego źródłem danych nie jest ekran, a dźwięk systemowy. Tworzone leniwie -
+        // tylko gdy użytkownik faktycznie włączy tryb Audio Reactive, żeby capture WASAPI nie
+        // zajmował zasobów u wszystkich, którzy z tej funkcji nie korzystają.
+        private AudioCaptureService? audioCaptureService;
+        private AudioAnalyzer? audioAnalyzer;
+        private AudioReactiveEffectGenerator? audioEffectGenerator;
+        private CancellationTokenSource? audioReactiveCts;
+        private volatile bool isAudioReactiveModeActive;
+        private AudioSpectrumFrame latestAudioFrame;
+        private readonly object audioFrameLock = new object();
+
+        // Aktualny tryb generatora i kolor bazowy - mutowalne w locie przez
+        // UpdateAudioReactiveParameters, dzięki czemu zmiana wyboru w UI (np. VuMeter ->
+        // SpectrumBar) nie wymaga zatrzymania i ponownego uruchomienia capture WASAPI/analizatora.
+        // Pętla wysyłki w EnterAudioReactiveMode odczytuje te pola przy każdej wysłanej ramce.
+        private volatile AudioReactiveMode currentAudioMode = AudioReactiveMode.VuMeter;
+        private RgbColor currentAudioBaseColor = new RgbColor(255, 255, 255);
+
+        public bool IsAudioReactiveModeActive => isAudioReactiveModeActive;
+
+        // Częstotliwość wysyłki ramek LED w trybie audio - niezależna od częstotliwości
+        // analizy audio (ta zależy od rozmiaru bloku FFT i sample rate, zwykle >20/s).
+        // 40ms (~25 FPS) jest płynne dla oka i nie przesyca sieci Wi-Fi/DDP.
+        private const int AudioReactiveFrameIntervalMs = 40;
+
         public PipelineManager(ICaptureSource captureSource, ImageProcessor imageProcessor, IOutputDevice outputDevice, AmbilightSettings settings, int ledCount)
         {
             this.captureSource = captureSource ?? throw new ArgumentNullException(nameof(captureSource));
@@ -175,6 +203,8 @@ namespace AmbilightEngine.Core.Pipeline
             ambientEffectCts?.Cancel();
             isAmbientModeActive = false;
 
+            ExitAudioReactiveMode();
+
             lock (transitionLock)
             {
                 transitionCts?.Cancel();
@@ -213,6 +243,16 @@ namespace AmbilightEngine.Core.Pipeline
         // aby sesja "live" WLED zawsze odpowiadała aktualnie wybranemu trybowi.
         public void NotifyDisplayModeChanged()
         {
+            // Jeśli użytkownik przeszedł na jakikolwiek tryb inny niż Audio Reactive (WLED
+            // Effects w szczególności - jedyna ścieżka, która wcześniej NIE wychodziła z Audio
+            // Reactive przed tą poprawką), zatrzymujemy pętlę wysyłki audio. Warunek chroni
+            // też wywołanie z EnterAudioReactiveMode (które samo ustawia ten tryb i też woła
+            // tę metodę) - tam nie chcemy przerywać własnego włączenia.
+            if (settings.ActiveDisplayMode != DisplayMode.AudioReactive)
+            {
+                ExitAudioReactiveMode();
+            }
+
             if (!isRunning || isAmbientModeActive)
             {
                 return;
@@ -557,6 +597,12 @@ namespace AmbilightEngine.Core.Pipeline
         }
         public void TransitionToStaticColor(byte red, byte green, byte blue)
         {
+            // Jeśli Audio Reactive było aktywne, musimy je zatrzymać PRZED uruchomieniem
+            // przejścia - inaczej pętla wysyłki audio (Task.Run w EnterAudioReactiveMode)
+            // nadal wołałaby SendAndRememberFrame co 40ms, wchodząc w wyścig z tą klatką
+            // przejściową i nadpisując ją losowo dopóki nikt jej explicite nie wyłączy.
+            ExitAudioReactiveMode();
+
             settings.StaticColorR = red;
             settings.StaticColorG = green;
             settings.StaticColorB = blue;
@@ -577,6 +623,10 @@ namespace AmbilightEngine.Core.Pipeline
 
         public void TransitionToVideoSync()
         {
+            // Patrz komentarz w TransitionToStaticColor - ten sam powód: pętla audio musi
+            // przestać wysyłać ramki, zanim zaczniemy przejście do strumienia Video Sync.
+            ExitAudioReactiveMode();
+
             lock (transitionLock)
             {
                 transitionCts?.Cancel();
@@ -596,6 +646,129 @@ namespace AmbilightEngine.Core.Pipeline
             Debug.WriteLine(
                 "[DIAG] PipelineManager: oczekiwanie na pierwszą klatkę Video Sync do rozpoczęcia przejścia.");
         }
+        // Wchodzi w tryb Audio Reactive: uruchamia capture WASAPI loopback (jeśli jeszcze nie
+        // działa), analizator FFT i cykliczne wysyłanie ramek LED w rytm dźwięku systemowego.
+        // Podobnie jak Static Color/Video Sync, ustawia ActiveDisplayMode i utrzymuje sesję
+        // "live" WLED aktywną, bo audio też jest strumieniem DDP (tak jak Video Sync/Static Color).
+        public void EnterAudioReactiveMode(AudioReactiveMode mode, byte baseColorR, byte baseColorG, byte baseColorB)
+        {
+            if (isAudioReactiveModeActive)
+            {
+                // Tryb już aktywny - to jest tylko zmiana parametrów (np. wybór innego efektu
+                // w UI), nie pełny restart. Unikamy zatrzymywania capture WASAPI, żeby nie
+                // wprowadzać słyszalnych/widocznych przerw przy przełączaniu efektów.
+                UpdateAudioReactiveParameters(mode, baseColorR, baseColorG, baseColorB);
+                return;
+            }
+
+            settings.ActiveDisplayMode = DisplayMode.AudioReactive;
+            NotifyDisplayModeChanged();
+
+            audioReactiveCts?.Cancel();
+            audioReactiveCts?.Dispose();
+            audioReactiveCts = new CancellationTokenSource();
+            var token = audioReactiveCts.Token;
+
+            audioAnalyzer ??= new AudioAnalyzer();
+            audioEffectGenerator ??= new AudioReactiveEffectGenerator(ledCount);
+
+            if (audioCaptureService is null)
+            {
+                audioCaptureService = new AudioCaptureService();
+                audioCaptureService.SamplesAvailable += (samples, count, format) =>
+                    audioAnalyzer!.OnSamplesAvailable(samples, count, format);
+                audioCaptureService.CaptureFailed += ex =>
+                    Debug.WriteLine($"[DIAG] AudioReactive: capture WASAPI nie powiódł się: {ex?.Message}");
+            }
+
+            audioAnalyzer.FrameAnalyzed += OnAudioFrameAnalyzed;
+
+            currentAudioMode = mode;
+            lock (audioFrameLock)
+            {
+                currentAudioBaseColor = new RgbColor(baseColorR, baseColorG, baseColorB);
+            }
+
+            isAudioReactiveModeActive = true;
+            audioCaptureService.Start();
+            UpdateRealtimeSession(true);
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    while (!token.IsCancellationRequested)
+                    {
+                        AudioSpectrumFrame frameSnapshot;
+                        AudioReactiveMode modeSnapshot;
+                        RgbColor colorSnapshot;
+                        lock (audioFrameLock)
+                        {
+                            frameSnapshot = latestAudioFrame;
+                            colorSnapshot = currentAudioBaseColor;
+                        }
+
+                        modeSnapshot = currentAudioMode;
+
+                        RgbColor[] ledFrame = audioEffectGenerator!.GenerateFrame(frameSnapshot, modeSnapshot, colorSnapshot);
+                        SendAndRememberFrame(ledFrame);
+
+                        await Task.Delay(AudioReactiveFrameIntervalMs, token).ConfigureAwait(false);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    // Oczekiwane zakończenie przy ExitAudioReactiveMode/Dispose.
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[DIAG] AudioReactive: pętla wysyłki ramek zakończona błędem: {ex.Message}");
+                }
+            }, token);
+
+            Debug.WriteLine($"[DIAG] PipelineManager: uruchomiono Audio Reactive, tryb={mode}.");
+        }
+
+        // Aktualizuje tryb efektu i/lub kolor bazowy bez restartu capture WASAPI - wywoływane
+        // gdy użytkownik zmienia wybór w UI podczas gdy Audio Reactive jest już aktywny.
+        public void UpdateAudioReactiveParameters(AudioReactiveMode mode, byte baseColorR, byte baseColorG, byte baseColorB)
+        {
+            currentAudioMode = mode;
+
+            lock (audioFrameLock)
+            {
+                currentAudioBaseColor = new RgbColor(baseColorR, baseColorG, baseColorB);
+            }
+        }
+
+        // Wywoływane na wewnętrznym wątku audio NAudio - musi być szybkie, tylko zapisuje
+        // najnowszy wynik analizy; faktyczne generowanie i wysyłka ramki dzieje się w pętli
+        // Task.Run z EnterAudioReactiveMode, w stałym, przewidywalnym tempie.
+        private void OnAudioFrameAnalyzed(AudioSpectrumFrame frame)
+        {
+            lock (audioFrameLock)
+            {
+                latestAudioFrame = frame;
+            }
+        }
+
+        public void ExitAudioReactiveMode()
+        {
+            if (!isAudioReactiveModeActive) return;
+
+            isAudioReactiveModeActive = false;
+
+            audioReactiveCts?.Cancel();
+            audioCaptureService?.Stop();
+
+            if (audioAnalyzer is not null)
+            {
+                audioAnalyzer.FrameAnalyzed -= OnAudioFrameAnalyzed;
+            }
+
+            Debug.WriteLine("[DIAG] PipelineManager: zatrzymano Audio Reactive.");
+        }
+
         private void StartVideoSyncFrameTransition(ReadOnlySpan<RgbColor> firstVideoSyncFrame)
         
         {
@@ -824,6 +997,10 @@ namespace AmbilightEngine.Core.Pipeline
 
             Stop();
             ambientEffectCts?.Dispose();
+
+            ExitAudioReactiveMode();
+            audioReactiveCts?.Dispose();
+            audioCaptureService?.Dispose();
 
             lock (transitionLock)
             {
