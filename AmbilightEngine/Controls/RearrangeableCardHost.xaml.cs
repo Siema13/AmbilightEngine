@@ -5,46 +5,36 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using Windows.Foundation;
+using Windows.UI.Core;
 
 namespace AmbilightEngine.Controls
 {
-    // Reużywalny kontener kart z obsługą przenoszenia metodą "drag&drop" w trybie edycji.
-    // Karty są rejestrowane przez stronę-właściciela jako już zbudowane elementy Border
-    // (ze stylem CardStyle) - kontener TYLKO zarządza ich rozmieszczeniem w dwóch kolumnach
-    // typu "masonry" (różne wysokości, nowa karta trafia do aktualnie krótszej kolumny) oraz
-    // dodaje/usuwa nakładkę z uchwytem przeciągania. Ponieważ Border jest przenoszony między
-    // kontenerami metodą Children.Remove/Insert (nie tworzony na nowo), wszystkie referencje
-    // x:Name do kontrolek WEWNĄTRZ karty (np. StatusText, ToggleButton na Dashboardzie)
-    // pozostają w pełni działające - x:Name wiąże pole klasy strony z obiektem w pamięci,
-    // niezależnie od miejsca obiektu w drzewie wizualnym.
     public sealed partial class RearrangeableCardHost : UserControl
     {
-        // Margines "martwej strefy" (px) - jeśli przeciągana karta nie przekroczyła tej
-        // odległości od punktu startowego, traktujemy to jako kliknięcie, nie przesunięcie
-        // (zapobiega przypadkowej zmianie kolejności przy drobnym drgnięciu myszki/dotyku).
         private const double DragThreshold = 6.0;
+        private const int NeighborShiftAnimationMs = 150;
 
         private sealed class CardEntry
         {
             public required string CardId { get; init; }
             public required Border CardBorder { get; init; }
-            public Button? DragHandle { get; set; }
+            public Border? DragHandle { get; set; }
         }
 
-        // Kolejność odzwierciedla AKTUALNE rozmieszczenie: LeftColumnPanel.Children i
-        // RightColumnPanel.Children są zawsze zsynchronizowane z tymi dwoma listami.
         private readonly List<CardEntry> leftColumnCards = new();
         private readonly List<CardEntry> rightColumnCards = new();
+        private readonly List<CardEntry> pendingCards = new();
 
         private bool isEditModeActive;
         private CardEntry? draggedCard;
         private Point dragStartPointerPosition;
         private bool dragThresholdExceeded;
 
-        // Wywoływane po KAŻDEJ zmianie układu (przestawienie karty) - strona-właściciel
-        // zapisuje wynikową listę CardId (w kolejności: najpierw lewa kolumna top->bottom,
-        // potem prawa) do AmbilightSettings.CardLayout i wywołuje SettingsService.Save.
+        private List<CardEntry>? liveReorderColumn;
+        private int liveReorderPreviewIndex = -1;
+
         public event Action<IReadOnlyList<string>>? LayoutChanged;
 
         public RearrangeableCardHost()
@@ -52,10 +42,6 @@ namespace AmbilightEngine.Controls
             InitializeComponent();
         }
 
-        // Rejestruje kartę w kontenerze. Musi być wywołane dla WSZYSTKICH kart PRZED
-        // wywołaniem ApplyInitialLayout - kolejność rejestracji jest używana jako domyślny
-        // układ, gdy zapisane ustawienia nie zawierają jeszcze danego CardId (np. nowa karta
-        // dodana w aktualizacji aplikacji, której poprzednia wersja settings.json nie znała).
         public void RegisterCard(string cardId, Border cardBorder)
         {
             if (string.IsNullOrWhiteSpace(cardId))
@@ -63,10 +49,6 @@ namespace AmbilightEngine.Controls
                 throw new ArgumentException("cardId nie może być pusty.", nameof(cardId));
             }
 
-            // Karta pochodzi z niewidocznego kontenera-źrodła zdefiniowanego w XAML strony
-            // (np. HiddenCardSourcePanel) i wciąż ma tam rodzica. Panel.Children.Add w innym
-            // miejscu (ApplyInitialLayout) wymaga, aby element nie miał aktualnie rodzica -
-            // usuwamy go tutaj z oryginalnego kontenera, zanim trafi do bufora pendingCards.
             if (cardBorder.Parent is Panel currentParent)
             {
                 currentParent.Children.Remove(cardBorder);
@@ -75,16 +57,6 @@ namespace AmbilightEngine.Controls
             pendingCards.Add(new CardEntry { CardId = cardId, CardBorder = cardBorder });
         }
 
-        // Bufor kart zarejestrowanych przed wywołaniem ApplyInitialLayout - rozdzielenie
-        // rejestracji od faktycznego umieszczenia w kolumnach pozwala stronie-właścicielowi
-        // zarejestrować karty w naturalnej kolejności XAML, a dopiero potem zastosować
-        // zapisaną (możliwie inną) kolejność z ustawień.
-        private readonly List<CardEntry> pendingCards = new();
-
-        // Rozmieszcza zarejestrowane karty w dwóch kolumnach zgodnie z savedOrder (lista
-        // CardId w zapisanej kolejności). Karty spoza savedOrder (nowe, nieznane wcześniej)
-        // są dopisywane na koniec w kolejności rejestracji. Musi być wywołane raz, po
-        // zarejestrowaniu wszystkich kart strony.
         public void ApplyInitialLayout(IReadOnlyList<string>? savedOrder)
         {
             leftColumnCards.Clear();
@@ -94,12 +66,6 @@ namespace AmbilightEngine.Controls
 
             List<CardEntry> orderedCards = ResolveEffectiveOrder(savedOrder);
 
-            // Algorytm masonry uproszczony: karty trafiają na przemian do lewej/prawej
-            // kolumny w kolejności z listy - to nie mierzy realnej wysokości px (WinUI 3
-            // nie daje tej informacji przed pierwszym layout passem), ale zachowuje
-            // przewidywalność: użytkownik widzi kartę "po lewej" i "po prawej" zgodnie
-            // z tym, jak sam je poprzednio poukładał (co jest zapisywane jako sekwencja
-            // przeplotu przy każdym przeniesieniu - patrz MoveCardToColumn).
             for (int i = 0; i < orderedCards.Count; i++)
             {
                 CardEntry entry = orderedCards[i];
@@ -147,8 +113,6 @@ namespace AmbilightEngine.Controls
                 }
             }
 
-            // Karty nieobecne w zapisanej kolejności (nowe od czasu ostatniego zapisu) -
-            // dopisywane na koniec w kolejności rejestracji, żeby nigdy nie zniknęły z widoku.
             foreach (CardEntry remaining in pendingCards.Where(c => byId.ContainsKey(c.CardId)))
             {
                 ordered.Add(remaining);
@@ -157,9 +121,6 @@ namespace AmbilightEngine.Controls
             return ordered;
         }
 
-        // Zwraca aktualną kolejność CardId (lewa kolumna, potem prawa) - wywoływane przez
-        // stronę-właściciela z LayoutChanged, ale też dostępne do odczytu na żądanie
-        // (np. przy zamykaniu strony, jako dodatkowe zabezpieczenie zapisu).
         public IReadOnlyList<string> GetCurrentOrder()
         {
             return leftColumnCards.Concat(rightColumnCards).Select(c => c.CardId).ToList();
@@ -185,11 +146,6 @@ namespace AmbilightEngine.Controls
             }
         }
 
-        // Wstawia uchwyt przeciągania (Button "⠿") jako PIERWSZY element wewnątrz karty.
-        // Zakładamy, że bezpośrednim dzieckiem Border jest Panel (StackPanel/Grid) z co
-        // najmniej jednym dzieckiem - wzorzec konsekwentnie używany we wszystkich kartach
-        // aplikacji. Jeśli struktura się nie zgadza, po prostu nie dodajemy uchwytu (karta
-        // zachowuje się jak w trybie normalnym) - błąd defensywnie ignorowany, nie wywala UI.
         private void AttachDragHandle(CardEntry entry)
         {
             if (entry.DragHandle is not null)
@@ -202,10 +158,19 @@ namespace AmbilightEngine.Controls
                 return;
             }
 
-            var handle = new Button
+            var handleIcon = new TextBlock
             {
-                Content = "⠿ Przenieś",
-                Style = (Style)Resources["DragHandleButtonStyle"]
+                Text = "⠿",
+                FontSize = 16,
+                FontWeight = Microsoft.UI.Text.FontWeights.Bold,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+
+            var handle = new Border
+            {
+                Style = (Style)Resources["DragHandleBorderStyle"],
+                Child = handleIcon
             };
 
             handle.PointerPressed += (s, args) => DragHandle_PointerPressed(entry, args);
@@ -239,11 +204,27 @@ namespace AmbilightEngine.Controls
                 return;
             }
 
+            PointerPoint point = args.GetCurrentPoint(entry.DragHandle);
+            if (!point.Properties.IsLeftButtonPressed)
+            {
+                return;
+            }
+
             draggedCard = entry;
             dragThresholdExceeded = false;
             dragStartPointerPosition = args.GetCurrentPoint(this).Position;
+            liveReorderColumn = null;
+            liveReorderPreviewIndex = -1;
 
-            entry.DragHandle.CapturePointer(args.Pointer);
+            bool captured = entry.DragHandle.CapturePointer(args.Pointer);
+            if (!captured)
+            {
+                draggedCard = null;
+                return;
+            }
+
+            entry.CardBorder.Translation = new System.Numerics.Vector3(0, 0, 32);
+
             args.Handled = true;
         }
 
@@ -260,7 +241,7 @@ namespace AmbilightEngine.Controls
 
             if (!dragThresholdExceeded)
             {
-                double distance = Math.Sqrt(deltaX * deltaX + deltaY * deltaY);
+                double distance = Math.Sqrt((deltaX * deltaX) + (deltaY * deltaY));
                 if (distance < DragThreshold)
                 {
                     return;
@@ -268,10 +249,12 @@ namespace AmbilightEngine.Controls
 
                 dragThresholdExceeded = true;
 
-                // Podniesienie karty wizualnie (cień + lekkie przezroczystość), żeby dać
-                // jasny sygnał, że przeciąganie faktycznie się zaczęło.
-                entry.CardBorder.Opacity = 0.75;
+                entry.CardBorder.Opacity = 0.85;
                 entry.CardBorder.RenderTransform = new TranslateTransform();
+
+                bool startsInLeftColumn = leftColumnCards.Contains(entry);
+                liveReorderColumn = startsInLeftColumn ? leftColumnCards : rightColumnCards;
+                liveReorderPreviewIndex = liveReorderColumn.IndexOf(entry);
             }
 
             if (entry.CardBorder.RenderTransform is TranslateTransform transform)
@@ -280,7 +263,96 @@ namespace AmbilightEngine.Controls
                 transform.Y = deltaY;
             }
 
+            UpdateLiveReorderPreview(entry, currentPosition);
+
             args.Handled = true;
+        }
+
+        private void UpdateLiveReorderPreview(CardEntry draggedEntry, Point pointerPosition)
+        {
+            bool overLeftColumn = IsPointOverColumn(LeftColumnPanel, pointerPosition);
+            bool overRightColumn = !overLeftColumn && IsPointOverColumn(RightColumnPanel, pointerPosition);
+
+            List<CardEntry> targetColumn;
+            Panel targetPanel;
+
+            if (overLeftColumn)
+            {
+                targetColumn = leftColumnCards;
+                targetPanel = LeftColumnPanel;
+            }
+            else if (overRightColumn)
+            {
+                targetColumn = rightColumnCards;
+                targetPanel = RightColumnPanel;
+            }
+            else
+            {
+                ClearNeighborShiftPreview();
+                return;
+            }
+
+            List<CardEntry> otherCards = targetColumn.Where(c => c != draggedEntry).ToList();
+            int previewIndex = FindInsertIndex(otherCards, pointerPosition);
+
+            liveReorderColumn = targetColumn;
+            liveReorderPreviewIndex = previewIndex;
+
+            for (int i = 0; i < otherCards.Count; i++)
+            {
+                CardEntry candidate = otherCards[i];
+
+                double targetOffsetY = i >= previewIndex
+                    ? draggedEntry.CardBorder.ActualHeight + targetPanel.RowSpacingOrDefault()
+                    : 0;
+
+                AnimateNeighborOffset(candidate.CardBorder, targetOffsetY);
+            }
+
+            List<CardEntry> otherColumn = targetColumn == leftColumnCards ? rightColumnCards : leftColumnCards;
+            if (!ReferenceEquals(otherColumn, targetColumn))
+            {
+                foreach (CardEntry candidate in otherColumn.Where(c => c != draggedEntry))
+                {
+                    AnimateNeighborOffset(candidate.CardBorder, 0);
+                }
+            }
+        }
+
+        private void ClearNeighborShiftPreview()
+        {
+            foreach (CardEntry candidate in leftColumnCards.Concat(rightColumnCards))
+            {
+                if (candidate != draggedCard)
+                {
+                    AnimateNeighborOffset(candidate.CardBorder, 0);
+                }
+            }
+
+            liveReorderColumn = null;
+            liveReorderPreviewIndex = -1;
+        }
+
+        private void AnimateNeighborOffset(Border cardBorder, double targetOffsetY)
+        {
+            if (cardBorder.RenderTransform is not TranslateTransform transform)
+            {
+                transform = new TranslateTransform();
+                cardBorder.RenderTransform = transform;
+            }
+
+            var animation = new DoubleAnimation
+            {
+                To = targetOffsetY,
+                Duration = new Duration(TimeSpan.FromMilliseconds(NeighborShiftAnimationMs)),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+
+            var storyboard = new Storyboard();
+            Storyboard.SetTarget(animation, transform);
+            Storyboard.SetTargetProperty(animation, "Y");
+            storyboard.Children.Add(animation);
+            storyboard.Begin();
         }
 
         private void DragHandle_PointerReleased(CardEntry entry, PointerRoutedEventArgs args)
@@ -299,6 +371,7 @@ namespace AmbilightEngine.Controls
             }
 
             ResetDragVisualState(entry);
+            ClearNeighborShiftPreview();
             draggedCard = null;
             args.Handled = true;
         }
@@ -311,6 +384,7 @@ namespace AmbilightEngine.Controls
             }
 
             ResetDragVisualState(entry);
+            ClearNeighborShiftPreview();
             draggedCard = null;
         }
 
@@ -318,11 +392,9 @@ namespace AmbilightEngine.Controls
         {
             entry.CardBorder.Opacity = 1.0;
             entry.CardBorder.RenderTransform = null;
+            entry.CardBorder.Translation = System.Numerics.Vector3.Zero;
         }
 
-        // Ustala nową pozycję przeciąganej karty na podstawie tego, nad którą kolumną i
-        // nad którą sąsiadującą kartą znajdował się punkt puszczenia (dropPosition, we
-        // współrzędnych całego kontenera - stąd TransformToVisual(this) dla każdej kandydatki).
         private void CompleteDrag(CardEntry draggedEntry, Point dropPosition)
         {
             bool dropInLeftColumn = IsPointOverColumn(LeftColumnPanel, dropPosition);
@@ -330,8 +402,6 @@ namespace AmbilightEngine.Controls
 
             if (!dropInLeftColumn && !dropInRightColumn)
             {
-                // Puszczono poza obiema kolumnami (np. nad przyciskiem "Dostosuj układ") -
-                // brak zmiany, karta wraca na swoje miejsce.
                 return;
             }
 
@@ -340,7 +410,8 @@ namespace AmbilightEngine.Controls
 
             RemoveFromCurrentColumn(draggedEntry);
 
-            int insertIndex = FindInsertIndex(targetColumnList, dropPosition);
+            List<CardEntry> otherCards = targetColumnList.Where(c => c != draggedEntry).ToList();
+            int insertIndex = FindInsertIndex(otherCards, dropPosition);
 
             targetColumnList.Insert(insertIndex, draggedEntry);
             targetColumnPanel.Children.Insert(insertIndex, draggedEntry.CardBorder);
@@ -369,16 +440,11 @@ namespace AmbilightEngine.Controls
             Point bottomRight = transform.TransformPoint(
                 new Point(columnPanel.ActualWidth, Math.Max(columnPanel.ActualHeight, 1)));
 
-            // Szerokość kolumny bywa 0 przy pustej kolumnie (brak dzieci) - dajemy minimalny
-            // obszar wykrywania (200px), żeby wciąż można było upuścić pierwszą kartę.
             double effectiveRight = bottomRight.X > topLeft.X ? bottomRight.X : topLeft.X + 200;
 
             return pointInHostCoordinates.X >= topLeft.X && pointInHostCoordinates.X <= effectiveRight;
         }
 
-        // Znajduje indeks wstawienia w kolumnie docelowej na podstawie środków Y istniejących
-        // kart - przeciągana karta trafia PRZED pierwszą kartą, której środek jest niżej niż
-        // punkt upuszczenia (klasyczny algorytm "insert before nearest lower midpoint").
         private int FindInsertIndex(List<CardEntry> targetColumnList, Point dropPosition)
         {
             for (int i = 0; i < targetColumnList.Count; i++)
@@ -395,6 +461,14 @@ namespace AmbilightEngine.Controls
             }
 
             return targetColumnList.Count;
+        }
+    }
+
+    internal static class PanelExtensions
+    {
+        public static double RowSpacingOrDefault(this Panel panel)
+        {
+            return panel is StackPanel stackPanel ? stackPanel.Spacing : 24.0;
         }
     }
 }

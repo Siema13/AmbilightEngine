@@ -7,23 +7,15 @@
     mc:Ignorable="d">
 
     <UserControl.Resources>
-        <!-- Uchwyt przeciągania (ikona ⠿) - widoczny tylko w trybie edycji, nakładany na
-             każdą kartę jako pierwszy element jej wewnętrznego StackPanel/Grid. Duży obszar
-             dotykowy (36x36) mimo małej ikony, żeby łatwo złapać uchwyt myszką/dotykiem. -->
-        <Style x:Key="DragHandleButtonStyle" TargetType="Button">
+        <Style x:Key="DragHandleBorderStyle" TargetType="Border">
             <Setter Property="Width" Value="36" />
             <Setter Property="Height" Value="36" />
-            <Setter Property="Padding" Value="0" />
             <Setter Property="CornerRadius" Value="8" />
             <Setter Property="Background" Value="{ThemeResource M3SecondaryContainerBrush}" />
-            <Setter Property="Foreground" Value="{ThemeResource M3OnSecondaryContainerBrush}" />
-            <Setter Property="FontSize" Value="16" />
-            <Setter Property="FontWeight" Value="Bold" />
             <Setter Property="HorizontalAlignment" Value="Left" />
             <Setter Property="Margin" Value="0,0,0,6" />
-            <!-- ManipulationMode ustawiany na Ignore w code-behind podczas ManipulationStarting nie jest
-                 potrzebny tutaj - Button domyślnie przechwytuje PointerPressed, obsługa drag zaczyna się
-                 na Border rodzica karty (patrz RearrangeableCardHost.xaml.cs) nasłuchując na tym uchwycie. -->
+            <Setter Property="Foreground" Value="{ThemeResource M3OnSecondaryContainerBrush}" />
+            <Setter Property="Cursor" Value="SizeAll" />
         </Style>
     </UserControl.Resources>
 
@@ -33,8 +25,6 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Przycisk trybu edycji - zawsze widoczny w prawym górnym rogu obszaru kart.
-             W trybie edycji zmienia treść/styl, żeby jasno sygnalizować aktywny stan. -->
         <StackPanel
             Grid.Row="0"
             Orientation="Horizontal"
@@ -56,11 +46,6 @@
                 Style="{StaticResource MaterialTonalButtonStyle}" />
         </StackPanel>
 
-        <!-- Dwie kolumny "masonry" - każda to StackPanel, do którego karty (Border) są
-             przenoszone programowo (Children.Add/Remove/Insert) z zewnętrznej listy przekazanej
-             przez stronę-właściciela. Karty zachowują naturalną wysokość zawartości. -->
-        <!-- Proporcje kolumn (3*/2*) zgodne z pierwotnym układem Dashboardu - stałe, bo
-             zmiana proporcji kolumn nie jest częścią personalizacji (tylko kolejność/przypisanie kart). -->
         <Grid Grid.Row="1" ColumnSpacing="20">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="3*" />
