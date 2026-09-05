@@ -5,6 +5,7 @@ using AmbilightEngine.Core.SystemState;
 using AmbilightEngine.Models;
 using AmbilightEngine.Pages;
 using AmbilightEngine.Services;
+using Microsoft.UI;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
