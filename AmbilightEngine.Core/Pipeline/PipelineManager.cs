@@ -674,8 +674,6 @@ namespace AmbilightEngine.Core.Pipeline
                         double progress = 1.0 - Math.Pow(1.0 - linearProgress, 3.0);
 
                         InterpolateFrames(startFrame, targetFrame, interpolatedFrame, progress);
-                        Debug.WriteLine(
-    $"[DIAG] FADE FRAME {step}/{frameCount}, progress={progress:F2}.");
                         SendAndRememberFrame(interpolatedFrame);
 
                         await Task.Delay(TransitionFrameIntervalMs, token)

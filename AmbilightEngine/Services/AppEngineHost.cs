@@ -212,7 +212,8 @@ namespace AmbilightEngine
                 {
                     _ = RestoreAfterSystemWakeAsync();
                 };
-                
+                stateWatcher.SystemShutdownRequested += OnSystemShutdownRequested;
+
                 InitializeProfileWatcher();
                 ActivateDefaultProfile("połączenie z WLED");
 
@@ -226,6 +227,36 @@ namespace AmbilightEngine
                 SetStatus(EngineStatusInfo.Error($"Nie udało się połączyć z WLED: {ex.Message}"));
                 return false;
             }
+        }
+
+        // Wywoływane przez SystemStateWatcher.SystemShutdownRequested (Shutdown/Restart/Logoff).
+        // Windows daje aplikacji tylko kilka sekund na tę operację, więc gasimy diody i zamykamy
+        // sieć maksymalnie szybko i synchronicznie - nie próbujemy przywracać żadnego stanu, bo
+        // proces zaraz zginie wraz z końcem sesji Windows.
+        private void OnSystemShutdownRequested()
+        {
+            Debug.WriteLine("[DIAG] OnSystemShutdownRequested - Windows zamyka sesję, gaszę WLED.");
+
+            try
+            {
+                pipelineManager?.Stop();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[DIAG] Wyjątek podczas Stop() pipeline przy shutdownie: {ex.Message}");
+            }
+
+            try
+            {
+                ledSender?.Close();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[DIAG] Wyjątek podczas zamykania ledSender przy shutdownie: {ex.Message}");
+            }
+
+            IsRunning = false;
+            SetStatus(EngineStatusInfo.Running("Zamknięto - system się wyłącza."));
         }
 
         public async Task<bool> StartCaptureAsync(IntPtr windowHandle)
@@ -392,7 +423,7 @@ namespace AmbilightEngine
             {
                 if (profile.ActionType == ProfileActionType.StaticColor)
                 {
-                    _ = ApplyStaticColorAsync(
+                    _ = SetStaticColorWithTransitionAsync(
     profile.StaticColorR,
     profile.StaticColorG,
     profile.StaticColorB);
@@ -1108,16 +1139,17 @@ namespace AmbilightEngine
                 brightness: 255,
                 cancellationToken: cancellationToken);
         }
+        // Wariant wywoływany z UI (Dashboard) - przed przejściem do Static Color jawnie wyłącza
+        // WLED realtime override, bo w tym miejscu WLED mógł wcześniej być w trybie efektu
+        // sterowanego lokalnie na kontrolerze, a nie przez nasz strumień DDP. Sama logika
+        // przejścia/ustawienia stanu jest scalona z ActivateProfile/CycleDisplayMode w jednej
+        // metodzie kanonicznej (SetStaticColorWithTransitionAsync), żeby uniknąć duplikacji.
         public async Task<bool> ApplyStaticColorWithTransitionAsync(
     byte red,
     byte green,
     byte blue,
     CancellationToken cancellationToken = default)
         {
-            settings.StaticColorR = red;
-            settings.StaticColorG = green;
-            settings.StaticColorB = blue;
-
             bool realtimeOverrideDisabled =
                 await DisableWledRealtimeOverrideAsync(cancellationToken);
 
@@ -1126,18 +1158,8 @@ namespace AmbilightEngine
                 Debug.WriteLine(
                     "[DIAG] Static Color: nie udało się wyłączyć realtime override.");
             }
-            
-            if (pipelineManager is not null && IsCapturing)
-            {
-                pipelineManager.TransitionToStaticColor(red, green, blue);
 
-                Debug.WriteLine(
-                    $"[DIAG] Static Color transition: RGB({red}, {green}, {blue}).");
-
-                return true;
-            }
-
-            return await ActivateStaticColorAsync(red, green, blue, cancellationToken);
+            return await SetStaticColorWithTransitionAsync(red, green, blue, cancellationToken);
         }
 
         public async Task<bool> ApplyVideoSyncWithTransitionAsync(
@@ -1179,7 +1201,12 @@ namespace AmbilightEngine
                 Volatile.Write(ref videoSyncTransitionInProgress, 0);
             }
         }
-        public Task<bool> ApplyStaticColorAsync(
+        // Metoda kanoniczna dla przełączenia w Static Color: jeśli pipeline aktywnie przechwytuje
+        // ekran, wykonuje płynne przejście (TransitionToStaticColor) bez przerywania strumienia
+        // klatek; w przeciwnym razie ustawia kolor bezpośrednio przez ActivateStaticColorAsync.
+        // Zastępuje wcześniejsze osobne ApplyStaticColorAsync/SetStaticColorWithTransitionAsync,
+        // które miały identyczną logikę i różniły się tylko treścią logu diagnostycznego.
+        public Task<bool> SetStaticColorWithTransitionAsync(
     byte red,
     byte green,
     byte blue,
@@ -1195,30 +1222,7 @@ namespace AmbilightEngine
                 pipelineManager.TransitionToStaticColor(red, green, blue);
 
                 Debug.WriteLine(
-                    $"[DIAG] Static Color: przejście pipeline do RGB({red}, {green}, {blue}).");
-
-                return Task.FromResult(true);
-            }
-
-            return ActivateStaticColorAsync(red, green, blue, cancellationToken);
-        }
-        public Task<bool> SetStaticColorWithTransitionAsync(
-    byte red,
-    byte green,
-    byte blue,
-    CancellationToken cancellationToken = default)
-        {
-            if (pipelineManager is not null && IsCapturing)
-            {
-                settings.ActiveDisplayMode = DisplayMode.StaticColor;
-                settings.StaticColorR = red;
-                settings.StaticColorG = green;
-                settings.StaticColorB = blue;
-
-                pipelineManager.TransitionToStaticColor(red, green, blue);
-
-                Debug.WriteLine(
-                    $"[DIAG] Static Color: płynne przejście do RGB({red}, {green}, {blue}).");
+                    $"[DIAG] Static Color: płynne przejście pipeline do RGB({red}, {green}, {blue}).");
 
                 return Task.FromResult(true);
             }
