@@ -33,6 +33,33 @@ namespace AmbilightEngine.Core.Audio
         // Odpowiednik LedFx "Multi-color spectrum" - pasek dzielony na trzy segmenty
         // (bas/mid/treble), każdy w osobnym, konfigurowalnym kolorze, z jasnością segmentu
         // zależną od energii odpowiadającego mu pasma częstotliwości.
-        MultiColorSpectrum
+        MultiColorSpectrum,
+
+        // Odpowiednik LedFx "Bar" - pasek wypełnia się od jednego krańca proporcjonalnie do
+        // RMS (jak analogowy wskaźnik poziomu), plus osobny, szybko narastający i wolno
+        // opadający "peak indicator" (jedna dioda) pokazujący ostatni szczyt głośności.
+        Bar,
+
+        // Odpowiednik LedFx "Scroll" - przy każdym wykrytym beacie nowy "pakiet" koloru
+        // (zależny od dominującego pasma: bas/mid/treble) jest wstrzykiwany na start paska
+        // i przewijany wzdłuż całej jego długości w czasie, tworząc ciąg przesuwających się
+        // impulsów zamiast jednego pojedynczego bloku (jak w Wave).
+        Scroll,
+
+        // Odpowiednik LedFx "Fade" - cały pasek płynnie "oddycha" jasnością i odcieniem
+        // gradientu Primary->Secondary zgodnie ze WYGŁADZONĄ (a nie chwilową) głośnością,
+        // dając miękki, powolny efekt bez ostrych przejść - w przeciwieństwie do Energy.
+        Fade,
+
+        // Odpowiednik LedFx "Blocks" - pasek dzielony na kilka bloków o losowej szerokości
+        // i losowo przydzielonym kolorze (z palety Primary/Secondary/Bass/Mid/Treble),
+        // przelosowywanych przy każdym wykrytym beacie - daje wrażenie rytmicznego "tasowania"
+        // kolorów w takt muzyki.
+        Blocks,
+
+        // Odpowiednik LedFx "Wavelength" - pełny gradient tęczowy (HSV) rozciągnięty na całej
+        // długości paska, przesuwający się w czasie ze stałą prędkością bazową, przyspieszany
+        // dodatkowo przez chwilową głośność (RMS) - im głośniej, tym szybszy przepływ kolorów.
+        Wavelength
     }
 }

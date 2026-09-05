@@ -319,6 +319,45 @@
                                                 Tag="MultiColorSpectrum" />
                                         </StackPanel>
 
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <RadioButton
+                                                x:Name="AudioBarRadio"
+                                                Content="Bar"
+                                                GroupName="AudioReactiveEffectGroup"
+                                                Checked="AudioReactiveEffectRadio_Checked"
+                                                Tag="Bar" />
+
+                                            <RadioButton
+                                                x:Name="AudioScrollRadio"
+                                                Content="Scroll"
+                                                GroupName="AudioReactiveEffectGroup"
+                                                Checked="AudioReactiveEffectRadio_Checked"
+                                                Tag="Scroll" />
+
+                                            <RadioButton
+                                                x:Name="AudioFadeRadio"
+                                                Content="Fade"
+                                                GroupName="AudioReactiveEffectGroup"
+                                                Checked="AudioReactiveEffectRadio_Checked"
+                                                Tag="Fade" />
+                                        </StackPanel>
+
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <RadioButton
+                                                x:Name="AudioBlocksRadio"
+                                                Content="Blocks"
+                                                GroupName="AudioReactiveEffectGroup"
+                                                Checked="AudioReactiveEffectRadio_Checked"
+                                                Tag="Blocks" />
+
+                                            <RadioButton
+                                                x:Name="AudioWavelengthRadio"
+                                                Content="Wavelength"
+                                                GroupName="AudioReactiveEffectGroup"
+                                                Checked="AudioReactiveEffectRadio_Checked"
+                                                Tag="Wavelength" />
+                                        </StackPanel>
+
                                         <!-- Rozwijany panel konfiguracji - pod radiobuttonami wyboru efektu, zgodnie
                                              z ustaloną lokalizacją UI (nie osobna strona). Expander z Fluent Design
                                              (zaokrąglone rogi, natywna animacja rozwijania) zamiast ręcznego przełączania
@@ -400,6 +439,60 @@
                                                         </Flyout>
                                                     </Button.Flyout>
                                                 </Button>
+
+                                                <!-- Fade Smoothing - widoczny tylko dla trybu Fade; steruje jak "wolno
+                                                     oddycha" wygładzona głośność (EMA) zamiast surowego RMS. -->
+                                                <StackPanel x:Name="AudioFadeSmoothingPanel" Spacing="8" Visibility="Collapsed">
+                                                    <Grid Style="{StaticResource SliderLabelRowGridStyle}">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="60" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="Wygładzanie (Fade)" Style="{StaticResource SliderLabelTextStyle}" />
+                                                        <TextBlock x:Name="AudioFadeSmoothingValueText" Style="{StaticResource SliderValueTextStyle}" Text="0.85" />
+                                                    </Grid>
+                                                    <Slider x:Name="AudioFadeSmoothingSlider" Minimum="0.0" Maximum="0.99" StepFrequency="0.01"
+                                                            ValueChanged="AudioFadeSmoothingSlider_ValueChanged" />
+                                                    <TextBlock
+                                                        Text="Wyżej = wolniejsze, bardziej płynne 'oddychanie' jasnością - niżej = zachowanie bliższe efektowi Energy."
+                                                        Style="{StaticResource SectionSubTextStyle}" />
+                                                </StackPanel>
+
+                                                <!-- Blocks Count - widoczny tylko dla trybu Blocks; liczba losowanych bloków
+                                                     kolorów przelosowywanych na każdym wykrytym beacie. -->
+                                                <StackPanel x:Name="AudioBlocksCountPanel" Spacing="8" Visibility="Collapsed">
+                                                    <Grid Style="{StaticResource SliderLabelRowGridStyle}">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="60" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="Liczba bloków" Style="{StaticResource SliderLabelTextStyle}" />
+                                                        <TextBlock x:Name="AudioBlocksCountValueText" Style="{StaticResource SliderValueTextStyle}" Text="6" />
+                                                    </Grid>
+                                                    <Slider x:Name="AudioBlocksCountSlider" Minimum="2" Maximum="20" StepFrequency="1"
+                                                            ValueChanged="AudioBlocksCountSlider_ValueChanged" />
+                                                    <TextBlock
+                                                        Text="Więcej bloków = drobniejszy, bardziej 'poszatkowany' wzorzec kolorów na pasku."
+                                                        Style="{StaticResource SectionSubTextStyle}" />
+                                                </StackPanel>
+
+                                                <!-- Wavelength Speed - widoczny tylko dla trybu Wavelength; bazowa prędkość
+                                                     przepływu gradientu tęczowego, przyspieszana dodatkowo głośnością. -->
+                                                <StackPanel x:Name="AudioWavelengthSpeedPanel" Spacing="8" Visibility="Collapsed">
+                                                    <Grid Style="{StaticResource SliderLabelRowGridStyle}">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="60" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="Prędkość (Wavelength)" Style="{StaticResource SliderLabelTextStyle}" />
+                                                        <TextBlock x:Name="AudioWavelengthSpeedValueText" Style="{StaticResource SliderValueTextStyle}" Text="0.15" />
+                                                    </Grid>
+                                                    <Slider x:Name="AudioWavelengthSpeedSlider" Minimum="0.0" Maximum="1.0" StepFrequency="0.01"
+                                                            ValueChanged="AudioWavelengthSpeedSlider_ValueChanged" />
+                                                    <TextBlock
+                                                        Text="Bazowa prędkość przepływu gradientu tęczowego w ciszy - głośność dodatkowo go przyspiesza."
+                                                        Style="{StaticResource SectionSubTextStyle}" />
+                                                </StackPanel>
 
                                                 <!-- Kolory per-pasmo - widoczne tylko dla Multi Color Spectrum, analogicznie
                                                      do Custom1Panel/Custom2Panel/Custom3Panel w panelu WLED Effects. Układ

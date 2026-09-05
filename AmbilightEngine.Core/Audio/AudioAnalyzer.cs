@@ -41,6 +41,20 @@ namespace AmbilightEngine.Core.Audio
         // (co powodowałoby, że najmniejszy szum tła wygląda jak pełna głośność).
         private const float MinPeakFloor = 0.02f;
 
+        // NAPRAWA "słabe/niestabilne wykrywanie beatu": poprzednia wersja porównywała energię
+        // basu tylko z JEDNĄ poprzednią klatką (~42ms wcześniej) - to jest bardzo czułe na
+        // zwykły szum FFT między sąsiednimi blokami (fałszywe wykrycia w ciszy/na szumie) i
+        // jednocześnie zawodne przy realnym uderzeniu basu rozłożonym na 2-3 klatki (żadna
+        // pojedyncza klatka nie musiała przekroczyć progu). Zamiast tego liczymy KRÓTKOTERMINOWĄ
+        // ruchomą średnią energii basu z ostatnich ~430ms (BassHistorySize klatek) i wykrywamy
+        // beat, gdy aktualna wartość wystrzeliwuje istotnie POWYŻEJ tej średniej - klasyczne
+        // podejście "onset detection" używane też w LedFx/podobnych analizatorach audio.
+        private const int BassHistorySize = 10;
+        private readonly float[] bassHistory = new float[BassHistorySize];
+        private int bassHistoryFill;
+        private int bassHistoryCount;
+        private float bassHistorySum;
+
         private readonly object stateLock = new object();
         private readonly float[] monoBuffer = new float[FftSize];
         private int monoBufferFill;
@@ -50,9 +64,6 @@ namespace AmbilightEngine.Core.Audio
         private float treblePeak = MinPeakFloor;
         private float spectrumPeak = MinPeakFloor;
 
-        // Ostatnia znormalizowana energia basu - używana przez detekcję beatu do porównania
-        // "czy ten blok jest istotnie głośniejszy niż niedawna przeszłość" (nie tylko niż próg 0).
-        private float previousBassNormalized;
         private DateTime lastBeatAt = DateTime.MinValue;
 
         // Wzmocnienie sygnału audio przed analizą RMS/FFT i próg detekcji beatu - ustawiane
@@ -179,7 +190,7 @@ namespace AmbilightEngine.Core.Audio
             }
 
             bool beatDetected = DetectBeat(normalizedBass);
-            previousBassNormalized = normalizedBass;
+            PushBassHistory(normalizedBass);
 
             var frame = new AudioSpectrumFrame(
                 Clamp01(rms),
@@ -192,20 +203,40 @@ namespace AmbilightEngine.Core.Audio
             FrameAnalyzed?.Invoke(frame);
         }
 
+        // Dopisuje najnowszą znormalizowaną energię basu do bufora kroczącego (ring buffer),
+        // aktualizując sumę w O(1) - odjęcie wartości WYCHODZĄCEJ z okna i dodanie NOWEJ,
+        // zamiast przeliczania sumy od zera przy każdej klatce.
+        private void PushBassHistory(float normalizedBass)
+        {
+            bassHistorySum -= bassHistory[bassHistoryFill];
+            bassHistory[bassHistoryFill] = normalizedBass;
+            bassHistorySum += normalizedBass;
+
+            bassHistoryFill = (bassHistoryFill + 1) % BassHistorySize;
+            if (bassHistoryCount < BassHistorySize) bassHistoryCount++;
+        }
+
         private bool DetectBeat(float normalizedBass)
         {
-            // Beat = gwałtowny wzrost energii basu względem poprzedniego bloku (nie tylko
-            // wysoka wartość absolutna - to odróżnia uderzenie od utrzymującego się głośnego basu),
-            // powyżej minimalnego progu głośności (żeby nie łapać "beatów" w ciszy) i z zachowaniem
-            // minimalnego odstępu czasowego.
-            // RiseThreshold jest teraz konfigurowalne (pole beatThreshold, ustawiane przez
-            // SetLiveParameters) - MinimumLevel pozostaje stałe, bo to zabezpieczenie przed
-            // łapaniem "beatów" w ciszy, niezależne od preferencji czułości użytkownika.
+            // Beat = gwałtowny wzrost energii basu względem KRÓTKOTERMINOWEJ ŚREDNIEJ z ostatnich
+            // ~430ms (nie tylko poprzedniej klatki) - odróżnia realne uderzenie od zwykłego szumu
+            // FFT między sąsiednimi blokami, i jest odporne na to, że narastanie uderzenia basu
+            // może być rozłożone na kilka klatek. RiseThreshold jest konfigurowalne (pole
+            // beatThreshold, ustawiane przez SetLiveParameters) - MinimumLevel pozostaje stałe,
+            // bo to zabezpieczenie przed łapaniem "beatów" w ciszy, niezależne od Sensitivity.
             float riseThreshold = beatThreshold;
             const float MinimumLevel = 0.35f;
 
             if (normalizedBass < MinimumLevel) return false;
-            if (normalizedBass - previousBassNormalized < riseThreshold) return false;
+
+            // Dopóki nie zebrano choć kilku próbek historii, średnia byłaby niereprezentatywna
+            // (np. sama pierwsza cisza) - w tym okresie rozgrzewki nie wykrywamy beatów, żeby
+            // uniknąć fałszywego wykrycia na starcie odtwarzania.
+            if (bassHistoryCount < BassHistorySize) return false;
+
+            float movingAverage = bassHistorySum / BassHistorySize;
+
+            if (normalizedBass - movingAverage < riseThreshold) return false;
 
             var now = DateTime.UtcNow;
             if (now - lastBeatAt < MinBeatInterval) return false;

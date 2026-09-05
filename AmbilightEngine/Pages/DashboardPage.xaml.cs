@@ -211,6 +211,26 @@ public sealed partial class DashboardPage : Page
                 AudioMultiColorSpectrumRadio.IsChecked = true;
                 break;
 
+            case AudioReactiveMode.Bar:
+                AudioBarRadio.IsChecked = true;
+                break;
+
+            case AudioReactiveMode.Scroll:
+                AudioScrollRadio.IsChecked = true;
+                break;
+
+            case AudioReactiveMode.Fade:
+                AudioFadeRadio.IsChecked = true;
+                break;
+
+            case AudioReactiveMode.Blocks:
+                AudioBlocksRadio.IsChecked = true;
+                break;
+
+            case AudioReactiveMode.Wavelength:
+                AudioWavelengthRadio.IsChecked = true;
+                break;
+
             case AudioReactiveMode.VuMeter:
             default:
                 AudioVuMeterRadio.IsChecked = true;
@@ -218,8 +238,10 @@ public sealed partial class DashboardPage : Page
         }
 
         // Panel kolorów per-pasmo (Bass/Mid/Treble) ma sens tylko dla Multi Color Spectrum -
-        // dla pozostałych trybów tylko zajmowałby miejsce bez żadnego efektu.
+        // dla pozostałych trybów tylko zajmowałby miejsce bez żadnego efektu. Analogicznie
+        // panele Fade Smoothing/Blocks Count/Wavelength Speed są widoczne tylko przy swoim trybie.
         UpdateAudioBandColorsPanelVisibility(mode);
+        UpdateAudioEffectSpecificPanelsVisibility(mode);
     }
 
     // Ładuje wszystkie kontrolki rozwijanego panelu konfiguracji (slidery + kolory) z zapisanego
@@ -236,6 +258,15 @@ public sealed partial class DashboardPage : Page
 
         AudioBeatThresholdSlider.Value = audioSettings.BeatThreshold;
         AudioBeatThresholdValueText.Text = audioSettings.BeatThreshold.ToString("F2");
+
+        AudioFadeSmoothingSlider.Value = audioSettings.FadeSmoothing;
+        AudioFadeSmoothingValueText.Text = audioSettings.FadeSmoothing.ToString("F2");
+
+        AudioBlocksCountSlider.Value = audioSettings.BlocksCount;
+        AudioBlocksCountValueText.Text = audioSettings.BlocksCount.ToString();
+
+        AudioWavelengthSpeedSlider.Value = audioSettings.WavelengthSpeed;
+        AudioWavelengthSpeedValueText.Text = audioSettings.WavelengthSpeed.ToString("F2");
 
         AudioPrimaryColorPicker.Color = Windows.UI.Color.FromArgb(
             255, audioSettings.PrimaryColorR, audioSettings.PrimaryColorG, audioSettings.PrimaryColorB);
@@ -265,6 +296,25 @@ public sealed partial class DashboardPage : Page
             : Visibility.Collapsed;
     }
 
+    // Analogicznie do UpdateAudioBandColorsPanelVisibility - każdy z 3 nowych paneli
+    // (Fade Smoothing / Blocks Count / Wavelength Speed) ma sens tylko dla swojego trybu,
+    // żeby nie zaśmiecać panelu konfiguracji parametrami niemającymi znaczenia dla
+    // aktualnie wybranego efektu.
+    private void UpdateAudioEffectSpecificPanelsVisibility(AudioReactiveMode mode)
+    {
+        AudioFadeSmoothingPanel.Visibility = mode == AudioReactiveMode.Fade
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        AudioBlocksCountPanel.Visibility = mode == AudioReactiveMode.Blocks
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        AudioWavelengthSpeedPanel.Visibility = mode == AudioReactiveMode.Wavelength
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
     // Odczytuje AudioReactiveSettings z aktualnego stanu kontrolek UI - jedyne miejsce, które
     // "zna" mapowanie kontrolka->pole, żeby handlery ValueChanged/ColorChanged (wiele miejsc)
     // nie duplikowały tej samej konstrukcji obiektu.
@@ -289,7 +339,10 @@ public sealed partial class DashboardPage : Page
             MidColorB = AudioMidColorPicker.Color.B,
             TrebleColorR = AudioTrebleColorPicker.Color.R,
             TrebleColorG = AudioTrebleColorPicker.Color.G,
-            TrebleColorB = AudioTrebleColorPicker.Color.B
+            TrebleColorB = AudioTrebleColorPicker.Color.B,
+            FadeSmoothing = (float)AudioFadeSmoothingSlider.Value,
+            BlocksCount = (int)AudioBlocksCountSlider.Value,
+            WavelengthSpeed = (float)AudioWavelengthSpeedSlider.Value
         };
     }
 
@@ -301,6 +354,11 @@ public sealed partial class DashboardPage : Page
         if (AudioWaveRadio.IsChecked == true) return AudioReactiveMode.Wave;
         if (AudioBassStrobeRadio.IsChecked == true) return AudioReactiveMode.BassStrobe;
         if (AudioMultiColorSpectrumRadio.IsChecked == true) return AudioReactiveMode.MultiColorSpectrum;
+        if (AudioBarRadio.IsChecked == true) return AudioReactiveMode.Bar;
+        if (AudioScrollRadio.IsChecked == true) return AudioReactiveMode.Scroll;
+        if (AudioFadeRadio.IsChecked == true) return AudioReactiveMode.Fade;
+        if (AudioBlocksRadio.IsChecked == true) return AudioReactiveMode.Blocks;
+        if (AudioWavelengthRadio.IsChecked == true) return AudioReactiveMode.Wavelength;
         return AudioReactiveMode.VuMeter;
     }
 
@@ -574,6 +632,42 @@ public sealed partial class DashboardPage : Page
 
     private void AudioBeatThresholdSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e) =>
         AudioReactiveSlider_ValueChanged(sender, e);
+
+    // Trzy nowe slidery specyficzne dla efektów Fade/Blocks/Wavelength - każdy aktualizuje
+    // swój własny TextBlock z wartością (różne formaty: F2 dla ułamkowych, liczba całkowita
+    // dla BlocksCount) i deleguje do wspólnego punktu zapisu/propagacji.
+    private void AudioFadeSmoothingSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (isLoadingUi || mainWindow is null)
+        {
+            return;
+        }
+
+        AudioFadeSmoothingValueText.Text = AudioFadeSmoothingSlider.Value.ToString("F2");
+        PersistAndApplyAudioReactiveSettings();
+    }
+
+    private void AudioBlocksCountSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (isLoadingUi || mainWindow is null)
+        {
+            return;
+        }
+
+        AudioBlocksCountValueText.Text = AudioBlocksCountSlider.Value.ToString("F0");
+        PersistAndApplyAudioReactiveSettings();
+    }
+
+    private void AudioWavelengthSpeedSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (isLoadingUi || mainWindow is null)
+        {
+            return;
+        }
+
+        AudioWavelengthSpeedValueText.Text = AudioWavelengthSpeedSlider.Value.ToString("F2");
+        PersistAndApplyAudioReactiveSettings();
+    }
 
     // Każdy z 5 ColorPickerów panelu Audio Reactive (Primary/Secondary/Bass/Mid/Treble) używa
     // TEGO SAMEGO handlera - to jest właśnie fix bugu "miga na biało": kolory Audio Reactive

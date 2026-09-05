@@ -53,5 +53,19 @@ namespace AmbilightEngine.Core.Audio
         public byte TrebleColorR { get; set; } = 0;
         public byte TrebleColorG { get; set; } = 128;
         public byte TrebleColorB { get; set; } = 255;
+
+        // Bazowa prędkość przepływu gradientu w trybie Wavelength (obroty pełnego cyklu
+        // barw na sekundę przy całkowitej ciszy) - RMS dodaje do tego dodatkowy, chwilowy
+        // przyrost, więc efekt nigdy nie stoi w miejscu, ale przyspiesza w głośnych fragmentach.
+        public float WavelengthSpeed { get; set; } = 0.15f;
+
+        // Liczba bloków losowanych w trybie Blocks przy każdym wykrytym beacie - więcej
+        // bloków = drobniejszy, bardziej "poszatkowany" wzorzec kolorów na pasku.
+        public int BlocksCount { get; set; } = 6;
+
+        // Współczynnik wygładzania (EMA - exponential moving average) głośności dla trybu
+        // Fade - bliżej 1.0 = wolniejsze, bardziej "oddychające" przejścia; bliżej 0.0 =
+        // efekt zaczyna przypominać Energy (reaguje praktycznie natychmiast).
+        public float FadeSmoothing { get; set; } = 0.85f;
     }
 }
