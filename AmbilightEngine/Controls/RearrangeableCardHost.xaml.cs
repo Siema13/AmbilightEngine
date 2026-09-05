@@ -1,13 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using Windows.Foundation;
-using Windows.UI.Core;
 
 namespace AmbilightEngine.Controls
 {
@@ -46,7 +46,7 @@ namespace AmbilightEngine.Controls
         {
             if (string.IsNullOrWhiteSpace(cardId))
             {
-                throw new ArgumentException("cardId nie może być pusty.", nameof(cardId));
+                throw new ArgumentException("cardId nie moze byc pusty.", nameof(cardId));
             }
 
             if (cardBorder.Parent is Panel currentParent)
@@ -130,7 +130,7 @@ namespace AmbilightEngine.Controls
         {
             isEditModeActive = !isEditModeActive;
 
-            ToggleEditModeButton.Content = isEditModeActive ? "✅ Zakończ edycję" : "🔧 Dostosuj układ";
+            ToggleEditModeButton.Content = isEditModeActive ? "Zakoncz edycje" : "Dostosuj uklad";
             EditModeHintText.Visibility = isEditModeActive ? Visibility.Visible : Visibility.Collapsed;
 
             foreach (CardEntry entry in leftColumnCards.Concat(rightColumnCards))
@@ -164,7 +164,8 @@ namespace AmbilightEngine.Controls
                 FontSize = 16,
                 FontWeight = Microsoft.UI.Text.FontWeights.Bold,
                 HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = (Brush)Application.Current.Resources["M3OnSecondaryContainerBrush"]
             };
 
             var handle = new Border

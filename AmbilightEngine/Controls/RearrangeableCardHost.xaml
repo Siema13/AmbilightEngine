@@ -14,8 +14,6 @@
             <Setter Property="Background" Value="{ThemeResource M3SecondaryContainerBrush}" />
             <Setter Property="HorizontalAlignment" Value="Left" />
             <Setter Property="Margin" Value="0,0,0,6" />
-            <Setter Property="Foreground" Value="{ThemeResource M3OnSecondaryContainerBrush}" />
-            <Setter Property="Cursor" Value="SizeAll" />
         </Style>
     </UserControl.Resources>
 
@@ -34,14 +32,14 @@
 
             <TextBlock
                 x:Name="EditModeHintText"
-                Text="Przeciągaj karty za uchwyt ⠿, aby zmienić układ."
+                Text="Przeciagaj karty za uchwyt, aby zmienic uklad."
                 Style="{StaticResource SectionSubTextStyle}"
                 VerticalAlignment="Center"
                 Visibility="Collapsed" />
 
             <Button
                 x:Name="ToggleEditModeButton"
-                Content="🔧 Dostosuj układ"
+                Content="Dostosuj uklad"
                 Click="ToggleEditModeButton_Click"
                 Style="{StaticResource MaterialTonalButtonStyle}" />
         </StackPanel>
